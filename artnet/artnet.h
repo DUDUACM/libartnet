@@ -67,18 +67,57 @@ typedef enum {
   ARTNET_PC_LED_MUTE = 0x03,
   ARTNET_PC_LED_LOCATE = 0x04,
   ARTNET_PC_RESET = 0x05,
+  ARTNET_PC_ANALYSIS_ON = 0x06,
+  ARTNET_PC_ANALYSIS_OFF = 0x07,
+  ARTNET_PC_FAIL_HOLD = 0x08,
+  ARTNET_PC_FAIL_ZERO = 0x09,
+  ARTNET_PC_FAIL_FULL = 0x0a,
+  ARTNET_PC_FAIL_SCENE = 0x0b,
+  ARTNET_PC_FAIL_RECORD = 0x0c,
   ARTNET_PC_MERGE_LTP_O = 0x10,
   ARTNET_PC_MERGE_LTP_1 = 0x11,
   ARTNET_PC_MERGE_LTP_2 = 0x12,
   ARTNET_PC_MERGE_LTP_3 = 0x13,
+  ARTNET_PC_DIRECTION_TX_0 = 0x20,
+  ARTNET_PC_DIRECTION_TX_1 = 0x21,
+  ARTNET_PC_DIRECTION_TX_2 = 0x22,
+  ARTNET_PC_DIRECTION_TX_3 = 0x23,
+  ARTNET_PC_DIRECTION_RX_0 = 0x30,
+  ARTNET_PC_DIRECTION_RX_1 = 0x31,
+  ARTNET_PC_DIRECTION_RX_2 = 0x32,
+  ARTNET_PC_DIRECTION_RX_3 = 0x33,
   ARTNET_PC_MERGE_HTP_0 = 0x50,
   ARTNET_PC_MERGE_HTP_1 = 0x51,
   ARTNET_PC_MERGE_HTP_2 = 0x52,
   ARTNET_PC_MERGE_HTP_3 = 0x53,
-  ARTNET_PC_CLR_0 = 0x93,
-  ARTNET_PC_CLR_1 = 0x93,
-  ARTNET_PC_CLR_2 = 0x93,
+  ARTNET_PC_ARTNET_SEL_0 = 0x60,
+  ARTNET_PC_ARTNET_SEL_1 = 0x61,
+  ARTNET_PC_ARTNET_SEL_2 = 0x62,
+  ARTNET_PC_ARTNET_SEL_3 = 0x63,
+  ARTNET_PC_ACN_SEL_0 = 0x70,
+  ARTNET_PC_ACN_SEL_1 = 0x71,
+  ARTNET_PC_ACN_SEL_2 = 0x72,
+  ARTNET_PC_ACN_SEL_3 = 0x73,
+  ARTNET_PC_CLR_0 = 0x90,
+  ARTNET_PC_CLR_1 = 0x91,
+  ARTNET_PC_CLR_2 = 0x92,
   ARTNET_PC_CLR_3 = 0x93,
+  ARTNET_PC_STYLE_DELTA_0 = 0xa0,
+  ARTNET_PC_STYLE_DELTA_1 = 0xa1,
+  ARTNET_PC_STYLE_DELTA_2 = 0xa2,
+  ARTNET_PC_STYLE_DELTA_3 = 0xa3,
+  ARTNET_PC_STYLE_CONST_0 = 0xb0,
+  ARTNET_PC_STYLE_CONST_1 = 0xb1,
+  ARTNET_PC_STYLE_CONST_2 = 0xb2,
+  ARTNET_PC_STYLE_CONST_3 = 0xb3,
+  ARTNET_PC_RDM_ENABLED_0 = 0xc0,
+  ARTNET_PC_RDM_ENABLED_1 = 0xc1,
+  ARTNET_PC_RDM_ENABLED_2 = 0xc2,
+  ARTNET_PC_RDM_ENABLED_3 = 0xc3,
+  ARTNET_PC_RDM_DISABLED_0 = 0xd0,
+  ARTNET_PC_RDM_DISABLED_1 = 0xd1,
+  ARTNET_PC_RDM_DISABLED_2 = 0xd2,
+  ARTNET_PC_RDM_DISABLED_3 = 0xd3,
 } artnet_port_command_t;
 
 
@@ -137,12 +176,150 @@ typedef enum {
  * These values can be &'ed togeather, so for example to set private replies
  * and auto replying use :
  *   (ARTNET_TTM_PRIVATE & ARTNET_TTM_AUTO)
+ *
+ * Art-Net 4: This is now mapped to the Flags field in ArtPoll.
  */
 typedef enum {
   ARTNET_TTM_DEFAULT = 0xFF,  /**< default, ArtPollReplies are broadcast, and nodes won't send a ArtPollReply when conditions change */
   ARTNET_TTM_PRIVATE = 0xFE,  /**< ArtPollReplies aren't broadcast */
   ARTNET_TTM_AUTO = 0xFD    /**< ArtPollReplies are send when node conditions chang */
 } artnet_ttm_value_t;
+
+/*
+ * ArtPoll Flags bit masks (Art-Net 4)
+ * Bit numbering follows the spec (1-indexed): bit 1 = 0x02, bit 2 = 0x04, etc.
+ */
+typedef enum {
+  ARTNET_POLL_FLAG_UNICAST_DEPRECATED = 0x01,  /**< bit 0 (deprecated): was private replies */
+  ARTNET_POLL_FLAG_REPLY_ON_CHANGE   = 0x02,  /**< bit 1: send ArtPollReply on condition change */
+  ARTNET_POLL_FLAG_DIAG_ENABLE       = 0x04,  /**< bit 2: send diagnostics to me */
+  ARTNET_POLL_FLAG_DIAG_UNICAST      = 0x08,  /**< bit 3: unicast diagnostics (if bit 2 set) */
+  ARTNET_POLL_FLAG_VLC_DISABLE       = 0x10,  /**< bit 4: disable VLC transmission */
+  ARTNET_POLL_FLAG_TARGET_MODE       = 0x20,  /**< bit 5: enable target mode filtering */
+} artnet_poll_flags_t;
+
+/*
+ * DiagPriority codes (Art-Net 4, Table 5)
+ */
+typedef enum {
+  ARTNET_DIAG_LOW      = 0x10,  /**< low priority diagnostic message */
+  ARTNET_DIAG_MEDIUM   = 0x40,  /**< medium priority diagnostic message */
+  ARTNET_DIAG_HIGH     = 0x80,  /**< high priority diagnostic message */
+  ARTNET_DIAG_CRITICAL = 0xe0,  /**< critical priority diagnostic message */
+  ARTNET_DIAG_VOLATILE = 0xf0,  /**< volatile diagnostic message */
+} artnet_diag_priority_t;
+
+/*
+ * ArtPollReply Status2 bit masks (Art-Net 4)
+ */
+typedef enum {
+  ARTNET_STATUS2_WEB_CONFIG       = 0x01,  /**< bit 0: supports web browser configuration */
+  ARTNET_STATUS2_DHCP_ENABLED     = 0x02,  /**< bit 1: IP is DHCP configured */
+  ARTNET_STATUS2_DHCP_SUPPORTED   = 0x04,  /**< bit 2: supports DHCP */
+  ARTNET_STATUS2_15BIT_ADDR       = 0x08,  /**< bit 3: supports 15-bit port addressing */
+  ARTNET_STATUS2_SACN_SWITCHABLE  = 0x10,  /**< bit 4: can switch between Art-Net and sACN */
+  ARTNET_STATUS2_Sounding         = 0x20,  /**< bit 5: sounding alarm */
+  ARTNET_STATUS2_STYLE_SWITCH     = 0x40,  /**< bit 6: supports output style switching */
+  ARTNET_STATUS2_RDM_CONTROL      = 0x80,  /**< bit 7: supports RDM control via ArtAddress */
+} artnet_status2_t;
+
+/*
+ * ArtPollReply Status3 bit masks (Art-Net 4)
+ */
+typedef enum {
+  ARTNET_STATUS3_FAILSAFE_SHIFT = 6,
+  ARTNET_STATUS3_FAILSAFE_MASK  = 0xC0,  /**< bits 7-6: fail-safe mode */
+  ARTNET_STATUS3_FAILOVER       = 0x20,  /**< bit 5: supports fail-over */
+  ARTNET_STATUS3_LLRP           = 0x10,  /**< bit 4: supports LLRP */
+  ARTNET_STATUS3_PORT_DIRECTION = 0x08,  /**< bit 3: supports port direction switching */
+} artnet_status3_t;
+
+/*
+ * ArtPollReply Status3 fail-safe mode values
+ */
+typedef enum {
+  ARTNET_FAILSAFE_HOLD  = 0x00,  /**< hold last state on data loss */
+  ARTNET_FAILSAFE_ZERO  = 0x40,  /**< zero all outputs on data loss */
+  ARTNET_FAILSAFE_FULL  = 0x80,  /**< full output on data loss */
+  ARTNET_FAILSAFE_SCENE = 0xC0,  /**< play fail-safe scene on data loss */
+} artnet_failsafe_mode_t;
+
+/*
+ * ArtPollReply GoodOutputB bit masks (Art-Net 4)
+ */
+typedef enum {
+  ARTNET_GOODB_RDM_DISABLED    = 0x80,  /**< bit 7: RDM is disabled */
+  ARTNET_GOODB_STYLE_CONSTANT  = 0x40,  /**< bit 6: output style is constant */
+  ARTNET_GOODB_STYLE_DELTA     = 0x00,  /**< bit 6 clr: output style is delta */
+} artnet_good_output_b_t;
+
+/*
+ * ArtTimeCode type (Art-Net 4)
+ */
+typedef enum {
+  ARTNET_TIMECODE_FILM  = 0x00,  // 24 fps
+  ARTNET_TIMECODE_EBU   = 0x01,  // 25 fps
+  ARTNET_TIMECODE_DF    = 0x02,  // 29.97 fps drop-frame
+  ARTNET_TIMECODE_SMPTE = 0x03,  // 30 fps
+} artnet_timecode_type_t;
+
+/*
+ * ArtTrigger key values (Art-Net 4)
+ */
+typedef enum {
+  ARTNET_TRIGGER_KEY_ASCII = 0x00,
+  ARTNET_TRIGGER_KEY_MACRO = 0x01,
+  ARTNET_TRIGGER_KEY_SOFT  = 0x02,
+  ARTNET_TRIGGER_KEY_SHOW  = 0x03,
+} artnet_trigger_key_t;
+
+/*
+ * NodeReport codes (Art-Net 4, Table 3)
+ * Returned in ArtPollReply NodeReport field.
+ */
+typedef enum {
+  ARTNET_RC_DEBUG        = 0x0000,  /**< RcDebug: booted in debug mode */
+  ARTNET_RC_POWER_OK     = 0x0001,  /**< RcPowerOk: power-on test passed */
+  ARTNET_RC_POWER_FAIL   = 0x0002,  /**< RcPowerFail: power-on hardware test failed */
+  ARTNET_RC_SOCKET_WR1   = 0x0003,  /**< RcSocketWr1: last UDP failed due to length truncation */
+  ARTNET_RC_PARSE_FAIL   = 0x0004,  /**< RcParseFail: unrecognised last UDP */
+  ARTNET_RC_UDP_FAIL     = 0x0005,  /**< RcUdpFail: cannot open UDP socket */
+  ARTNET_RC_SHNAME_OK    = 0x0006,  /**< RcShNameOk: short name programmed successfully */
+  ARTNET_RC_LONAME_OK    = 0x0007,  /**< RcLoNameOk: long name programmed successfully */
+  ARTNET_RC_DMX_ERROR    = 0x0008,  /**< RcDmxError: DMX512 receive error detected */
+  ARTNET_RC_DMX_UDP_FULL = 0x0009,  /**< RcDmxUdpFull: DMX transmit buffer exhausted */
+  ARTNET_RC_DMX_RX_FULL  = 0x000a,  /**< RcDmxRxFull: DMX receive buffer exhausted */
+  ARTNET_RC_SWITCH_ERR   = 0x000b,  /**< RcSwitchErr: universe address conflict */
+  ARTNET_RC_CONFIG_ERR   = 0x000c,  /**< RcConfigErr: product config mismatch */
+  ARTNET_RC_DMX_SHORT    = 0x000d,  /**< RcDmxShort: DMX output short detected */
+  ARTNET_RC_FIRMWARE_FAIL= 0x000e,  /**< RcFirmwareFail: last firmware upload failed */
+  ARTNET_RC_USER_FAIL    = 0x000f,  /**< RcUserFail: user changed locked address switch */
+  ARTNET_RC_FACTORY_RES  = 0x0010,  /**< RcFactoryRes: factory reset performed */
+} artnet_node_report_code;
+
+/*
+ * Style codes (Art-Net 4, Table 4)
+ * Defines the type of Art-Net product. Returned in ArtPollReply.
+ */
+typedef enum {
+  ARTNET_ST_NODE       = 0x00,  /**< StNode: DMX to/from Art-Net device */
+  ARTNET_ST_CONTROLLER = 0x01,  /**< StController: lighting console */
+  ARTNET_ST_MEDIA      = 0x02,  /**< StMedia: media server */
+  ARTNET_ST_ROUTE      = 0x03,  /**< StRoute: network routing device */
+  ARTNET_ST_BACKUP     = 0x04,  /**< StBackup: backup device */
+  ARTNET_ST_CONFIG     = 0x05,  /**< StConfig: configuration/diagnostic tool */
+  ARTNET_ST_VISUAL     = 0x06,  /**< StVisual: visualizer */
+} artnet_style_code_t;
+
+/*
+ * ArtPollReply Status1 LED state values (Art-Net 4)
+ */
+typedef enum {
+  ARTNET_LED_UNKNOWN  = 0x00,  /**< 00: LED state unknown */
+  ARTNET_LED_LOCATE   = 0x01,  /**< 01: LED in locate/identify mode */
+  ARTNET_LED_MUTE     = 0x02,  /**< 10: LED muted / disabled */
+  ARTNET_LED_NORMAL   = 0x03,  /**< 11: LED normal operation */
+} artnet_led_state_t;
 
 /**
  * Enums for the application defined handlers
@@ -162,6 +339,19 @@ typedef enum {
   ARTNET_IPPROG_HANDLER,    /**< Called on reciept of an ArtIPProg packet */
   ARTNET_FIRMWARE_HANDLER,  /**< Called on reciept of an ArtFirmware packet */
   ARTNET_FIRMWARE_REPLY_HANDLER,  /**< Called on reciept of an ArtFirmwareReply packet */
+  ARTNET_SYNC_HANDLER,            /**< Called on reciept of an ArtSync packet */
+  ARTNET_NZS_HANDLER,             /**< Called on reciept of an ArtNzs packet */
+  ARTNET_COMMAND_HANDLER,         /**< Called on reciept of an ArtCommand packet */
+  ARTNET_TIMECODE_HANDLER,        /**< Called on reciept of an ArtTimeCode packet */
+  ARTNET_TIMESYNC_HANDLER,        /**< Called on reciept of an ArtTimeSync packet */
+  ARTNET_TRIGGER_HANDLER,         /**< Called on reciept of an ArtTrigger packet */
+  ARTNET_DIRECTORY_HANDLER,       /**< Called on reciept of an ArtDirectory packet */
+  ARTNET_DIRECTORY_REPLY_HANDLER, /**< Called on reciept of an ArtDirectoryReply packet */
+  ARTNET_FILE_TN_MASTER_HANDLER,  /**< Called on reciept of an ArtFileTnMaster packet */
+  ARTNET_FILE_FN_MASTER_HANDLER,  /**< Called on reciept of an ArtFileFnMaster packet */
+  ARTNET_FILE_FN_REPLY_HANDLER,   /**< Called on reciept of an ArtFileFnReply packet */
+  ARTNET_MEDIAPATCH_HANDLER,      /**< Called on reciept of an ArtMediaPatch packet */
+  ARTNET_MEDIACONTROL_HANDLER,    /**< Called on reciept of an ArtMediaControl packet */
 } artnet_handler_name_t;
 
 
@@ -182,14 +372,19 @@ typedef struct artnet_node_entry_s {
   int16_t numbports;        /**< The number of ports */
   uint8_t porttypes[ARTNET_MAX_PORTS];    /**< The type of ports */
   uint8_t goodinput[ARTNET_MAX_PORTS];
-  uint8_t goodoutput[ARTNET_MAX_PORTS];
+  uint8_t goodOutputA[ARTNET_MAX_PORTS];   /**< GoodOutputA status (Art-Net 4) */
   uint8_t swin[ARTNET_MAX_PORTS];
   uint8_t swout[ARTNET_MAX_PORTS];
-  uint8_t swvideo;
+  uint8_t acnPriority;      /**< sACN priority value (Art-Net 4, was swvideo) */
   uint8_t swmacro;
   uint8_t swremote;
-  uint8_t style;
   uint8_t mac[ARTNET_MAC_SIZE];        /**< The MAC address of the node */
+  uint8_t bindIp[ARTNET_IP_SIZE];      /**< Bind IP address (Art-Net 4) */
+  uint8_t bindIndex;                    /**< BindIndex (Art-Net 4) */
+  uint8_t status2;                      /**< Status2 register (Art-Net 4) */
+  uint8_t goodOutputB[ARTNET_MAX_PORTS]; /**< GoodOutputB status (Art-Net 4) */
+  uint8_t status3;                      /**< Status3 register (Art-Net 4) */
+  uint8_t defaultRespUid[ARTNET_RDM_UID_WIDTH]; /**< Default responder UID (Art-Net 4) */
 } artnet_node_entry_t;
 
 /** A pointer to an artnet_node_entry_t */
@@ -263,7 +458,7 @@ EXTERN int artnet_send_dmx(artnet_node n,
   int16_t length,
   const uint8_t *data);
 EXTERN int artnet_raw_send_dmx(artnet_node vn,
-  uint8_t uni,
+  uint16_t uni,
   int16_t length,
   const uint8_t *data);
 EXTERN int artnet_send_address(artnet_node n,
@@ -291,13 +486,30 @@ EXTERN int artnet_send_firmware_reply(artnet_node vn,
 // rdm functions
 EXTERN int artnet_send_tod_request(artnet_node vn);
 EXTERN int artnet_send_tod_control(artnet_node vn,
-  uint8_t address,
+  uint16_t address,
   artnet_tod_command_code action);
 EXTERN int artnet_send_tod_data(artnet_node vn, int port);
 EXTERN int artnet_send_rdm(artnet_node vn,
-  uint8_t address,
+  uint16_t address,
   uint8_t *data,
   int length);
+EXTERN int artnet_send_rdmsub(artnet_node vn,
+  uint8_t uid[ARTNET_RDM_UID_WIDTH],
+  uint8_t command_class,
+  uint16_t param_id,
+  uint16_t sub_device,
+  uint16_t sub_count,
+  uint8_t *data,
+  int length);
+
+// sync functions
+EXTERN int artnet_send_sync(artnet_node vn);
+
+// diagnostic functions
+EXTERN int artnet_send_diagnostic(artnet_node vn,
+  artnet_diag_priority_t priority,
+  uint8_t port,
+  const char *text);
 EXTERN int artnet_add_rdm_device(artnet_node vn,
   int port,
   uint8_t uid[ARTNET_RDM_UID_WIDTH]);
@@ -326,6 +538,7 @@ EXTERN int artnet_set_port_addr(artnet_node n,
                                 int id,
                                 artnet_port_dir_t dir,
                                 uint8_t addr);
+EXTERN int artnet_set_net_addr(artnet_node n, uint8_t net);
 EXTERN int artnet_set_subnet_addr(artnet_node n, uint8_t subnet);
 EXTERN int artnet_get_universe_addr(artnet_node n,
                                     int id,

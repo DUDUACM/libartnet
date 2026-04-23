@@ -64,6 +64,7 @@ enum { ARTNET_DMX_LENGTH = 512 };
  * Number of bytes in a RDM UID
  */
 enum { ARTNET_RDM_UID_WIDTH = 6 };
+enum { ARTNET_RDM_VERSION = 0x01 };  // RDM protocol version 1.0
 
 /*
  * Length of the hardware address

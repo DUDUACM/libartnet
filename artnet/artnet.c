@@ -48,9 +48,10 @@ uint8_t PORT_STATUS_DMX_TEST = 0x40;
 uint8_t PORT_STATUS_ACT_MASK = 0x80;
 uint8_t PORT_DISABLE_MASK = 0x01;
 uint8_t TOD_RESPONSE_FULL = 0x00;
-uint8_t TOD_RESPONSE_NAK = 0x00;
+uint8_t TOD_RESPONSE_NAK = 0xff;
 uint8_t MIN_PACKET_SIZE = 10;
 uint8_t MERGE_TIMEOUT_SECONDS = 10;
+uint8_t DMX_FAILSAFE_TIMEOUT_SECONDS = 5;
 uint8_t FIRMWARE_TIMEOUT_SECONDS = 20;
 uint8_t RECV_NO_DATA = 1;
 uint8_t MAX_NODE_BCAST_LIMIT = 30; // always bcast after this point
@@ -64,7 +65,7 @@ uint16_t LOW_BYTE = 0x00FF;
 uint16_t HIGH_BYTE = 0xFF00;
 
 void copy_apr_to_node_entry(artnet_node_entry e, artnet_reply_t *reply);
-int find_nodes_from_uni(node_list_t *nl, uint8_t uni, SI *ips, int size);
+int find_nodes_from_uni(node_list_t *nl, uint16_t uni, SI *ips, int size); // fixed: uint16_t
 
 /*
  * Creates a new ArtNet node.
@@ -113,7 +114,7 @@ artnet_node artnet_new(const char *ip, int verbose) {
   // now setup the default parameters
   n->state.send_apr_on_change = FALSE;
   n->state.ar_count = 0;
-  n->state.report_code = ARTNET_RCPOWEROK;
+  n->state.report_code = ARTNET_RC_POWER_OK;
   n->state.reply_addr.s_addr = 0;
   n->state.mode = ARTNET_STANDBY;
 
@@ -121,6 +122,8 @@ artnet_node artnet_new(const char *ip, int verbose) {
   for (i=0; i < ARTNET_MAX_PORTS; i++) {
     n->ports.out[i].merge_mode = ARTNET_MERGE_HTP;
     n->ports.out[i].port_enabled = FALSE;
+    n->ports.out[i].last_dmx_time = 0;
+    n->ports.out[i].failsafe_triggered = FALSE;
     n->ports.in[i].port_enabled = FALSE;
 
     // reset tods
@@ -429,6 +432,54 @@ int artnet_set_handler(artnet_node vn,
     case ARTNET_RDM_HANDLER:
       callback = &n->callbacks.rdm;
       break;
+    case ARTNET_IPPROG_HANDLER:
+      callback = &n->callbacks.ipprog;
+      break;
+    case ARTNET_FIRMWARE_HANDLER:
+      callback = &n->callbacks.firmware;
+      break;
+    case ARTNET_FIRMWARE_REPLY_HANDLER:
+      callback = &n->callbacks.firmware_reply;
+      break;
+    case ARTNET_SYNC_HANDLER:
+      callback = &n->callbacks.sync;
+      break;
+    case ARTNET_NZS_HANDLER:
+      callback = &n->callbacks.nzs;
+      break;
+    case ARTNET_COMMAND_HANDLER:
+      callback = &n->callbacks.command;
+      break;
+    case ARTNET_TIMECODE_HANDLER:
+      callback = &n->callbacks.timecode;
+      break;
+    case ARTNET_TIMESYNC_HANDLER:
+      callback = &n->callbacks.timesync;
+      break;
+    case ARTNET_TRIGGER_HANDLER:
+      callback = &n->callbacks.trigger;
+      break;
+    case ARTNET_DIRECTORY_HANDLER:
+      callback = &n->callbacks.directory;
+      break;
+    case ARTNET_DIRECTORY_REPLY_HANDLER:
+      callback = &n->callbacks.directory_reply;
+      break;
+    case ARTNET_FILE_TN_MASTER_HANDLER:
+      callback = &n->callbacks.file_tn_master;
+      break;
+    case ARTNET_FILE_FN_MASTER_HANDLER:
+      callback = &n->callbacks.file_fn_master;
+      break;
+    case ARTNET_FILE_FN_REPLY_HANDLER:
+      callback = &n->callbacks.file_fn_reply;
+      break;
+    case ARTNET_MEDIAPATCH_HANDLER:
+      callback = &n->callbacks.mediapatch;
+      break;
+    case ARTNET_MEDIACONTROL_HANDLER:
+      callback = &n->callbacks.mediacontrol;
+      break;
     default:
       artnet_error("%s : Invalid handler defined", __FUNCTION__);
       return ARTNET_EARG;
@@ -588,6 +639,24 @@ int artnet_send_poll_reply(artnet_node vn) {
 
 
 /*
+ * Send a diagnostic message
+ *
+ * @param vn the artnet_node
+ * @param priority the diagnostic priority level
+ * @param port the logical port (0 for general messages)
+ * @param text the diagnostic text message (null-terminated)
+ */
+int artnet_send_diagnostic(artnet_node vn,
+                           artnet_diag_priority_t priority,
+                           uint8_t port,
+                           const char *text) {
+  node n = (node) vn;
+  check_nullnode(vn);
+
+  return artnet_tx_diagdata(n, (uint8_t) priority, port, text);
+}
+
+/*
  * Sends some dmx data
  *
  * @param vn the artnet_node
@@ -598,7 +667,6 @@ int artnet_send_dmx(artnet_node vn,
                     const uint8_t *data) {
   node n = (node) vn;
   artnet_packet_t p;
-  int ret;
   input_port_t *port;
 
   check_nullnode(vn);
@@ -645,39 +713,42 @@ int artnet_send_dmx(artnet_node vn,
   p.to.s_addr = n->state.bcast_addr.s_addr;
 
   if (n->state.bcast_limit == 0) {
-    if ((ret = artnet_net_send(n, &p)))
-      return ret;
+    // Art-Net 4: ArtDmx must always be unicast, broadcast is not permitted
+    int nodes, i;
+    int limit = n->node_list.length ? n->node_list.length : 1;
+    SI *ips = malloc(sizeof(SI) * limit);
+
+    if (!ips)
+      return ARTNET_EACTION;
+
+    nodes = find_nodes_from_uni(&n->node_list,
+                                port->port_addr,
+                                ips,
+                                limit);
+
+    for (i = 0; i < nodes; i++) {
+      p.to = ips[i];
+      artnet_net_send(n, &p);
+    }
+    free(ips);
   } else {
-    int nodes;
-    // find the number of ports for this uni
+    int nodes, i;
     SI *ips = malloc(sizeof(SI) * n->state.bcast_limit);
 
-    if (!ips) {
-      // Fallback to broadcast mode
-      if ((ret = artnet_net_send(n, &p)))
-        return ret;
-    }
+    if (!ips)
+      return ARTNET_EACTION;
 
     nodes = find_nodes_from_uni(&n->node_list,
                                 port->port_addr,
                                 ips,
                                 n->state.bcast_limit);
 
-    if (nodes > n->state.bcast_limit) {
-      // fall back to broadcast
-      free(ips);
-      if ((ret = artnet_net_send(n, &p))) {
-        return ret;
-      }
-    } else {
-      // unicast to the specified nodes
-      int i;
-      for (i =0; i < nodes; i++) {
-        p.to = ips[i];
-        artnet_net_send(n, &p);
-      }
-      free(ips);
+    // Art-Net 4: unicast to subscribers, never broadcast
+    for (i = 0; i < nodes && i < n->state.bcast_limit; i++) {
+      p.to = ips[i];
+      artnet_net_send(n, &p);
     }
+    free(ips);
   }
   port->seq++;
   return ARTNET_EOK;
@@ -690,7 +761,7 @@ int artnet_send_dmx(artnet_node vn,
  * ports configured.
  */
 int artnet_raw_send_dmx(artnet_node vn,
-                        uint8_t uni,
+                        uint16_t uni,
                         int16_t length,
                         const uint8_t *data) {
   node n = (node) vn;
@@ -721,7 +792,7 @@ int artnet_raw_send_dmx(artnet_node vn,
   p.data.admx.ver = ARTNET_VERSION;
   p.data.admx.sequence = 0;
   p.data.admx.physical = 0;
-  p.data.admx.universe = uni;
+  p.data.admx.universe = htols(uni);
 
   // set length
   p.data.admx.lengthHi = short_get_high_byte(length);
@@ -763,8 +834,8 @@ int artnet_send_address(artnet_node vn,
     p.data.addr.opCode = htols(ARTNET_ADDRESS);
     p.data.addr.verH = 0;
     p.data.addr.ver = ARTNET_VERSION;
-    p.data.addr.filler1 = 0;
-    p.data.addr.filler2 = 0;
+    p.data.addr.netSwitch = n->state.net;
+    p.data.addr.bindIndex = 1;
 
     memset(p.data.addr.shortname, 0, ARTNET_SHORT_NAME_LENGTH);
     size_t len = strnlen(shortName, ARTNET_SHORT_NAME_LENGTH);
@@ -778,7 +849,7 @@ int artnet_send_address(artnet_node vn,
     memcpy(&p.data.addr.swout, outAddr, ARTNET_MAX_PORTS);
 
     p.data.addr.subnet = subAddr;
-    p.data.addr.swvideo = 0x00;
+    p.data.addr.acnPriority = 0x00;
     p.data.addr.command = cmd;
 
     return artnet_net_send(n, &p);
@@ -825,7 +896,7 @@ int artnet_send_input(artnet_node vn,
     p.data.ainput.verH = 0;
     p.data.ainput.ver = ARTNET_VERSION;
     p.data.ainput.filler1 = 0;
-    p.data.ainput.filler2 = 0;
+    p.data.ainput.bindIndex = 1;
     p.data.ainput.numbportsH = short_get_high_byte(e->numbports);
     p.data.ainput.numbports = short_get_low_byte(e->numbports);
     memcpy(&p.data.ainput.input, &settings, ARTNET_MAX_PORTS);
@@ -956,7 +1027,7 @@ int artnet_send_tod_request(artnet_node vn) {
  *
  */
 int artnet_send_tod_control(artnet_node vn,
-                            uint8_t address,
+                            uint16_t address,
                             artnet_tod_command_code action) {
   node n = (node) vn;
   check_nullnode(vn);
@@ -986,13 +1057,24 @@ int artnet_send_tod_data(artnet_node vn, int port) {
 
 
 /*
+ * Send an ArtSync packet
+ */
+int artnet_send_sync(artnet_node vn) {
+  node n = (node) vn;
+  check_nullnode(vn);
+
+  return artnet_tx_sync(n);
+}
+
+
+/*
  * Send a rdm datagram
  * @param address the universe address to send to
  * @param data the rdm data to send
  * @param length the length of the rdm data
  */
 int artnet_send_rdm(artnet_node vn,
-                    uint8_t address,
+                    uint16_t address,
                     uint8_t *data,
                     int length) {
   node n = (node) vn;
@@ -1000,6 +1082,25 @@ int artnet_send_rdm(artnet_node vn,
 
   //we check that we are using this address
   return artnet_tx_rdm(n, address, data, length);
+}
+
+
+/*
+ * Send a RDM sub packet
+ */
+int artnet_send_rdmsub(artnet_node vn,
+                       uint8_t uid[ARTNET_RDM_UID_WIDTH],
+                       uint8_t command_class,
+                       uint16_t param_id,
+                       uint16_t sub_device,
+                       uint16_t sub_count,
+                       uint8_t *data,
+                       int length) {
+  node n = (node) vn;
+  check_nullnode(vn);
+
+  return artnet_tx_rdmsub(n, uid, command_class, param_id,
+                           sub_device, sub_count, data, length);
 }
 
 
@@ -1136,6 +1237,49 @@ int artnet_set_node_type(artnet_node vn, artnet_node_type type) {
  * @param vn the artnet_node
  * @param subnet new subnet address
  */
+/**
+ * Sets the net address of the node.
+ * The net address is bits 14-8 of the 15-bit Art-Net port address (0-127).
+ *
+ * @param vn the artnet_node
+ * @param net the net address (0-127)
+ */
+int artnet_set_net_addr(artnet_node vn, uint8_t net) {
+  node n = (node) vn;
+
+  check_nullnode(vn);
+
+  if (net > 0x7F) {
+    artnet_error("Net address out of range, max is 127");
+    n->state.report_code = ARTNET_RC_USER_FAIL;
+    return ARTNET_EARG;
+  }
+
+  n->state.default_net = net;
+
+  if (!n->state.net_net_ctl && net != n->state.net) {
+    n->state.net = net;
+
+    // redo the addresses for each port
+    for (int i = 0; i < ARTNET_MAX_PORTS; i++) {
+      n->ports.in[i].port_addr = make_addr(net, n->state.subnet, n->ports.in[i].port_addr);
+      n->ports.out[i].port_addr = make_addr(net, n->state.subnet, n->ports.out[i].port_addr);
+    }
+
+    if (n->state.mode == ARTNET_ON) {
+      int ret = artnet_tx_build_art_poll_reply(n);
+      if (ret)
+        return ret;
+      return artnet_tx_poll_reply(n, FALSE);
+    }
+  } else if (n->state.net_net_ctl) {
+    n->state.report_code = ARTNET_RC_USER_FAIL;
+  }
+
+  return ARTNET_EOK;
+}
+
+
 int artnet_set_subnet_addr(artnet_node vn, uint8_t subnet) {
   node n = (node) vn;
   int i, ret;
@@ -1150,11 +1294,11 @@ int artnet_set_subnet_addr(artnet_node vn, uint8_t subnet) {
 
     // redo the addresses for each port
     for (i =0; i < ARTNET_MAX_PORTS; i++) {
-      n->ports.in[i].port_addr = ((n->state.subnet & LOW_NIBBLE) << 4) | (n->ports.in[i].port_addr & LOW_NIBBLE);
+      n->ports.in[i].port_addr = make_addr(n->state.net, subnet, n->ports.in[i].port_addr);
       // reset dmx sequence number
       n->ports.in[i].seq = 0;
 
-      n->ports.out[i].port_addr = ((n->state.subnet & LOW_NIBBLE) << 4) | (n->ports.out[i].port_addr & LOW_NIBBLE);
+      n->ports.out[i].port_addr = make_addr(n->state.net, subnet, n->ports.out[i].port_addr);
     }
 
     if (n->state.mode == ARTNET_ON) {
@@ -1166,7 +1310,7 @@ int artnet_set_subnet_addr(artnet_node vn, uint8_t subnet) {
     }
   } else if (n->state.subnet_net_ctl ) {
     //  trying to change subnet addr while under network control
-    n->state.report_code = ARTNET_RCUSERFAIL;
+    n->state.report_code = ARTNET_RC_USER_FAIL;
   }
 
   return ARTNET_EOK;
@@ -1295,8 +1439,8 @@ int artnet_set_port_addr(artnet_node vn,
 
   // if not under network control and address is changing
   if (!port->net_ctl &&
-      (changed || (addr & LOW_NIBBLE) != (port->addr & LOW_NIBBLE))) {
-    port->addr = ((n->state.subnet & LOW_NIBBLE) << 4) | (addr & LOW_NIBBLE);
+      (changed || (addr & LOW_NIBBLE) != addr_port(port->addr))) {
+    port->addr = make_addr(n->state.net, n->state.subnet, addr);
 
     // reset seq if input port
     if (dir == ARTNET_INPUT_PORT)
@@ -1310,7 +1454,7 @@ int artnet_set_port_addr(artnet_node vn,
     }
   } else if (port->net_ctl) {
     //  trying to change port addr while under network control
-    n->state.report_code = ARTNET_RCUSERFAIL;
+    n->state.report_code = ARTNET_RC_USER_FAIL;
   }
   return ARTNET_EOK;
 }
@@ -1567,7 +1711,7 @@ node_entry_private_t *find_entry_from_ip(node_list_t *nl, SI ip) {
  * @param size size of ips
  * @return number of nodes matched
  */
-int find_nodes_from_uni(node_list_t *nl, uint8_t uni, SI *ips, int size) {
+int find_nodes_from_uni(node_list_t *nl, uint16_t uni, SI *ips, int size) {
   node_entry_private_t *tmp;
   int count = 0;
   int i,j = 0;
@@ -1575,7 +1719,8 @@ int find_nodes_from_uni(node_list_t *nl, uint8_t uni, SI *ips, int size) {
   for (tmp = nl->first; tmp; tmp = tmp->next) {
     int added = FALSE;
     for (i =0; i < tmp->pub.numbports; i++) {
-      if (tmp->pub.swout[i] == uni && ips) {
+      uint16_t entry_uni = ((tmp->pub.sub & 0xFF) << 4) | (tmp->pub.swout[i] & 0x0F);
+      if (entry_uni == uni && ips) {
         if (j < size && !added) {
           ips[j++] = tmp->ip;
           added = TRUE;
@@ -1596,7 +1741,7 @@ void copy_apr_to_node_entry(artnet_node_entry e, artnet_reply_t *reply) {
   // the ip is network byte ordered
   memcpy(&e->ip, &reply->ip, 4);
   e->ver = bytes_to_short(reply->verH, reply->ver);
-  e->sub = bytes_to_short(reply->subH, reply->sub);
+  e->sub = bytes_to_short(reply->netSwitch, reply->sub);
   e->oem = bytes_to_short(reply->oemH, reply->oem);
   e->ubea = reply->ubea;
   memcpy(&e->etsaman, &reply->etsaman, 2);
@@ -1606,15 +1751,19 @@ void copy_apr_to_node_entry(artnet_node_entry e, artnet_reply_t *reply) {
   e->numbports = bytes_to_short(reply->numbportsH, reply->numbports);
   memcpy(&e->porttypes, &reply->porttypes, ARTNET_MAX_PORTS);
   memcpy(&e->goodinput, &reply->goodinput, ARTNET_MAX_PORTS);
-  memcpy(&e->goodinput, &reply->goodinput, ARTNET_MAX_PORTS);
-  memcpy(&e->goodoutput, &reply->goodoutput, ARTNET_MAX_PORTS);
+  memcpy(&e->goodOutputA, &reply->goodOutputA, ARTNET_MAX_PORTS);
   memcpy(&e->swin, &reply->swin, ARTNET_MAX_PORTS);
   memcpy(&e->swout, &reply->swout, ARTNET_MAX_PORTS);
-  e->swvideo = reply->swvideo;
+  e->acnPriority = reply->acnPriority;
   e->swmacro = reply->swmacro;
   e->swremote = reply->swremote;
-  e->style = reply->style;
   memcpy(&e->mac, &reply->mac, ARTNET_MAC_SIZE);
+  memcpy(&e->bindIp, &reply->bindIp, ARTNET_IP_SIZE);
+  e->bindIndex = reply->bindIndex;
+  e->status2 = reply->status2;
+  memcpy(&e->goodOutputB, &reply->goodOutputB, ARTNET_MAX_PORTS);
+  e->status3 = reply->status3;
+  memcpy(&e->defaultRespUid, &reply->defaultRespUid, ARTNET_RDM_UID_WIDTH);
 }
 
 /*
@@ -1636,6 +1785,44 @@ node_entry_private_t *find_private_entry(node n, artnet_node_entry e) {
 
 void check_timeouts(node n) {
   time_t now = time(NULL);
+  int i;
+
+  // fail-safe: check for DMX data loss on enabled output ports
+  for (i = 0; i < ARTNET_MAX_PORTS; i++) {
+    output_port_t *port = &n->ports.out[i];
+
+    if (!port->port_enabled || port->last_dmx_time == 0)
+      continue;
+
+    if (!port->failsafe_triggered &&
+        (now - port->last_dmx_time >= DMX_FAILSAFE_TIMEOUT_SECONDS)) {
+
+      switch (n->state.failsafe_mode) {
+        case ARTNET_FAILSAFE_ZERO:
+          memset(port->data, 0x00, ARTNET_DMX_LENGTH);
+          port->length = ARTNET_DMX_LENGTH;
+          break;
+        case ARTNET_FAILSAFE_FULL:
+          memset(port->data, 0xFF, ARTNET_DMX_LENGTH);
+          port->length = ARTNET_DMX_LENGTH;
+          break;
+        case ARTNET_FAILSAFE_SCENE:
+          // scene playback is application-specific; library treats as HOLD
+          // fall through
+        case ARTNET_FAILSAFE_HOLD:
+        default:
+          // HOLD: keep last data, no action needed
+          break;
+      }
+
+      port->failsafe_triggered = TRUE;
+    }
+  }
+
+  // ArtSync timeout: revert to non-sync mode after 4 seconds without ArtSync
+  if (n->state.sync_mode && (now - n->state.last_sync_time >= 4)) {
+    n->state.sync_mode = 0;
+  }
 
   if (n->firmware.peer.s_addr != 0
       && (now - n->firmware.last_time >= FIRMWARE_TIMEOUT_SECONDS)) {
@@ -1643,7 +1830,7 @@ void check_timeouts(node n) {
     printf("firmware timeout\n");
     reset_firmware_upload(n);
 
-    n->state.report_code = ARTNET_RCFIRMWAREFAIL;
+    n->state.report_code = ARTNET_RC_FIRMWARE_FAIL;
     // spec says to set ArtPollReply->Status here, but don't know to what value
   }
 }

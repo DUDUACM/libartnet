@@ -83,7 +83,7 @@ int remove_tod_uid(tod_t *tod, uint8_t uid[ARTNET_RDM_UID_WIDTH]) {
     return -1;
 
   for (i=0; i < tod->length; i++) {
-    offset += ARTNET_RDM_UID_WIDTH;
+    offset = i * ARTNET_RDM_UID_WIDTH;
     if (memcmp(tod->data + offset, uid, ARTNET_RDM_UID_WIDTH) == 0)
       break;
   }

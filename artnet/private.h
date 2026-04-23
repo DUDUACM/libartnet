@@ -141,25 +141,7 @@ extern uint16_t HIGH_BYTE;
 // ArtPollReply
 //-----------------------------------------------------------------------------
 
-// the node report codes
-typedef enum {
-  ARTNET_RCDEBUG,
-  ARTNET_RCPOWEROK,
-  ARTNET_RCPOWERFAIL,
-  ARTNET_RCSOCKETWR1,
-  ARTNET_RCPARSEFAIL,
-  ARTNET_RCUDPFAIL,
-  ARTNET_RCSHNAMEOK,
-  ARTNET_RCLONAMEOK,
-  ARTNET_RCDMXERROR,
-  ARTNET_RCDMXUDPFULL,
-  ARTNET_RCDMXRXFULL,
-  ARTNET_RCSWITCHERR,
-  ARTNET_RCCONFIGERR,
-  ARTNET_RCDMXSHORT,
-  ARTNET_RCFIRMWAREFAIL,
-  ARTNET_RCUSERFAIL
-} artnet_node_report_code;
+// artnet_node_report_code moved to artnet.h as public enum
 
 // these define the types of node that can exist
 // note it's different from artnet_node_type
@@ -262,6 +244,19 @@ typedef struct {
   callback_t ipprog;
   callback_t firmware;
   callback_t firmware_reply;
+  callback_t sync;
+  callback_t nzs;
+  callback_t command;
+  callback_t timecode;
+  callback_t timesync;
+  callback_t trigger;
+  callback_t directory;
+  callback_t directory_reply;
+  callback_t file_tn_master;
+  callback_t file_fn_master;
+  callback_t file_fn_reply;
+  callback_t mediapatch;
+  callback_t mediacontrol;
   dmx_callback_t dmx_c;
   firmware_callback_t firmware_c;
   program_callback_t program_c;
@@ -282,8 +277,8 @@ typedef struct {
 
 // first a generic port
 typedef struct {
-  uint8_t addr;        // the port address
-  uint8_t default_addr;    // the address set by the hardware
+  uint16_t addr;        // the full 15-bit port address: (net << 8) | (subnet << 4) | port
+  uint8_t default_addr;    // the 4-bit port switch value set by the hardware (0-15)
   uint8_t net_ctl;      // if the port address is under network control
   uint8_t status;        // status of the port
   uint8_t enabled;      // true if the port has had it's address set, this is internal only,
@@ -331,10 +326,15 @@ typedef struct {
                       // picking up packets for the 0x00 port
   uint8_t  data[ARTNET_DMX_LENGTH]; // output data
   merge_t merge_mode; // for merging
+  uint8_t proto_sel;   // 0=Art-Net, 1=sACN
+  uint8_t output_style; // 0=delta, 1=constant
+  uint8_t rdm_enabled;  // 0=disabled, 1=enabled
   uint8_t dataA[ARTNET_DMX_LENGTH];
   uint8_t dataB[ARTNET_DMX_LENGTH];
   time_t timeA;
   time_t timeB;
+  time_t last_dmx_time;     // last time ArtDmx was received on this port
+  int failsafe_triggered;   // whether fail-safe has been triggered (avoid repeated action)
   SI ipA;
   SI ipB;
 } output_port_t;
@@ -346,6 +346,15 @@ typedef struct {
 #define port_status port.status
 #define port_enabled port.enabled
 #define port_tod port.tod
+
+// 15-bit universe address helpers
+static inline uint16_t make_addr(uint8_t net, uint8_t subnet, uint8_t addr) {
+  return (uint16_t)(((net & 0x7F) << 8) | ((subnet & 0x0F) << 4) | (addr & 0x0F));
+}
+
+static inline uint8_t addr_port(uint16_t addr) { return addr & 0x0F; }
+static inline uint8_t addr_subnet(uint16_t addr) { return (addr >> 4) & 0x0F; }
+static inline uint8_t addr_net(uint16_t addr) { return (addr >> 8) & 0x7F; }
 
 // End port structures
 //-----------------------------------------------------------------------------
@@ -417,6 +426,8 @@ typedef struct {
   SI ip_addr;
   SI bcast_addr;
   uint8_t hw_addr[ARTNET_MAC_SIZE];
+  uint8_t default_net;
+  uint8_t net_net_ctl;
   uint8_t default_subnet;
   uint8_t subnet_net_ctl;
   int send_apr_on_change;
@@ -425,6 +436,7 @@ typedef struct {
   char short_name[ARTNET_SHORT_NAME_LENGTH];
   char long_name[ARTNET_LONG_NAME_LENGTH];
   char report[ARTNET_REPORT_LENGTH];
+  uint8_t net;
   uint8_t subnet;
   uint8_t oem_hi;
   uint8_t oem_lo;
@@ -432,6 +444,15 @@ typedef struct {
   uint8_t esta_lo;
   int bcast_limit; // the number of nodes after which we change to bcast
   artnet_node_report_code report_code;
+  uint8_t led_state;     // LED indicator state (Status1 bits 7-6)
+  uint8_t failsafe_mode; // fail-safe mode (artnet_failsafe_mode_t value)
+  SI rdm_reply_addr;     // last RDM requester IP for unicast replies (Art-Net 4)
+  int diag_enabled;       // whether to send diagnostics (ArtPoll Flags bit 2)
+  int diag_unicast;       // unicast diagnostics to poller (ArtPoll Flags bit 3)
+  uint8_t diag_priority;  // minimum diagnostic priority to send (from ArtPoll)
+  int sync_mode;           // ArtSync: buffering mode active
+  time_t last_sync_time;   // ArtSync: last ArtSync received time
+  SI last_dmx_source;      // ArtSync: last ArtDmx source IP for sync validation
 } node_state_t;
 
 
@@ -486,9 +507,19 @@ int artnet_tx_tod_data(node n, int id);
 int artnet_tx_firmware_reply(node n, in_addr_t ip, artnet_firmware_status_code code);
 int artnet_tx_firmware_packet(node n, firmware_transfer_t *firm );
 int artnet_tx_tod_request(node n);
-int artnet_tx_tod_control(node n, uint8_t address, artnet_tod_command_code action);
-int artnet_tx_rdm(node n, uint8_t address, uint8_t *data, int length);
+int artnet_tx_tod_control(node n, uint16_t address, artnet_tod_command_code action);
+int artnet_tx_rdm(node n, uint16_t address, uint8_t *data, int length);
+int artnet_tx_rdmsub(node n,
+                     uint8_t uid[ARTNET_RDM_UID_WIDTH],
+                     uint8_t command_class, uint16_t param_id,
+                     uint16_t sub_device, uint16_t sub_count,
+                     uint8_t *data, int length);
+int artnet_tx_diagdata(node n, uint8_t priority, uint8_t logical_port, const char *text);
 int artnet_tx_build_art_poll_reply(node n);
+int artnet_tx_sync(node n);
+int artnet_tx_directory_reply(node n);
+int artnet_tx_file_fn_reply(node n, uint8_t blockId, uint16_t totalLength,
+                            uint8_t *data, int dataLen);
 
 
 // exported from network.c

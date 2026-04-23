@@ -667,12 +667,12 @@ int artnet_net_send(node n, artnet_packet p) {
                sizeof(addr));
   if (ret == -1) {
     artnet_error("Sendto failed: %s", artnet_net_last_error());
-    n->state.report_code = ARTNET_RCUDPFAIL;
+    n->state.report_code = ARTNET_RC_UDP_FAIL;
     return ARTNET_ENET;
 
   } else if (p->length != ret) {
     artnet_error("failed to send full datagram");
-    n->state.report_code = ARTNET_RCSOCKETWR1;
+    n->state.report_code = ARTNET_RC_SOCKET_WR1;
     return ARTNET_ENET;
   }
 
