@@ -121,7 +121,9 @@ int artnet_tx_tod_request(node n) {
   // include all enabled ports
   for (i=0; i < ARTNET_MAX_PORTS; i++) {
     if (n->ports.out[i].port_enabled) {
-      todreq.data.todreq.address[todreq.data.todreq.adCount++] = addr_port(n->ports.out[i].port_addr);
+      todreq.data.todreq.net = addr_net(n->ports.out[i].port_addr);
+      todreq.data.todreq.address[todreq.data.todreq.adCount++] =
+        (addr_subnet(n->ports.out[i].port_addr) << 4) | addr_port(n->ports.out[i].port_addr);
     }
   }
 

@@ -82,6 +82,9 @@ configure_file(
 # Add artnet subdirectory
 add_subdirectory(artnet)
 
+# Add examples
+add_subdirectory(examples)
+
 # Generate pkg-config file
 configure_file(
     ${CMAKE_CURRENT_SOURCE_DIR}/libartnet.pc.cmake

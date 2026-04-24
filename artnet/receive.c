@@ -583,7 +583,7 @@ int handle_tod_request(node n, artnet_packet p) {
   if (p->data.todreq.command == 0x00) {
     for (i=0; i < limit; i++) {
       for (j=0; j < ARTNET_MAX_PORTS; j++) {
-        if (n->ports.out[j].port_addr == make_addr(p->data.todreq.net, n->state.subnet, p->data.todreq.address[i]) &&
+        if (n->ports.out[j].port_addr == make_addr(p->data.todreq.net, (p->data.todreq.address[i] >> 4) & 0x0F, p->data.todreq.address[i] & 0x0F) &&
             n->ports.out[j].port_enabled) {
           // reply with tod
           ret = ret || artnet_tx_tod_data(n, j);
@@ -623,7 +623,7 @@ int handle_tod_control(node n, artnet_packet p) {
     return ARTNET_EOK;
 
   for (i=0; i < ARTNET_MAX_PORTS; i++) {
-    if (n->ports.out[i].port_addr == make_addr(p->data.todcontrol.net, n->state.subnet, p->data.todcontrol.address) &&
+    if (n->ports.out[i].port_addr == make_addr(p->data.todcontrol.net, (p->data.todcontrol.address >> 4) & 0x0F, p->data.todcontrol.address & 0x0F) &&
         n->ports.out[i].port_enabled) {
 
       switch (p->data.todcontrol.cmd) {

@@ -810,6 +810,7 @@ int artnet_send_address(artnet_node vn,
                         const char *longName,
                         uint8_t inAddr[ARTNET_MAX_PORTS],
                         uint8_t outAddr[ARTNET_MAX_PORTS],
+                        uint8_t netAddr,
                         uint8_t subAddr, artnet_port_command_t cmd) {
   node n = (node) vn;
   artnet_packet_t p;
@@ -834,7 +835,7 @@ int artnet_send_address(artnet_node vn,
     p.data.addr.opCode = htols(ARTNET_ADDRESS);
     p.data.addr.verH = 0;
     p.data.addr.ver = ARTNET_VERSION;
-    p.data.addr.netSwitch = n->state.net;
+    p.data.addr.netSwitch = netAddr;
     p.data.addr.bindIndex = 1;
 
     memset(p.data.addr.shortname, 0, ARTNET_SHORT_NAME_LENGTH);
@@ -1495,6 +1496,7 @@ int artnet_get_config(artnet_node vn, artnet_node_config_t *config) {
 
   strncpy(config->short_name, n->state.short_name, ARTNET_SHORT_NAME_LENGTH);
   strncpy(config->long_name, n->state.long_name, ARTNET_LONG_NAME_LENGTH);
+  config->net = n->state.net;
   config->subnet = n->state.subnet;
 
   for (i = 0; i < ARTNET_MAX_PORTS; i++) {
@@ -1719,7 +1721,7 @@ int find_nodes_from_uni(node_list_t *nl, uint16_t uni, SI *ips, int size) {
   for (tmp = nl->first; tmp; tmp = tmp->next) {
     int added = FALSE;
     for (i =0; i < tmp->pub.numbports; i++) {
-      uint16_t entry_uni = ((tmp->pub.sub & 0xFF) << 4) | (tmp->pub.swout[i] & 0x0F);
+      uint16_t entry_uni = make_addr(tmp->pub.net, tmp->pub.sub & 0x0F, tmp->pub.swout[i] & 0x0F);
       if (entry_uni == uni && ips) {
         if (j < size && !added) {
           ips[j++] = tmp->ip;
@@ -1741,7 +1743,8 @@ void copy_apr_to_node_entry(artnet_node_entry e, artnet_reply_t *reply) {
   // the ip is network byte ordered
   memcpy(&e->ip, &reply->ip, 4);
   e->ver = bytes_to_short(reply->verH, reply->ver);
-  e->sub = bytes_to_short(reply->netSwitch, reply->sub);
+  e->net = reply->netSwitch;
+  e->sub = reply->sub;
   e->oem = bytes_to_short(reply->oemH, reply->oem);
   e->ubea = reply->ubea;
   memcpy(&e->etsaman, &reply->etsaman, 2);
