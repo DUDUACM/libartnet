@@ -78,8 +78,8 @@ int find_nodes_from_uni(node n, node_list_t *nl, uint16_t uni, SI *ips, int size
  * @return an artnet_node, or NULL on failure
  */
 artnet_node artnet_new(const char *ip, int verbose) {
-  node n;
-  int i;
+  node n = NULL;
+  int i = 0;
 
   n = malloc(sizeof(artnet_node_t));
 
@@ -145,7 +145,7 @@ artnet_node artnet_new(const char *ip, int verbose) {
  */
 int artnet_start(artnet_node vn) {
   node n = (node) vn;
-  int ret;
+  int ret = 0;
   check_nullnode(vn);
 
   if (n->state.mode != ARTNET_STANDBY) {
@@ -210,8 +210,8 @@ int artnet_stop(artnet_node vn) {
  */
 int artnet_destroy(artnet_node vn) {
   node n = (node) vn;
-  node_entry_private_t *ent, *tmp;
-  int i;
+  node_entry_private_t *ent = NULL, *tmp = NULL;
+  int i = 0;
 
   check_nullnode(vn);
 
@@ -303,9 +303,9 @@ int artnet_set_bcast_limit(artnet_node vn, int limit) {
  */
 int artnet_read(artnet_node vn, int timeout) {
   node n = (node) vn;
-  node tmp;
-  artnet_packet_t p;
-  int ret;
+  node tmp = NULL;
+  artnet_packet_t p = {0};
+  int ret = 0;
 
   check_nullnode(vn);
 
@@ -371,7 +371,7 @@ int artnet_join(artnet_node vn1, artnet_node vn2) {
 
   node n1 = (node) vn1;
   node n2 = (node) vn2;
-  node tmp, n;
+  node tmp = NULL, n = NULL;
 
   if (n1->state.mode == ARTNET_ON || n2->state.mode == ARTNET_ON) {
     artnet_error("%s called after artnet_start", __FUNCTION__);
@@ -413,7 +413,7 @@ int artnet_set_handler(artnet_node vn,
                        int (*fh)(artnet_node n, void *pp, void * d),
                        void *data) {
   node n = (node) vn;
-  callback_t *callback;
+  callback_t *callback = NULL;
   check_nullnode(vn);
 
   switch(handler) {
@@ -685,8 +685,8 @@ int artnet_send_dmx(artnet_node vn,
                     int16_t length,
                     const uint8_t *data) {
   node n = (node) vn;
-  artnet_packet_t p;
-  input_port_t *port;
+  artnet_packet_t p = {0};
+  input_port_t *port = NULL;
 
   check_nullnode(vn);
 
@@ -734,7 +734,7 @@ int artnet_send_dmx(artnet_node vn,
 
   if (n->state.bcast_limit == 0) {
     // Art-Net 4: ArtDmx must always be unicast, broadcast is not permitted
-    int nodes, i;
+    int nodes = 0, i = 0;
     int limit = n->node_list.length ? n->node_list.length : 1;
     SI *ips = malloc(sizeof(SI) * limit);
 
@@ -753,7 +753,7 @@ int artnet_send_dmx(artnet_node vn,
     }
     free(ips);
   } else {
-    int nodes, i;
+    int nodes = 0, i = 0;
     SI *ips = malloc(sizeof(SI) * n->state.bcast_limit);
 
     if (!ips) {
@@ -787,7 +787,7 @@ int artnet_raw_send_dmx(artnet_node vn,
                         int16_t length,
                         const uint8_t *data) {
   node n = (node) vn;
-  artnet_packet_t p;
+  artnet_packet_t p = {0};
 
   check_nullnode(vn);
 
@@ -839,7 +839,7 @@ int artnet_send_address(artnet_node vn,
                         uint8_t netAddr,
                         uint8_t subAddr, artnet_port_command_t cmd) {
   node n = (node) vn;
-  artnet_packet_t p;
+  artnet_packet_t p = {0};
   node_entry_private_t *ent = find_private_entry(n,e);
 
   check_nullnode(vn);
@@ -901,7 +901,7 @@ int artnet_send_input(artnet_node vn,
                       artnet_node_entry e,
                       uint8_t settings[ARTNET_MAX_PORTS]) {
   node n = (node) vn;
-  artnet_packet_t p;
+  artnet_packet_t p = {0};
   node_entry_private_t *ent = find_private_entry(n,e);
 
   check_nullnode(vn);
@@ -964,7 +964,7 @@ int artnet_send_firmware(
     void *user_data) {
   node n = (node) vn;
   node_entry_private_t *ent = find_private_entry(n,e);
-  int blen;
+  int blen = 0;
 
   check_nullnode(vn);
   if (e == NULL || ent == NULL) {
@@ -1223,7 +1223,7 @@ int artnet_add_rdm_device(artnet_node vn,
  */
 int artnet_add_rdm_devices(artnet_node vn, int port, uint8_t *uid, int count) {
   node n = (node) vn;
-  int i;
+  int i = 0;
 
   check_nullnode(vn);
 
@@ -1401,7 +1401,7 @@ int artnet_set_net_addr(artnet_node vn, uint8_t net) {
 
 int artnet_set_subnet_addr(artnet_node vn, uint8_t subnet) {
   node n = (node) vn;
-  int i, ret;
+  int i = 0, ret = 0;
 
   check_nullnode(vn);
 
@@ -1520,10 +1520,10 @@ int artnet_set_port_addr(artnet_node vn,
                          artnet_port_dir_t dir,
                          uint8_t addr) {
   node n = (node) vn;
-  int ret;
+  int ret = 0;
   int changed = 0;
 
-  g_port_t *port;
+  g_port_t *port = NULL;
 
   check_nullnode(vn);
 
@@ -1606,7 +1606,7 @@ int artnet_get_universe_addr(artnet_node vn, int id, artnet_port_dir_t dir) {
 }
 
 int artnet_get_config(artnet_node vn, artnet_node_config_t *config) {
-  int i;
+  int i = 0;
   node n = (node) vn;
   check_nullnode(vn);
 
@@ -1781,8 +1781,8 @@ int artnet_nl_foreach(artnet_node vn,
                       int (*cb)(artnet_node_entry entry, void *data),
                       void *data) {
   node n = (node) vn;
-  node_list_t *nl;
-  node_entry_private_t *tmp;
+  node_list_t *nl = NULL;
+  node_entry_private_t *tmp = NULL;
 
   if (!vn) {
     return ARTNET_EARG;
@@ -1790,7 +1790,7 @@ int artnet_nl_foreach(artnet_node vn,
 
   nl = &n->node_list;
 
-  uint32_t seq;
+  uint32_t seq = 0;
   do {
     seq = NL_READ_BEGIN(n);
     if (seq & 1) continue;
@@ -1818,7 +1818,7 @@ char *artnet_strerror() {
 //-----------------------------------------------------------------------------
 
 int artnet_nl_update(node n, node_list_t *nl, artnet_packet reply) {
-  node_entry_private_t *entry;
+  node_entry_private_t *entry = NULL;
   uint8_t swOut0 = reply->data.ar.swOut[0];
 
   NL_WRITE_BEGIN(n);
@@ -1827,7 +1827,7 @@ int artnet_nl_update(node n, node_list_t *nl, artnet_packet reply) {
   entry = find_entry_from_ip(nl, reply->from);
   if (entry && entry->pub.swOut[0] != swOut0) {
     // same IP but different port set, look for matching port
-    node_entry_private_t *tmp;
+    node_entry_private_t *tmp = NULL;
     for (tmp = nl->first; tmp; tmp = tmp->next) {
       if (tmp->ip.s_addr == reply->from.s_addr && tmp->pub.swOut[0] == swOut0) {
         entry = tmp;
@@ -1875,7 +1875,7 @@ int artnet_nl_update(node n, node_list_t *nl, artnet_packet reply) {
  * check if this packet is in list
  */
 node_entry_private_t *find_entry_from_ip(node_list_t *nl, SI ip) {
-  node_entry_private_t *tmp;
+  node_entry_private_t *tmp = NULL;
 
   for (tmp = nl->first; tmp; tmp = tmp->next) {
     if (ip.s_addr == tmp->ip.s_addr) {
@@ -1895,10 +1895,10 @@ node_entry_private_t *find_entry_from_ip(node_list_t *nl, SI ip) {
  * @return number of nodes matched
  */
 int find_nodes_from_uni(node n, node_list_t *nl, uint16_t uni, SI *ips, int size) {
-  node_entry_private_t *tmp;
+  node_entry_private_t *tmp = NULL;
   int count = 0;
-  int i, j = 0;
-  uint32_t seq;
+  int i = 0, j = 0;
+  uint32_t seq = 0;
 
   do {
     seq = NL_READ_BEGIN(n);
@@ -1963,7 +1963,7 @@ void copy_apr_to_node_entry(artnet_node_entry e, artnet_reply_t *reply) {
  * find a node_entry in the node list
  */
 node_entry_private_t *find_private_entry(node n, artnet_node_entry e) {
-  node_entry_private_t *tmp;
+  node_entry_private_t *tmp = NULL;
   if (!e) {
     return NULL;
   }
@@ -1980,7 +1980,7 @@ node_entry_private_t *find_private_entry(node n, artnet_node_entry e) {
 
 void check_timeouts(node n) {
   clock_t now = clock();
-  int i;
+  int i = 0;
 
   // fail-safe: check for DMX data loss on enabled output ports
   for (i = 0; i < ARTNET_MAX_PORTS; i++) {

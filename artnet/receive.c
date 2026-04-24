@@ -120,9 +120,9 @@ void handle_reply(node n, artnet_packet p) {
  * handle a art dmx packet
  */
 void handle_dmx(node n, artnet_packet p) {
-  int i, data_length;
-  output_port_t *port;
-  in_addr_t ipA, ipB;
+  int i = 0, data_length = 0;
+  output_port_t *port = NULL;
+  in_addr_t ipA = 0, ipB = 0;
 
   // run callback if defined
   if (check_callback(n, p, n->callbacks.dmx)) {
@@ -289,9 +289,9 @@ void handle_dmx(node n, artnet_packet p) {
  *
  */
 int handle_address(node n, artnet_packet p) {
-  int i, old_subnet;
-  int addr[ARTNET_MAX_PORTS];
-  int ret;
+  int i = 0, old_subnet = 0;
+  int addr[ARTNET_MAX_PORTS] = {0};
+  int ret = 0;
 
   if (check_callback(n, p, n->callbacks.address)) {
     return ARTNET_EOK;
@@ -390,7 +390,7 @@ int handle_address(node n, artnet_packet p) {
   }
 
   // check command
-  int port_idx;
+  int port_idx = 0;
   uint8_t cmd = p->data.addr.command;
 
   switch (cmd) {
@@ -556,7 +556,7 @@ int handle_address(node n, artnet_packet p) {
  * ArtInput packets can disable input ports.
  */
 int _artnet_handle_input(node n, artnet_packet p) {
-  int i, ports, ret;
+  int i = 0, ports = 0, ret = 0;
 
   if (check_callback(n, p, n->callbacks.input)) {
     return ARTNET_EOK;
@@ -585,7 +585,7 @@ int _artnet_handle_input(node n, artnet_packet p) {
   return artnet_tx_poll_reply(n, TRUE);
 }
 int handle_tod_request(node n, artnet_packet p) {
-  int i, j, limit;
+  int i = 0, j = 0, limit = 0;
   int ret = ARTNET_EOK;
 
   if (check_callback(n, p, n->callbacks.todrequest)) {
@@ -638,7 +638,7 @@ void handle_tod_data(node n, artnet_packet p) {
 
 
 int handle_tod_control(node n, artnet_packet p) {
-  int i;
+  int i = 0;
   int ret = ARTNET_EOK;
 
   if (check_callback(n, p, n->callbacks.todcontrol)) {
@@ -713,7 +713,7 @@ void handle_sync(node n, artnet_packet p) {
  * Non-zero start code DMX data, similar to ArtDmx but with a start code field.
  */
 void handle_nzs(node n, artnet_packet p) {
-  int i;
+  int i = 0;
 
   if (check_callback(n, p, n->callbacks.nzs)) {
     return;
@@ -735,7 +735,7 @@ void handle_nzs(node n, artnet_packet p) {
  * Text-based command. Only processes if OEM matches or is 0xFFFF.
  */
 void handle_command(node n, artnet_packet p) {
-  uint16_t oem;
+  uint16_t oem = 0;
 
   if (check_callback(n, p, n->callbacks.command)) {
     return;
@@ -771,7 +771,7 @@ void handle_timesync(node n, artnet_packet p) {
  * Only processes if OEM matches or is 0xFFFF.
  */
 void handle_trigger(node n, artnet_packet p) {
-  uint16_t oem;
+  uint16_t oem = 0;
 
   if (check_callback(n, p, n->callbacks.trigger)) {
     return;
@@ -875,7 +875,7 @@ void handle_media_control(node n, artnet_packet p) {
 // THIS NEEDS TO BE CHECKED FOR BUFFER OVERFLOWS
 // IMPORTANT!!!!
 int handle_firmware(node n, artnet_packet p) {
-  int length, offset, block_length, total_blocks, block_id;
+  int length = 0, offset = 0, block_length = 0, total_blocks = 0, block_id = 0;
   artnet_firmware_status_code response_code = ARTNET_FIRMWARE_FAIL;
 
   // run callback if defined
@@ -1047,7 +1047,7 @@ int handle_firmware(node n, artnet_packet p) {
  * handle an firmware reply
  */
 int handle_firmware_reply(node n, artnet_packet p) {
-  node_entry_private_t *ent;
+  node_entry_private_t *ent = NULL;
 
   // run callback if defined
   if (check_callback(n, p, n->callbacks.firmware_reply)) {
@@ -1343,10 +1343,10 @@ int16_t get_type(artnet_packet p) {
  *
  */
 void check_merge_timeouts(node n, int port_id) {
-  output_port_t *port;
-  clock_t now;
-  clock_t timeoutA, timeoutB;
-  int was_merging;
+  output_port_t *port = NULL;
+  clock_t now = 0;
+  clock_t timeoutA = 0, timeoutB = 0;
+  int was_merging = 0;
   port = &n->ports.out[port_id];
   now = clock();
   timeoutA = (now - port->timeA) * 1000 / CLOCKS_PER_SEC;
@@ -1377,8 +1377,8 @@ void check_merge_timeouts(node n, int port_id) {
  * merge the data from two sources
  */
 void merge(node n, int port_id, int length, uint8_t *latest) {
-  int i;
-  output_port_t *port;
+  int i = 0;
+  output_port_t *port = NULL;
   port = &n->ports.out[port_id];
 
   if (port->merge_mode == ARTNET_MERGE_HTP) {

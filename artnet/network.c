@@ -286,14 +286,14 @@ static int get_ifaces(iface_t **if_head) {
  * @param ift_head the address of the pointer to the head of the list
  */
 static int get_ifaces(iface_t **if_head) {
-  struct ifconf ifc;
-  struct ifreq *ifr, ifrcopy;
-  struct sockaddr_in *sin;
-  int len, lastlen, flags;
-  char *buf, *ptr;
-  iface_t *if_tail, *iface;
+  struct ifconf ifc = {0};
+  struct ifreq *ifr = NULL, ifrcopy = {0};
+  struct sockaddr_in *sin = NULL;
+  int len = 0, lastlen = 0, flags = 0;
+  char *buf = NULL, *ptr = NULL;
+  iface_t *if_tail = NULL, *iface = NULL;
   int ret = ARTNET_EOK;
-  int sd;
+  int sd = 0;
 
   *if_head = if_tail = NULL;
 
@@ -439,10 +439,10 @@ e_return:
  */
 int artnet_net_init(node n, const char *preferred_ip) {
   iface_t *ift, *ift_head = NULL;
-  struct in_addr wanted_ip;
+  struct in_addr wanted_ip = {0};
 
   int found = FALSE;
-  int i;
+  int i = 0;
   int ret = ARTNET_EOK;
 
   if ((ret = get_ifaces(&ift_head))) {
@@ -511,10 +511,10 @@ e_return :
  * Start listening on the socket
  */
 int artnet_net_start(node n) {
-  artnet_socket_t sock;
-  struct sockaddr_in servAddr;
+  artnet_socket_t sock = 0;
+  struct sockaddr_in servAddr = {0};
   int true_flag = TRUE;
-  node tmp;
+  node tmp = NULL;
 
   // only attempt to bind if we are the group master
   if (n->peering.master == TRUE) {
@@ -699,8 +699,8 @@ int artnet_net_recv(node n, artnet_packet p, int delay) {
  * Send a packet.
  */
 int artnet_net_send(node n, artnet_packet p) {
-  struct sockaddr_in addr;
-  int ret;
+  struct sockaddr_in addr = {0};
+  int ret = 0;
 
   if (n->state.mode != ARTNET_ON) {
     return ARTNET_EACTION;

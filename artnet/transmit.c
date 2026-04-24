@@ -28,8 +28,8 @@
  *   ARTNET_TTM_PRIVATE or ARTNET_TTM_AUTO
  */
 int artnet_tx_poll(node n, const char *ip, artnet_ttm_value_t ttm) {
-  artnet_packet_t p;
-  int ret;
+  artnet_packet_t p = {0};
+  int ret = 0;
 
   if (n->state.mode != ARTNET_ON) {
     return ARTNET_EACTION;
@@ -71,8 +71,8 @@ int artnet_tx_poll(node n, const char *ip, artnet_ttm_value_t ttm) {
  *            false if this reply is due to the node changing it's conditions
  */
 int artnet_tx_poll_reply(node n, int response) {
-  artnet_packet_t reply;
-  int i;
+  artnet_packet_t reply = {0};
+  int i = 0;
 
   if (!response && n->state.mode == ARTNET_ON) {
     n->state.ar_count++;
@@ -138,7 +138,7 @@ int artnet_tx_tod_request(node n) {
     uint8_t net = addr_net(n->ports.out[i].port_addr);
     // check if we already have this net
     int found = 0;
-    int j;
+    int j = 0;
     for (j = 0; j < net_count; j++) {
       if (nets[j] == net) {
         found = 1;
@@ -152,8 +152,8 @@ int artnet_tx_tod_request(node n) {
 
   // send one ArtTodRequest per unique net
   for (i = 0; i < net_count; i++) {
-    artnet_packet_t todreq;
-    int p;
+    artnet_packet_t todreq = {0};
+    int p = 0;
 
     todreq.to = n->state.bcast_addr;
     todreq.type = ARTNET_TODREQUEST;
@@ -189,8 +189,8 @@ int artnet_tx_tod_request(node n) {
  * @param id the number of the port to send data for
  */
 int artnet_tx_tod_data(node n, int id) {
-  artnet_packet_t tod;
-  int lim, remaining, bloc, offset;
+  artnet_packet_t tod = {0};
+  int lim = 0, remaining = 0, bloc = 0, offset = 0;
   int ret = ARTNET_EOK;
 
   // ok we need to check how many uid's we have,
@@ -249,7 +249,7 @@ int artnet_tx_tod_data(node n, int id) {
 int artnet_tx_tod_control(node n,
                           uint16_t address,
                           artnet_tod_command_code action) {
-  artnet_packet_t tod;
+  artnet_packet_t tod = {0};
 
   tod.to = n->state.bcast_addr;
   tod.type = ARTNET_TODCONTROL;
@@ -277,8 +277,8 @@ int artnet_tx_tod_control(node n,
  *   ARTNET_TOD_FLUSH
  */
 int artnet_tx_rdm(node n, uint16_t address, uint8_t *data, int length) {
-  artnet_packet_t rdm;
-  int len;
+  artnet_packet_t rdm = {0};
+  int len = 0;
 
   // Art-Net 4: ArtRdm must always be unicast
   rdm.to = n->state.rdm_reply_addr;
@@ -315,8 +315,8 @@ int artnet_tx_rdmsub(node n,
                      uint8_t command_class, uint16_t param_id,
                      uint16_t sub_device, uint16_t sub_count,
                      uint8_t *data, int length) {
-  artnet_packet_t rdmsub;
-  int len;
+  artnet_packet_t rdmsub = {0};
+  int len = 0;
 
   rdmsub.to = n->state.rdm_reply_addr;
   rdmsub.type = ARTNET_RDMSUB;
@@ -351,8 +351,8 @@ int artnet_tx_rdmsub(node n,
  */
 int artnet_tx_diagdata(node n, uint8_t priority, uint8_t logical_port,
                         const char *text) {
-  artnet_packet_t diag;
-  int text_len;
+  artnet_packet_t diag = {0};
+  int text_len = 0;
 
   if (n->state.mode != ARTNET_ON) {
     return ARTNET_EACTION;
@@ -406,7 +406,7 @@ int artnet_tx_diagdata(node n, uint8_t priority, uint8_t logical_port,
  */
 int artnet_tx_firmware_reply(node n, in_addr_t ip,
                              artnet_firmware_status_code code) {
-  artnet_packet_t p;
+  artnet_packet_t p = {0};
   memset(&p, 0x0, sizeof(p));
 
   p.to.s_addr = ip;
@@ -430,9 +430,9 @@ int artnet_tx_firmware_reply(node n, in_addr_t ip,
  * @param firm a pointer to the firmware structure for this transfer
  */
 int artnet_tx_firmware_packet(node n, firmware_transfer_t *firm) {
-  artnet_packet_t p;
+  artnet_packet_t p = {0};
   uint8_t type = 0;
-  int data_len, max_len, ret;
+  int data_len = 0, max_len = 0, ret = 0;
 
   memset(&p, 0x0, sizeof(p));
 
@@ -516,7 +516,7 @@ int artnet_tx_firmware_packet(node n, firmware_transfer_t *firm) {
  * Send an ArtSync packet
  */
 int artnet_tx_sync(node n) {
-  artnet_packet_t p;
+  artnet_packet_t p = {0};
 
   if (n->state.mode != ARTNET_ON) {
     return ARTNET_EACTION;
@@ -541,8 +541,8 @@ int artnet_tx_sync(node n) {
  */
 int artnet_tx_nzs(node n, int port_id, uint8_t start_code,
                   int16_t length, const uint8_t *data) {
-  artnet_packet_t p;
-  input_port_t *port;
+  artnet_packet_t p = {0};
+  input_port_t *port = NULL;
 
   if (n->state.mode != ARTNET_ON) {
     return ARTNET_EACTION;
@@ -579,7 +579,7 @@ int artnet_tx_nzs(node n, int port_id, uint8_t start_code,
   // Art-Net 4: unicast to subscribers
   p.to.s_addr = n->state.bcast_addr.s_addr;
 
-  int nodes, i;
+  int nodes = 0, i = 0;
   int limit = n->state.bcast_limit > 0 ? n->state.bcast_limit : (n->node_list.length ? n->node_list.length : 1);
   SI *ips = malloc(sizeof(SI) * limit);
 
@@ -609,7 +609,7 @@ int artnet_tx_nzs(node n, int port_id, uint8_t start_code,
 int artnet_tx_timecode(node n, uint8_t frames, uint8_t seconds,
                        uint8_t minutes, uint8_t hours,
                        artnet_timecode_type_t type) {
-  artnet_packet_t p;
+  artnet_packet_t p = {0};
 
   if (n->state.mode != ARTNET_ON) {
     return ARTNET_EACTION;
@@ -640,7 +640,7 @@ int artnet_tx_timecode(node n, uint8_t frames, uint8_t seconds,
 int artnet_tx_timesync(node n, uint8_t tm_sec, uint8_t tm_min,
                        uint8_t tm_hour, uint8_t tm_mday,
                        uint8_t tm_mon, uint8_t tm_year) {
-  artnet_packet_t p;
+  artnet_packet_t p = {0};
 
   if (n->state.mode != ARTNET_ON) {
     return ARTNET_EACTION;
@@ -672,7 +672,7 @@ int artnet_tx_timesync(node n, uint8_t tm_sec, uint8_t tm_min,
 int artnet_tx_trigger(node n, uint8_t oem_hi, uint8_t oem_lo,
                       uint8_t key, uint8_t sub_key,
                       const uint8_t *data, int16_t length) {
-  artnet_packet_t p;
+  artnet_packet_t p = {0};
 
   if (n->state.mode != ARTNET_ON) {
     return ARTNET_EACTION;
@@ -708,7 +708,7 @@ int artnet_tx_trigger(node n, uint8_t oem_hi, uint8_t oem_lo,
  * Send an ArtDirectoryReply packet (empty directory)
  */
 int artnet_tx_directory_reply(node n) {
-  artnet_packet_t p;
+  artnet_packet_t p = {0};
 
   memset(&p, 0x00, sizeof(p));
   p.to = n->state.reply_addr;
@@ -728,7 +728,7 @@ int artnet_tx_directory_reply(node n) {
  * Send an ArtIpProgReply packet
  */
 int artnet_tx_ipprog_reply(node n) {
-  artnet_packet_t p;
+  artnet_packet_t p = {0};
 
   if (n->state.mode != ARTNET_ON) {
     return ARTNET_EACTION;
@@ -769,8 +769,8 @@ int artnet_tx_ipprog_reply(node n) {
  */
 int artnet_tx_file_fn_reply(node n, uint8_t blockId, uint16_t totalLength,
                             uint8_t *data, int dataLen) {
-  artnet_packet_t p;
-  int len;
+  artnet_packet_t p = {0};
+  int len = 0;
 
   memset(&p, 0x00, sizeof(p));
   p.to = n->state.reply_addr;
@@ -796,7 +796,7 @@ int artnet_tx_file_fn_reply(node n, uint8_t blockId, uint16_t totalLength,
 // this is called when the node's state changes to rebuild the
 // artpollreply packet
 int artnet_tx_build_art_poll_reply(node n) {
-  int i;
+  int i = 0;
 
   // shorten the amount we have to type
   artnet_reply_t *ar = &n->ar_temp;

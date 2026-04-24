@@ -27,8 +27,8 @@
  * adds a uid to the table of devices
  */
 int add_tod_uid(tod_t *tod, uint8_t uid[ARTNET_RDM_UID_WIDTH]) {
-  uint8_t *addr;
-  int size;
+  uint8_t *addr = NULL;
+  int size = 0;
 
   if (tod == NULL) {
     return -1;
@@ -74,9 +74,9 @@ int add_tod_uid(tod_t *tod, uint8_t uid[ARTNET_RDM_UID_WIDTH]) {
  *
  */
 int remove_tod_uid(tod_t *tod, uint8_t uid[ARTNET_RDM_UID_WIDTH]) {
-  int i;
+  int i = 0;
   int offset = 0;
-  uint8_t *last;
+  uint8_t *last = NULL;
 
   if (tod == NULL) {
     return -1;
