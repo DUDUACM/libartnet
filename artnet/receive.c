@@ -1353,12 +1353,12 @@ void check_merge_timeouts(node n, int port_id) {
   timeoutB = (now - port->timeB) * 1000 / CLOCKS_PER_SEC;
   was_merging = (port->port_status & PORT_STATUS_MERGE) && port->ipA.s_addr && port->ipB.s_addr;
 
-  if (timeoutA > MERGE_TIMEOUT_MS) {
+  if ((int)timeoutA > MERGE_TIMEOUT_MS) {
     // A is old, stop the merge
     port->ipA.s_addr = 0;
   }
 
-  if (timeoutB > MERGE_TIMEOUT_MS) {
+  if ((int)timeoutB > MERGE_TIMEOUT_MS) {
     // B is old, stop the merge
     port->ipB.s_addr = 0;
   }

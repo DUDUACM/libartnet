@@ -1991,7 +1991,7 @@ void check_timeouts(node n) {
     }
 
     if (!port->failsafe_triggered &&
-        ((now - port->last_dmx_time) * 1000 / CLOCKS_PER_SEC >= DMX_FAILSAFE_TIMEOUT_MS)) {
+        ((int)((now - port->last_dmx_time) * 1000 / CLOCKS_PER_SEC) >= DMX_FAILSAFE_TIMEOUT_MS)) {
 
       switch (n->state.failsafe_mode) {
         case ARTNET_FAILSAFE_ZERO:

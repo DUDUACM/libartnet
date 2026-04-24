@@ -20,6 +20,7 @@
 #include <string.h>
 #include <signal.h>
 #include <math.h>
+#include <time.h>
 #include <artnet/artnet.h>
 #include <artnet/common.h>
 
