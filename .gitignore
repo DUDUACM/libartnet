@@ -86,6 +86,7 @@ MinSizeRel/
 *~
 .*.sw?
 .vscode/
+.qtcreator/
 .idea/
 *.sublime-*
 .DS_Store
