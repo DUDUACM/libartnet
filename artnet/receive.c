@@ -29,8 +29,9 @@ void merge(node n, int port, int length, uint8_t *latest);
  * If the callbacks return a non-zero result, further processing is canceled.
  */
 int check_callback(node n, artnet_packet p, callback_t callback) {
-  if (callback.fh != NULL)
+  if (callback.fh != NULL) {
     return callback.fh(n, p, callback.data);
+  }
 
   return 0;
 }
@@ -41,8 +42,9 @@ int check_callback(node n, artnet_packet p, callback_t callback) {
  */
 int handle_poll(node n, artnet_packet p) {
   // run callback if defined
-  if (check_callback(n, p, n->callbacks.poll))
+  if (check_callback(n, p, n->callbacks.poll)) {
     return ARTNET_EOK;
+  }
 
   if (n->state.node_type != ARTNET_RAW) {
     // Art-Net 4: ArtPollReply must always be unicast to the poller
@@ -58,10 +60,10 @@ int handle_poll(node n, artnet_packet p) {
 
     // Art-Net 4: Target Mode filtering
     if (p->data.ap.flags & ARTNET_POLL_FLAG_TARGET_MODE) {
-      uint16_t top = htols((p->data.ap.targetPortAddressTopHi << 8) |
-                           p->data.ap.targetPortAddressTopLo);
-      uint16_t bottom = htols((p->data.ap.targetPortAddressBottomHi << 8) |
-                              p->data.ap.targetPortAddressBottomLo);
+      uint16_t top = (p->data.ap.targetPortAddressTopHi << 8) |
+                      p->data.ap.targetPortAddressTopLo;
+      uint16_t bottom = (p->data.ap.targetPortAddressBottomHi << 8) |
+                        p->data.ap.targetPortAddressBottomLo;
       int i, match = 0;
 
       if (bottom == 0 && top == 0) {
@@ -70,8 +72,9 @@ int handle_poll(node n, artnet_packet p) {
       } else {
         for (i = 0; i < ARTNET_MAX_PORTS; i++) {
           uint16_t addr = n->ports.out[i].port_addr;
-          if (!n->ports.out[i].port_enabled)
+          if (!n->ports.out[i].port_enabled) {
             addr = n->ports.in[i].port_addr;
+          }
           if (addr >= bottom && addr <= top) {
             match = 1;
             break;
@@ -79,8 +82,9 @@ int handle_poll(node n, artnet_packet p) {
         }
       }
 
-      if (!match)
+      if (!match) {
         return ARTNET_EOK;
+      }
     }
 
     // Art-Net 4: diagnostic configuration from ArtPoll Flags
@@ -103,11 +107,12 @@ int handle_poll(node n, artnet_packet p) {
  */
 void handle_reply(node n, artnet_packet p) {
   // update the node list
-  artnet_nl_update(&n->node_list, p);
+  artnet_nl_update(n, &n->node_list, p);
 
   // run callback if defined
-  if (check_callback(n, p, n->callbacks.reply))
+  if (check_callback(n, p, n->callbacks.reply)) {
     return;
+  }
 }
 
 
@@ -120,8 +125,9 @@ void handle_dmx(node n, artnet_packet p) {
   in_addr_t ipA, ipB;
 
   // run callback if defined
-  if (check_callback(n, p, n->callbacks.dmx))
+  if (check_callback(n, p, n->callbacks.dmx)) {
     return;
+  }
 
   data_length = (int) bytes_to_short(p->data.admx.lengthHi,
                                      p->data.admx.length);
@@ -174,7 +180,7 @@ void handle_dmx(node n, artnet_packet p) {
       if (ipA == 0 && ipB == 0) {
         // first packet recv on this port
         port->ipA.s_addr = p->from.s_addr;
-        port->timeA = time(NULL);
+        port->timeA = clock();
 
         memcpy(&port->dataA, &p->data.admx.data, data_length);
         port->length = data_length;
@@ -183,7 +189,7 @@ void handle_dmx(node n, artnet_packet p) {
       else if (ipA == p->from.s_addr && ipB == 0) {
         //continued transmission from the same ip (source A)
 
-        port->timeA = time(NULL);
+        port->timeA = clock();
         memcpy(&port->dataA, &p->data.admx.data, data_length);
         port->length = data_length;
         memcpy(&port->data, &p->data.admx.data, data_length);
@@ -191,7 +197,7 @@ void handle_dmx(node n, artnet_packet p) {
       else if (ipA == 0 && ipB == p->from.s_addr) {
         //continued transmission from the same ip (source B)
 
-        port->timeB = time(NULL);
+        port->timeB = clock();
         memcpy(&port->dataB, &p->data.admx.data, data_length);
         port->length = data_length;
         memcpy(&port->data, &p->data.admx.data, data_length);
@@ -199,31 +205,39 @@ void handle_dmx(node n, artnet_packet p) {
       else if (ipA != p->from.s_addr  && ipB == 0) {
         // new source, start the merge
         port->ipB.s_addr = p->from.s_addr;
-        port->timeB = time(NULL);
+        port->timeB = clock();
         memcpy(&port->dataB, &p->data.admx.data,data_length);
         port->length = data_length;
 
         // merge, newest data is port B
         merge(n,i,data_length, port->dataB);
 
-        // send reply if needed
+        // notify controller: merge started
+        port->port_status |= PORT_STATUS_MERGE;
+        if (n->state.send_apr_on_change) {
+          artnet_tx_poll_reply(n, TRUE);
+        }
 
       }
       else if (ipA == 0 && ipB == p->from.s_addr) {
         // new source, start the merge
         port->ipA.s_addr = p->from.s_addr;
-        port->timeB = time(NULL);
+        port->timeB = clock();
         memcpy(&port->dataB, &p->data.admx.data,data_length);
         port->length = data_length;
 
         // merge, newest data is portA
         merge(n,i,data_length, port->dataA);
 
-        // send reply if needed
+        // notify controller: merge started
+        port->port_status |= PORT_STATUS_MERGE;
+        if (n->state.send_apr_on_change) {
+          artnet_tx_poll_reply(n, TRUE);
+        }
       }
       else if (ipA == p->from.s_addr && ipB != p->from.s_addr) {
         // continue merge
-        port->timeA = time(NULL);
+        port->timeA = clock();
         memcpy(&port->dataA, &p->data.admx.data,data_length);
         port->length = data_length;
 
@@ -233,7 +247,7 @@ void handle_dmx(node n, artnet_packet p) {
       }
       else if (ipA != p->from.s_addr && ipB == p->from.s_addr) {
         // continue merge
-        port->timeB = time(NULL);
+        port->timeB = clock();
         memcpy(&port->dataB, &p->data.admx.data,data_length);
         port->length = data_length;
 
@@ -255,11 +269,12 @@ void handle_dmx(node n, artnet_packet p) {
       }
 
       // do the dmx callback here
-      if (n->callbacks.dmx_c.fh != NULL)
+      if (n->callbacks.dmx_c.fh != NULL) {
         n->callbacks.dmx_c.fh(n,i, n->callbacks.dmx_c.data);
+      }
 
       // Art-Net 4: record last DMX receive time for fail-safe
-      port->last_dmx_time = time(NULL);
+      port->last_dmx_time = clock();
       port->failsafe_triggered = FALSE;
     }
   }
@@ -278,23 +293,25 @@ int handle_address(node n, artnet_packet p) {
   int addr[ARTNET_MAX_PORTS];
   int ret;
 
-  if (check_callback(n, p, n->callbacks.address))
+  if (check_callback(n, p, n->callbacks.address)) {
     return ARTNET_EOK;
+  }
 
   // servers (and raw nodes) don't respond to address packets
-  if (n->state.node_type == ARTNET_SRV || n->state.node_type == ARTNET_RAW)
+  if (n->state.node_type == ARTNET_SRV || n->state.node_type == ARTNET_RAW) {
     return ARTNET_EOK;
+  }
 
-  // reprogram shortname if required
-  if (p->data.addr.shortname[0] != PROGRAM_DEFAULTS &&
-      p->data.addr.shortname[0] != PROGRAM_NO_CHANGE) {
-    memcpy(&n->state.short_name, &p->data.addr.shortname, ARTNET_SHORT_NAME_LENGTH);
+  // reprogram shortName if required
+  if (p->data.addr.shortName[0] != PROGRAM_DEFAULTS &&
+      p->data.addr.shortName[0] != PROGRAM_NO_CHANGE) {
+    memcpy(&n->state.shortName, &p->data.addr.shortName, ARTNET_SHORT_NAME_LENGTH);
     n->state.report_code = ARTNET_RC_SHNAME_OK;
   }
   // reprogram long name if required
-  if (p->data.addr.longname[0] != PROGRAM_DEFAULTS &&
-      p->data.addr.longname[0] != PROGRAM_NO_CHANGE) {
-    memcpy(&n->state.long_name, &p->data.addr.longname, ARTNET_LONG_NAME_LENGTH);
+  if (p->data.addr.longName[0] != PROGRAM_DEFAULTS &&
+      p->data.addr.longName[0] != PROGRAM_NO_CHANGE) {
+    memcpy(&n->state.longName, &p->data.addr.longName, ARTNET_LONG_NAME_LENGTH);
     n->state.report_code = ARTNET_RC_LONAME_OK;
   }
 
@@ -305,61 +322,61 @@ int handle_address(node n, artnet_packet p) {
   }
 
   // program subnet
-  old_subnet = p->data.addr.subnet;
-  if (p->data.addr.subnet == PROGRAM_DEFAULTS) {
+  old_subnet = (p->data.addr.subSwitch >> 4) & 0x0F;
+  if (p->data.addr.subSwitch == PROGRAM_DEFAULTS) {
     // reset to defaults
-    n->state.subnet = n->state.default_subnet;
-    n->state.subnet_net_ctl = FALSE;
+    n->state.subSwitch = n->state.default_subSwitch;
+    n->state.subSwitch_net_ctl = FALSE;
 
-  } else if (p->data.addr.subnet & PROGRAM_CHANGE_MASK) {
-    n->state.subnet = p->data.addr.subnet & ~PROGRAM_CHANGE_MASK;
-    n->state.subnet_net_ctl = TRUE;
+  } else if (p->data.addr.subSwitch & PROGRAM_CHANGE_MASK) {
+    n->state.subSwitch = ((p->data.addr.subSwitch & ~PROGRAM_CHANGE_MASK) >> 4) & 0x0F;
+    n->state.subSwitch_net_ctl = TRUE;
   }
 
   // program net (Art-Net 4)
   if (p->data.addr.netSwitch == PROGRAM_DEFAULTS) {
-    n->state.net = n->state.default_net;
-    n->state.net_net_ctl = FALSE;
+    n->state.netSwitch = n->state.default_netSwitch;
+    n->state.netSwitch_net_ctl = FALSE;
   } else if (p->data.addr.netSwitch & PROGRAM_CHANGE_MASK) {
-    n->state.net = p->data.addr.netSwitch & ~PROGRAM_CHANGE_MASK;
-    n->state.net_net_ctl = TRUE;
+    n->state.netSwitch = p->data.addr.netSwitch & ~PROGRAM_CHANGE_MASK;
+    n->state.netSwitch_net_ctl = TRUE;
   }
 
   // check if subnet has actually changed
-  if (old_subnet != n->state.subnet) {
+  if (old_subnet != n->state.subSwitch) {
     // if it does we need to change all port addresses
     for(i=0; i< ARTNET_MAX_PORTS; i++) {
-      n->ports.in[i].port_addr = make_addr(n->state.net, n->state.subnet, n->ports.in[i].port_addr);
-      n->ports.out[i].port_addr = make_addr(n->state.net, n->state.subnet, n->ports.out[i].port_addr);
+      n->ports.in[i].port_addr = make_addr(n->state.netSwitch, n->state.subSwitch, addr_port(n->ports.in[i].port_addr));
+      n->ports.out[i].port_addr = make_addr(n->state.netSwitch, n->state.subSwitch, addr_port(n->ports.out[i].port_addr));
     }
   }
 
-  // program swins
+  // program swIns
   for (i =0; i < ARTNET_MAX_PORTS; i++) {
-    if (p->data.addr.swin[i] == PROGRAM_NO_CHANGE)  {
+    if (p->data.addr.swIn[i] == PROGRAM_NO_CHANGE)  {
       continue;
-    } else if (p->data.addr.swin[i] == PROGRAM_DEFAULTS) {
+    } else if (p->data.addr.swIn[i] == PROGRAM_DEFAULTS) {
       // reset to defaults
-      n->ports.in[i].port_addr = make_addr(n->state.net, n->state.subnet, n->ports.in[i].port_default_addr);
+      n->ports.in[i].port_addr = make_addr(n->state.netSwitch, n->state.subSwitch, n->ports.in[i].port_default_addr);
       n->ports.in[i].port_net_ctl = FALSE;
 
-    } else if ( p->data.addr.swin[i] & PROGRAM_CHANGE_MASK) {
-      n->ports.in[i].port_addr = make_addr(n->state.net, n->state.subnet, p->data.addr.swin[i]);
+    } else if ( p->data.addr.swIn[i] & PROGRAM_CHANGE_MASK) {
+      n->ports.in[i].port_addr = make_addr(n->state.netSwitch, n->state.subSwitch, p->data.addr.swIn[i]);
       n->ports.in[i].port_net_ctl = TRUE;
     }
   }
 
-  // program swouts
+  // program swOuts
   for (i =0; i < ARTNET_MAX_PORTS; i++) {
-    if (p->data.addr.swout[i] == PROGRAM_NO_CHANGE) {
+    if (p->data.addr.swOut[i] == PROGRAM_NO_CHANGE) {
       continue;
-    } else if (p->data.addr.swout[i] == PROGRAM_DEFAULTS) {
+    } else if (p->data.addr.swOut[i] == PROGRAM_DEFAULTS) {
       // reset to defaults
-      n->ports.out[i].port_addr = make_addr(n->state.net, n->state.subnet, n->ports.out[i].port_default_addr);
+      n->ports.out[i].port_addr = make_addr(n->state.netSwitch, n->state.subSwitch, n->ports.out[i].port_default_addr);
       n->ports.out[i].port_net_ctl = FALSE;
       n->ports.out[i].port_enabled = TRUE;
-    } else if ( p->data.addr.swout[i] & PROGRAM_CHANGE_MASK) {
-      n->ports.out[i].port_addr = make_addr(n->state.net, n->state.subnet, p->data.addr.swout[i]);
+    } else if ( p->data.addr.swOut[i] & PROGRAM_CHANGE_MASK) {
+      n->ports.out[i].port_addr = make_addr(n->state.netSwitch, n->state.subSwitch, p->data.addr.swOut[i]);
       n->ports.out[i].port_net_ctl = TRUE;
       n->ports.out[i].port_enabled = TRUE;
     }
@@ -367,8 +384,9 @@ int handle_address(node n, artnet_packet p) {
 
   // reset sequence numbers if the addresses change
   for (i=0; i< ARTNET_MAX_PORTS; i++) {
-    if (addr[i] != n->ports.in[i].port_addr)
+    if (addr[i] != n->ports.in[i].port_addr) {
       n->ports.in[i].seq = 0;
+    }
   }
 
   // check command
@@ -521,11 +539,13 @@ int handle_address(node n, artnet_packet p) {
       break;
   }
 
-  if (n->callbacks.program_c.fh != NULL)
+  if (n->callbacks.program_c.fh != NULL) {
     n->callbacks.program_c.fh(n , n->callbacks.program_c.data);
+  }
 
-  if ((ret = artnet_tx_build_art_poll_reply(n)))
+  if ((ret = artnet_tx_build_art_poll_reply(n))) {
     return ret;
+  }
 
   return artnet_tx_poll_reply(n, TRUE);
 }
@@ -538,12 +558,14 @@ int handle_address(node n, artnet_packet p) {
 int _artnet_handle_input(node n, artnet_packet p) {
   int i, ports, ret;
 
-  if (check_callback(n, p, n->callbacks.input))
+  if (check_callback(n, p, n->callbacks.input)) {
     return ARTNET_EOK;
+  }
 
   // servers (and raw nodes) don't respond to input packets
-  if (n->state.node_type != ARTNET_NODE && n->state.node_type != ARTNET_MSRV)
+  if (n->state.node_type != ARTNET_NODE && n->state.node_type != ARTNET_MSRV) {
     return ARTNET_EOK;
+  }
 
   ports = min( p->data.ainput.numbports, ARTNET_MAX_PORTS);
   for (i =0; i < ports; i++) {
@@ -556,25 +578,23 @@ int _artnet_handle_input(node n, artnet_packet p) {
     }
   }
 
-  if ((ret = artnet_tx_build_art_poll_reply(n)))
+  if ((ret = artnet_tx_build_art_poll_reply(n))) {
     return ret;
+  }
 
   return artnet_tx_poll_reply(n, TRUE);
 }
-
-
-/***
- * handle tod request packet
- */
 int handle_tod_request(node n, artnet_packet p) {
   int i, j, limit;
   int ret = ARTNET_EOK;
 
-  if (check_callback(n, p, n->callbacks.todrequest))
+  if (check_callback(n, p, n->callbacks.todrequest)) {
     return ARTNET_EOK;
+  }
 
-  if (n->state.node_type != ARTNET_NODE && n->state.node_type != ARTNET_MSRV)
+  if (n->state.node_type != ARTNET_NODE && n->state.node_type != ARTNET_MSRV) {
     return ARTNET_EOK;
+  }
 
   // limit to 32
   limit = min(ARTNET_MAX_RDM_ADCOUNT, p->data.todreq.adCount);
@@ -604,12 +624,14 @@ int handle_tod_request(node n, artnet_packet p) {
  */
 void handle_tod_data(node n, artnet_packet p) {
 
-  if (check_callback(n, p, n->callbacks.toddata))
+  if (check_callback(n, p, n->callbacks.toddata)) {
     return;
+  }
 
-  if (n->callbacks.rdm_tod_c.fh != NULL)
-    n->callbacks.rdm_tod_c.fh(n, p->data.toddata.port, n->callbacks.rdm_tod_c.data);
-
+  if (n->callbacks.rdm_tod_c.fh != NULL) {
+    int addr = make_addr(p->data.toddata.net, (p->data.toddata.port >> 4) & 0x0F, p->data.toddata.port & 0x0F);
+    n->callbacks.rdm_tod_c.fh(n, addr, n->callbacks.rdm_tod_c.data);
+  }
   return;
 }
 
@@ -619,8 +641,9 @@ int handle_tod_control(node n, artnet_packet p) {
   int i;
   int ret = ARTNET_EOK;
 
-  if (check_callback(n, p, n->callbacks.todcontrol))
+  if (check_callback(n, p, n->callbacks.todcontrol)) {
     return ARTNET_EOK;
+  }
 
   for (i=0; i < ARTNET_MAX_PORTS; i++) {
     if (n->ports.out[i].port_addr == make_addr(p->data.todcontrol.net, (p->data.todcontrol.address >> 4) & 0x0F, p->data.todcontrol.address & 0x0F) &&
@@ -633,8 +656,9 @@ int handle_tod_control(node n, artnet_packet p) {
         case ARTNET_TOD_FLUSH:
           flush_tod(&n->ports.out[i].port_tod);
           // initiate full RDM discovery
-          if (n->callbacks.rdm_init_c.fh != NULL)
+          if (n->callbacks.rdm_init_c.fh != NULL) {
             n->callbacks.rdm_init_c.fh(n, i, n->callbacks.rdm_init_c.data);
+          }
           break;
       }
       // reply with current TOD for all commands
@@ -653,15 +677,19 @@ void handle_rdm(node n, artnet_packet p) {
   // Art-Net 4: store requester IP for unicast RDM replies
   n->state.rdm_reply_addr = p->from;
 
-  if (check_callback(n, p, n->callbacks.rdm))
+  if (check_callback(n, p, n->callbacks.rdm)) {
     return;
+  }
 
   int rdm_data_len = p->length - (sizeof(artnet_rdm_t) - ARTNET_MAX_RDM_DATA);
-  if (rdm_data_len < 0)
+  if (rdm_data_len < 0) {
     rdm_data_len = 0;
+  }
 
-  if (n->callbacks.rdm_c.fh != NULL)
-    n->callbacks.rdm_c.fh(n, p->data.rdm.address, p->data.rdm.data, rdm_data_len, n->callbacks.rdm_c.data);
+  if (n->callbacks.rdm_c.fh != NULL) {
+    int addr = make_addr(p->data.rdm.net, (p->data.rdm.address >> 4) & 0x0F, p->data.rdm.address & 0x0F);
+    n->callbacks.rdm_c.fh(n, addr, p->data.rdm.data, rdm_data_len, n->callbacks.rdm_c.data);
+  }
 
   return;
 }
@@ -672,8 +700,9 @@ void handle_rdm(node n, artnet_packet p) {
  * Enters sync mode; reverts to non-sync after 4s timeout (handled in check_timeouts).
  */
 void handle_sync(node n, artnet_packet p) {
-  if (check_callback(n, p, n->callbacks.sync))
+  if (check_callback(n, p, n->callbacks.sync)) {
     return;
+  }
 
   n->state.sync_mode = 1;
   n->state.last_sync_time = time(NULL);
@@ -686,14 +715,16 @@ void handle_sync(node n, artnet_packet p) {
 void handle_nzs(node n, artnet_packet p) {
   int i;
 
-  if (check_callback(n, p, n->callbacks.nzs))
+  if (check_callback(n, p, n->callbacks.nzs)) {
     return;
+  }
 
   for (i = 0; i < ARTNET_MAX_PORTS; i++) {
     if (n->ports.out[i].port_enabled &&
-        n->ports.out[i].port_addr == ntohs(p->data.admx.universe)) {
-      if (n->callbacks.dmx_c.fh != NULL)
+        p->data.admx.universe == htols(n->ports.out[i].port_addr)) {
+      if (n->callbacks.dmx_c.fh != NULL) {
         n->callbacks.dmx_c.fh(n, i, n->callbacks.dmx_c.data);
+      }
       return;
     }
   }
@@ -706,29 +737,33 @@ void handle_nzs(node n, artnet_packet p) {
 void handle_command(node n, artnet_packet p) {
   uint16_t oem;
 
-  if (check_callback(n, p, n->callbacks.command))
+  if (check_callback(n, p, n->callbacks.command)) {
     return;
+  }
 
   oem = (p->data.cmd.estaManHi << 8) | p->data.cmd.estaManLo;
   if (oem != 0xFFFF &&
-      oem != ((n->state.oem_hi << 8) | n->state.oem_lo))
+      oem != ((n->state.oem_hi << 8) | n->state.oem_lo)) {
     return;
+  }
 }
 
 /**
  * handle ArtTimeCode packet
  */
 void handle_timecode(node n, artnet_packet p) {
-  if (check_callback(n, p, n->callbacks.timecode))
+  if (check_callback(n, p, n->callbacks.timecode)) {
     return;
+  }
 }
 
 /**
  * handle ArtTimeSync packet
  */
 void handle_timesync(node n, artnet_packet p) {
-  if (check_callback(n, p, n->callbacks.timesync))
+  if (check_callback(n, p, n->callbacks.timesync)) {
     return;
+  }
 }
 
 /**
@@ -738,13 +773,15 @@ void handle_timesync(node n, artnet_packet p) {
 void handle_trigger(node n, artnet_packet p) {
   uint16_t oem;
 
-  if (check_callback(n, p, n->callbacks.trigger))
+  if (check_callback(n, p, n->callbacks.trigger)) {
     return;
+  }
 
   oem = (p->data.trigger.oemCodeHi << 8) | p->data.trigger.oemCodeLo;
   if (oem != 0xFFFF &&
-      oem != ((n->state.oem_hi << 8) | n->state.oem_lo))
+      oem != ((n->state.oem_hi << 8) | n->state.oem_lo)) {
     return;
+  }
 }
 
 /**
@@ -752,8 +789,9 @@ void handle_trigger(node n, artnet_packet p) {
  * Reply with ArtDirectoryReply containing node's file list.
  */
 void handle_directory(node n, artnet_packet p) {
-  if (check_callback(n, p, n->callbacks.directory))
+  if (check_callback(n, p, n->callbacks.directory)) {
     return;
+  }
 
   artnet_tx_directory_reply(n);
 }
@@ -762,8 +800,9 @@ void handle_directory(node n, artnet_packet p) {
  * handle ArtDirectoryReply packet
  */
 void handle_directory_reply(node n, artnet_packet p) {
-  if (check_callback(n, p, n->callbacks.directory_reply))
+  if (check_callback(n, p, n->callbacks.directory_reply)) {
     return;
+  }
 }
 
 /**
@@ -773,15 +812,17 @@ void handle_directory_reply(node n, artnet_packet p) {
 int handle_file_tn_master(node n, artnet_packet p) {
   artnet_firmware_status_code code = ARTNET_FIRMWARE_FAIL;
 
-  if (check_callback(n, p, n->callbacks.file_tn_master))
+  if (check_callback(n, p, n->callbacks.file_tn_master)) {
     return ARTNET_EOK;
+  }
 
   if (n->callbacks.firmware_c.fh != NULL) {
     uint16_t data[ARTNET_FIRMWARE_SIZE];
     int length = (int)sizeof(data);
     memcpy(data, p->data.filetn.data, length);
-    if (n->callbacks.firmware_c.fh(n, 0, data, length, n->callbacks.firmware_c.data))
+    if (n->callbacks.firmware_c.fh(n, 0, data, length, n->callbacks.firmware_c.data)) {
       code = ARTNET_FIRMWARE_ALLGOOD;
+    }
   } else {
     code = ARTNET_FIRMWARE_ALLGOOD;
   }
@@ -794,8 +835,9 @@ int handle_file_tn_master(node n, artnet_packet p) {
  * File download request. Notify application to send ArtFileFnReply.
  */
 void handle_file_fn_master(node n, artnet_packet p) {
-  if (check_callback(n, p, n->callbacks.file_fn_master))
+  if (check_callback(n, p, n->callbacks.file_fn_master)) {
     return;
+  }
 }
 
 /**
@@ -803,24 +845,27 @@ void handle_file_fn_master(node n, artnet_packet p) {
  * File data received from node.
  */
 void handle_file_fn_reply(node n, artnet_packet p) {
-  if (check_callback(n, p, n->callbacks.file_fn_reply))
+  if (check_callback(n, p, n->callbacks.file_fn_reply)) {
     return;
+  }
 }
 
 /**
  * handle ArtMediaPatch packet
  */
 void handle_media_patch(node n, artnet_packet p) {
-  if (check_callback(n, p, n->callbacks.mediapatch))
+  if (check_callback(n, p, n->callbacks.mediapatch)) {
     return;
+  }
 }
 
 /**
  * handle ArtMediaControl packet
  */
 void handle_media_control(node n, artnet_packet p) {
-  if (check_callback(n, p, n->callbacks.mediacontrol))
+  if (check_callback(n, p, n->callbacks.mediacontrol)) {
     return;
+  }
 }
 
 /**
@@ -834,8 +879,9 @@ int handle_firmware(node n, artnet_packet p) {
   artnet_firmware_status_code response_code = ARTNET_FIRMWARE_FAIL;
 
   // run callback if defined
-  if (check_callback(n, p, n->callbacks.firmware))
+  if (check_callback(n, p, n->callbacks.firmware)) {
     return ARTNET_EOK;
+  }
 
   /*
    * What happens if an upload is less than 512 bytes ?????
@@ -864,10 +910,11 @@ int handle_firmware(node n, artnet_packet p) {
       n->firmware.expected_block = 1;
 
       // check if this is a ubea upload or not
-      if (p->data.firmware.type == ARTNET_FIRMWARE_FIRMFIRST)
+      if (p->data.firmware.type == ARTNET_FIRMWARE_FIRMFIRST) {
         n->firmware.ubea = 0;
-      else
+      } else {
         n->firmware.ubea = 1;
+      }
 
       // take the minimum of the total length and the max packet size
       block_length = min((unsigned int) length, ARTNET_FIRMWARE_SIZE *
@@ -883,12 +930,13 @@ int handle_firmware(node n, artnet_packet p) {
         response_code = ARTNET_FIRMWARE_ALLGOOD;
 
         // do the callback here
-        if (n->callbacks.firmware_c.fh != NULL)
+        if (n->callbacks.firmware_c.fh != NULL) {
           n->callbacks.firmware_c.fh(n,
                                      n->firmware.ubea,
                                      n->firmware.data,
                                      n->firmware.bytes_total,
                                      n->callbacks.firmware_c.data);
+        }
 
       } else {
         response_code = ARTNET_FIRMWARE_BLOCKGOOD;
@@ -964,11 +1012,12 @@ int handle_firmware(node n, artnet_packet p) {
       n->firmware.bytes_current += block_length;
 
       // do the callback here
-      if (n->callbacks.firmware_c.fh != NULL)
+      if (n->callbacks.firmware_c.fh != NULL) {
         n->callbacks.firmware_c.fh(n, n->firmware.ubea,
           n->firmware.data,
           n->firmware.bytes_total / sizeof(p->data.firmware.data[0]),
           n->callbacks.firmware_c.data);
+      }
 
       // reset values and free
       reset_firmware_upload(n);
@@ -1001,14 +1050,16 @@ int handle_firmware_reply(node n, artnet_packet p) {
   node_entry_private_t *ent;
 
   // run callback if defined
-  if (check_callback(n, p, n->callbacks.firmware_reply))
+  if (check_callback(n, p, n->callbacks.firmware_reply)) {
     return ARTNET_EOK;
+  }
 
   ent = find_entry_from_ip(&n->node_list, p->from);
 
   // node doesn't exist in our list, or we're not doing a transfer to this node
-  if (ent== NULL || ent->firmware.bytes_total == 0)
+  if (ent== NULL || ent->firmware.bytes_total == 0) {
     return ARTNET_EOK;
+  }
 
   // three types of response, ALLGOOD,  BLOCKGOOD and FIRMFAIL
   if (p->data.firmwarer.type == ARTNET_FIRMWARE_ALLGOOD) {
@@ -1017,8 +1068,9 @@ int handle_firmware_reply(node n, artnet_packet p) {
       // transfer complete
 
       // do the callback
-      if (ent->firmware.callback != NULL)
+      if (ent->firmware.callback != NULL) {
         ent->firmware.callback(n, ARTNET_FIRMWARE_ALLGOOD, ent->firmware.user_data);
+      }
 
       memset(&ent->firmware, 0x0, sizeof(firmware_transfer_t));
 
@@ -1030,8 +1082,9 @@ int handle_firmware_reply(node n, artnet_packet p) {
   } else if (p->data.firmwarer.type == ARTNET_FIRMWARE_FAIL) {
 
     // do the callback
-    if (ent->firmware.callback != NULL)
+    if (ent->firmware.callback != NULL) {
         ent->firmware.callback(n, ARTNET_FIRMWARE_FAIL, ent->firmware.user_data);
+    }
 
     // cancel transfer
     memset(&ent->firmware, 0x0, sizeof(firmware_transfer_t));
@@ -1050,11 +1103,87 @@ int handle_firmware_reply(node n, artnet_packet p) {
  * have to sort this one out.
  */
 void handle_ipprog(node n, artnet_packet p) {
+  uint8_t cmd = p->data.aip.Command;
 
-  if (check_callback(n, p, n->callbacks.ipprog))
+  if (check_callback(n, p, n->callbacks.ipprog)) {
     return;
+  }
 
-  printf("in ipprog\n");
+  // Command field bits:
+  //   bit 7: Enable DHCP
+  //   bit 6: Set program (1) / clear program (0)
+  //   bit 5: Set IP address
+  //   bit 4: Set subnet mask
+  //   bit 3: Set gateway
+
+  if (cmd & 0x20) {
+    // Set IP address
+    struct in_addr new_ip;
+    new_ip.s_addr = (p->data.aip.ProgIpHi << 24) | (p->data.aip.ProgIp2 << 16) |
+                    (p->data.aip.ProgIp1 << 8) | p->data.aip.ProgIpLo;
+    if (cmd & 0x40) {
+      n->state.ip_addr = new_ip;
+      n->state.reply_addr = new_ip;
+      n->state.report_code = ARTNET_RC_IP_PROG_OK;
+      snprintf(n->state.report, ARTNET_REPORT_LENGTH,
+               "IP Programmed [%d.%d.%d.%d]",
+               p->data.aip.ProgIpHi, p->data.aip.ProgIp2,
+               p->data.aip.ProgIp1, p->data.aip.ProgIpLo);
+    } else {
+      n->state.report_code = ARTNET_RC_IP_PROG_OK;
+      snprintf(n->state.report, ARTNET_REPORT_LENGTH,
+               "IP Cleared [%d.%d.%d.%d]",
+               p->data.aip.ProgIpHi, p->data.aip.ProgIp2,
+               p->data.aip.ProgIp1, p->data.aip.ProgIpLo);
+    }
+  } else if (cmd & 0x10) {
+    // Set subnet mask
+    if (cmd & 0x40) {
+      n->state.report_code = ARTNET_RC_IP_PROG_OK;
+      snprintf(n->state.report, ARTNET_REPORT_LENGTH,
+               "Subnet Programmed [%d.%d.%d.%d]",
+               p->data.aip.ProgSmHi, p->data.aip.ProgSm2,
+               p->data.aip.ProgSm1, p->data.aip.ProgSmLo);
+    } else {
+      n->state.report_code = ARTNET_RC_IP_PROG_OK;
+      snprintf(n->state.report, ARTNET_REPORT_LENGTH,
+               "Subnet Cleared [%d.%d.%d.%d]",
+               p->data.aip.ProgSmHi, p->data.aip.ProgSm2,
+               p->data.aip.ProgSm1, p->data.aip.ProgSmLo);
+    }
+  } else if (cmd & 0x08) {
+    // Set gateway port
+    if (cmd & 0x40) {
+      n->state.report_code = ARTNET_RC_IP_PROG_OK;
+      snprintf(n->state.report, ARTNET_REPORT_LENGTH,
+               "Gateway Port Programmed [%d.%d.%d.%d]",
+               p->data.aip.ProgDgHi, p->data.aip.ProgDg2,
+               p->data.aip.ProgDg1, p->data.aip.ProgDgLo);
+    } else {
+      n->state.report_code = ARTNET_RC_IP_PROG_OK;
+      snprintf(n->state.report, ARTNET_REPORT_LENGTH,
+               "Gateway Port Cleared [%d.%d.%d.%d]",
+               p->data.aip.ProgDgHi, p->data.aip.ProgDg2,
+               p->data.aip.ProgDg1, p->data.aip.ProgDgLo);
+    }
+  } else if (cmd & 0x80) {
+    // DHCP enable - report only, actual DHCP requires OS-level support
+    n->state.report_code = ARTNET_RC_IP_PROG_OK;
+    snprintf(n->state.report, ARTNET_REPORT_LENGTH,
+             "DHCP Enable requested (not supported in software)");
+  }
+
+  // Fire program callback to notify application
+  if (n->callbacks.program_c.fh != NULL) {
+    n->callbacks.program_c.fh(n, n->callbacks.program_c.data);
+  }
+
+  // Rebuild and send ArtPollReply with updated report
+  artnet_tx_build_art_poll_reply(n);
+  artnet_tx_poll_reply(n, TRUE);
+
+  // Send ArtIpProgReply
+  artnet_tx_ipprog_reply(n);
 }
 
 
@@ -1064,8 +1193,9 @@ void handle_ipprog(node n, artnet_packet p) {
  */
 int handle(node n, artnet_packet p) {
 
-  if (check_callback(n, p, n->callbacks.recv))
+  if (check_callback(n, p, n->callbacks.recv)) {
     return 0;
+  }
 
   switch (p->type) {
     case ARTNET_POLL:
@@ -1099,12 +1229,12 @@ int handle(node n, artnet_packet p) {
       // ArtRdmSub: compressed RDM sub-device data
       // store requester IP for unicast replies
       n->state.rdm_reply_addr = p->from;
-      if (check_callback(n, p, n->callbacks.rdm))
+      if (check_callback(n, p, n->callbacks.rdm)) {
         break;
+      }
       break;
     case ARTNET_DIAGDATA:
-      if (check_callback(n, p, n->callbacks.poll))
-        break;
+      // generic recv callback already checked above, no specific handler needed
       break;
     case ARTNET_SYNC:
       handle_sync(n, p);
@@ -1140,8 +1270,9 @@ int handle(node n, artnet_packet p) {
       handle_file_fn_reply(n, p);
       break;
     case ARTNET_MEDIA:
-      if (check_callback(n, p, n->callbacks.mediapatch))
+      if (check_callback(n, p, n->callbacks.mediapatch)) {
         break;
+      }
       break;
     case ARTNET_MEDIAPATCH:
       handle_media_patch(n, p);
@@ -1150,8 +1281,9 @@ int handle(node n, artnet_packet p) {
       handle_media_control(n, p);
       break;
     case ARTNET_MEDIACONTROLREPLY:
-      if (check_callback(n, p, n->callbacks.mediacontrol))
+      if (check_callback(n, p, n->callbacks.mediacontrol)) {
         break;
+      }
       break;
     case ARTNET_VIDEOSTEUP:
       printf("vid setup\n");
@@ -1178,7 +1310,7 @@ int handle(node n, artnet_packet p) {
       handle_ipprog(n, p);
       break;
     case ARTNET_IPREPLY:
-      printf("ip reply\n");
+      // generic recv callback already checked above
       break;
     default:
       n->state.report_code = ARTNET_RC_PARSE_FAIL;
@@ -1193,8 +1325,9 @@ int handle(node n, artnet_packet p) {
 int16_t get_type(artnet_packet p) {
   uint8_t *data;
 
-  if (p->length < 10)
+  if (p->length < 10) {
     return 0;
+  }
   if (!memcmp(&p->data, "Art-Net\0", 8)) {
     // not the best here, this needs to be tested on different arch
     data = (uint8_t *) &p->data;
@@ -1211,21 +1344,31 @@ int16_t get_type(artnet_packet p) {
  */
 void check_merge_timeouts(node n, int port_id) {
   output_port_t *port;
-  time_t now;
-  time_t timeoutA, timeoutB;
+  clock_t now;
+  clock_t timeoutA, timeoutB;
+  int was_merging;
   port = &n->ports.out[port_id];
-  time(&now);
-  timeoutA = now - port->timeA;
-  timeoutB = now - port->timeB;
+  now = clock();
+  timeoutA = (now - port->timeA) * 1000 / CLOCKS_PER_SEC;
+  timeoutB = (now - port->timeB) * 1000 / CLOCKS_PER_SEC;
+  was_merging = (port->port_status & PORT_STATUS_MERGE) && port->ipA.s_addr && port->ipB.s_addr;
 
-  if (timeoutA > MERGE_TIMEOUT_SECONDS) {
+  if (timeoutA > MERGE_TIMEOUT_MS) {
     // A is old, stop the merge
     port->ipA.s_addr = 0;
   }
 
-  if (timeoutB > MERGE_TIMEOUT_SECONDS) {
+  if (timeoutB > MERGE_TIMEOUT_MS) {
     // B is old, stop the merge
     port->ipB.s_addr = 0;
+  }
+
+  // merge ended: only one or zero sources remain
+  if (was_merging && !(port->ipA.s_addr && port->ipB.s_addr)) {
+    port->port_status &= ~PORT_STATUS_MERGE;
+    if (n->state.send_apr_on_change) {
+      artnet_tx_poll_reply(n, TRUE);
+    }
   }
 }
 
@@ -1239,8 +1382,9 @@ void merge(node n, int port_id, int length, uint8_t *latest) {
   port = &n->ports.out[port_id];
 
   if (port->merge_mode == ARTNET_MERGE_HTP) {
-    for (i=0; i< length; i++)
+    for (i=0; i< length; i++) {
       port->data[i] = max(port->dataA[i], port->dataB[i]);
+    }
   } else {
     memcpy(port->data, latest, length);
   }

@@ -62,7 +62,7 @@ extern uint8_t PORT_STATUS_LPT_MODE;
 extern uint8_t PORT_STATUS_SHORT;
 extern uint8_t PORT_STATUS_ERROR;
 extern uint8_t PORT_STATUS_DISABLED_MASK;
-extern uint8_t ORT_STATUS_MERGE;
+extern uint8_t PORT_STATUS_MERGE;
 extern uint8_t PORT_STATUS_DMX_TEXT;
 extern uint8_t PORT_STATUS_DMX_SIP;
 extern uint8_t PORT_STATUS_DMX_TEST;
@@ -71,7 +71,8 @@ extern uint8_t PORT_DISABLE_MASK;
 extern uint8_t TOD_RESPONSE_FULL;
 extern uint8_t TOD_RESPONSE_NAK;
 extern uint8_t MIN_PACKET_SIZE;
-extern uint8_t MERGE_TIMEOUT_SECONDS;
+extern int MERGE_TIMEOUT_MS;
+extern int NODELIST_TIMEOUT_SECONDS;
 extern uint8_t FIRMWARE_TIMEOUT_SECONDS;
 extern uint8_t RECV_NO_DATA;
 
@@ -127,7 +128,13 @@ extern uint16_t HIGH_BYTE;
 #define short_get_high_byte(x) ((HIGH_BYTE & x) >> 8)
 #define short_get_low_byte(x)  (LOW_BYTE & x)
 
-#define bytes_to_short(h,l) ( ((h << 8) & 0xff00) | (l & 0x00FF) );
+// seqlock for node list thread safety
+#define NL_WRITE_BEGIN(n) ((n)->state.nl_seq++)
+#define NL_WRITE_END(n)   ((n)->state.nl_seq++)
+#define NL_READ_BEGIN(n)  ((n)->state.nl_seq)
+#define NL_READ_RETRY(n, seq1) ((seq1) != (n)->state.nl_seq || ((seq1) & 1))
+
+#define bytes_to_short(h,l) ( ((h << 8) & 0xff00) | (l & 0x00FF) )
 
 /*
  * These are enums for fields in packets
@@ -147,7 +154,7 @@ extern uint16_t HIGH_BYTE;
 // note it's different from artnet_node_type
 typedef enum {
   STNODE = 0x00,
-  STSERVER = 0x01,
+  STCONTROLLER = 0x01,
   STMEDIA = 0x02,
   STROUTE = 0x03,
   STBACKUP = 0x04,
@@ -202,6 +209,15 @@ typedef struct {
   int (*fh)(artnet_node n, int portid, void *data);
   void *data;
 } dmx_callback_t;
+
+/*
+ * address callback is triggered for RDM/TOD events where the
+ * parameter carries a full 15-bit universe address
+ */
+typedef struct {
+  int (*fh)(artnet_node n, int address, void *data);
+  void *data;
+} address_callback_t;
 
 /*
  * firmware callback is triggered when a firmware recieve has been completed sucessfully
@@ -262,7 +278,7 @@ typedef struct {
   program_callback_t program_c;
   rdm_callback_t  rdm_c;
   dmx_callback_t rdm_init_c;
-  dmx_callback_t rdm_tod_c;
+  address_callback_t rdm_tod_c;
 } node_callbacks_t;
 
 
@@ -331,9 +347,9 @@ typedef struct {
   uint8_t rdm_enabled;  // 0=disabled, 1=enabled
   uint8_t dataA[ARTNET_DMX_LENGTH];
   uint8_t dataB[ARTNET_DMX_LENGTH];
-  time_t timeA;
-  time_t timeB;
-  time_t last_dmx_time;     // last time ArtDmx was received on this port
+  clock_t timeA;
+  clock_t timeB;
+  clock_t last_dmx_time;   // last time ArtDmx was received on this port (ms via clock())
   int failsafe_triggered;   // whether fail-safe has been triggered (avoid repeated action)
   SI ipA;
   SI ipB;
@@ -392,6 +408,7 @@ typedef struct node_entry_private_s {
   SI ip;  // don't rely on the ip address that the node
           // sends, they could be faking it. This is the ip that
           // the pollreply was sent from
+  time_t last_seen;  // last time an ArtPollReply was received from this node
 } node_entry_private_t;
 
 /**
@@ -426,18 +443,18 @@ typedef struct {
   SI ip_addr;
   SI bcast_addr;
   uint8_t hw_addr[ARTNET_MAC_SIZE];
-  uint8_t default_net;
-  uint8_t net_net_ctl;
-  uint8_t default_subnet;
-  uint8_t subnet_net_ctl;
+  uint8_t default_netSwitch;
+  uint8_t netSwitch_net_ctl;
+  uint8_t default_subSwitch;
+  uint8_t subSwitch_net_ctl;
   int send_apr_on_change;
   int ar_count;
   int verbose;
-  char short_name[ARTNET_SHORT_NAME_LENGTH];
-  char long_name[ARTNET_LONG_NAME_LENGTH];
+  char shortName[ARTNET_SHORT_NAME_LENGTH];
+  char longName[ARTNET_LONG_NAME_LENGTH];
   char report[ARTNET_REPORT_LENGTH];
-  uint8_t net;
-  uint8_t subnet;
+  uint8_t netSwitch;
+  uint8_t subSwitch;
   uint8_t oem_hi;
   uint8_t oem_lo;
   uint8_t esta_hi;
@@ -445,6 +462,8 @@ typedef struct {
   int bcast_limit; // the number of nodes after which we change to bcast
   artnet_node_report_code report_code;
   uint8_t led_state;     // LED indicator state (Status1 bits 7-6)
+  uint8_t style_code;    // product style code (Status1 bits 3-0)
+  uint8_t status2;       // Status2 register flags
   uint8_t failsafe_mode; // fail-safe mode (artnet_failsafe_mode_t value)
   SI rdm_reply_addr;     // last RDM requester IP for unicast replies (Art-Net 4)
   int diag_enabled;       // whether to send diagnostics (ArtPoll Flags bit 2)
@@ -453,6 +472,7 @@ typedef struct {
   int sync_mode;           // ArtSync: buffering mode active
   time_t last_sync_time;   // ArtSync: last ArtSync received time
   SI last_dmx_source;      // ArtSync: last ArtDmx source IP for sync validation
+  volatile uint32_t nl_seq; // seqlock version for node list thread safety
 } node_state_t;
 
 
@@ -491,7 +511,9 @@ typedef artnet_node_t *node;
 node_entry_private_t *find_private_entry( node n, artnet_node_entry e);
 void check_timeouts(node n);
 node_entry_private_t *find_entry_from_ip(node_list_t *nl, SI ip);
-int artnet_nl_update(node_list_t *nl, artnet_packet reply);
+int artnet_nl_update(node n, node_list_t *nl, artnet_packet reply);
+int find_nodes_from_uni(node n, node_list_t *nl, uint16_t uni, SI *ips, int size);
+
 
 
 // exported from receive.c
@@ -516,6 +538,18 @@ int artnet_tx_rdmsub(node n,
                      uint8_t *data, int length);
 int artnet_tx_diagdata(node n, uint8_t priority, uint8_t logical_port, const char *text);
 int artnet_tx_build_art_poll_reply(node n);
+int artnet_tx_nzs(node n, int port_id, uint8_t start_code,
+                  int16_t length, const uint8_t *data);
+int artnet_tx_timecode(node n, uint8_t frames, uint8_t seconds,
+                       uint8_t minutes, uint8_t hours,
+                       artnet_timecode_type_t type);
+int artnet_tx_timesync(node n, uint8_t tm_sec, uint8_t tm_min,
+                       uint8_t tm_hour, uint8_t tm_mday,
+                       uint8_t tm_mon, uint8_t tm_year);
+int artnet_tx_trigger(node n, uint8_t oem_hi, uint8_t oem_lo,
+                      uint8_t key, uint8_t sub_key,
+                      const uint8_t *data, int16_t length);
+int artnet_tx_ipprog_reply(node n);
 int artnet_tx_sync(node n);
 int artnet_tx_directory_reply(node n);
 int artnet_tx_file_fn_reply(node n, uint8_t blockId, uint16_t totalLength,

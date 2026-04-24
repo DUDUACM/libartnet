@@ -30,8 +30,9 @@ int add_tod_uid(tod_t *tod, uint8_t uid[ARTNET_RDM_UID_WIDTH]) {
   uint8_t *addr;
   int size;
 
-  if (tod == NULL)
+  if (tod == NULL) {
     return -1;
+  }
 
   if (tod->data == NULL) {
     // malloc
@@ -47,13 +48,14 @@ int add_tod_uid(tod_t *tod, uint8_t uid[ARTNET_RDM_UID_WIDTH]) {
   } else if (tod->length == tod->max_length) {
     // realloc
     size = (tod->max_length + ARTNET_TOD_INCREMENT);
-    tod->data = realloc(tod->data, size * ARTNET_RDM_UID_WIDTH);
+    uint8_t *new_data = realloc(tod->data, size * ARTNET_RDM_UID_WIDTH);
 
-    if (tod->data == NULL) {
+    if (new_data == NULL) {
       artnet_error_realloc();
       return ARTNET_EMEM;
     }
 
+    tod->data = new_data;
     tod->max_length = size;
     tod->length++;
 
@@ -76,16 +78,19 @@ int remove_tod_uid(tod_t *tod, uint8_t uid[ARTNET_RDM_UID_WIDTH]) {
   int offset = 0;
   uint8_t *last;
 
-  if (tod == NULL)
+  if (tod == NULL) {
     return -1;
+  }
 
-  if (tod->data == NULL)
+  if (tod->data == NULL) {
     return -1;
+  }
 
   for (i=0; i < tod->length; i++) {
     offset = i * ARTNET_RDM_UID_WIDTH;
-    if (memcmp(tod->data + offset, uid, ARTNET_RDM_UID_WIDTH) == 0)
+    if (memcmp(tod->data + offset, uid, ARTNET_RDM_UID_WIDTH) == 0) {
       break;
+    }
   }
 
   if (i == tod->length) {
@@ -105,8 +110,9 @@ int remove_tod_uid(tod_t *tod, uint8_t uid[ARTNET_RDM_UID_WIDTH]) {
  * clear the table of devices
  */
 int flush_tod(tod_t *tod) {
-  if (tod == NULL)
+  if (tod == NULL) {
     return -1;
+  }
 
   free(tod->data);
   tod->data = NULL;
@@ -118,9 +124,11 @@ int flush_tod(tod_t *tod) {
 
 
 int reset_tod(tod_t *tod) {
-  if (tod == NULL)
+  if (tod == NULL) {
     return -1;
+  }
 
+  free(tod->data);
   tod->data = NULL;
   tod->length = 0;
   tod->max_length = 0;

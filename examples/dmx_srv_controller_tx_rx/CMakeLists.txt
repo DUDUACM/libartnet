@@ -1,0 +1,2 @@
+add_executable(dmx_srv_controller_tx_rx dmx_srv_controller_tx_rx.c)
+target_link_libraries(dmx_srv_controller_tx_rx PRIVATE artnet)

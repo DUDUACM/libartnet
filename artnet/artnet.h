@@ -295,6 +295,7 @@ typedef enum {
   ARTNET_RC_FIRMWARE_FAIL= 0x000e,  /**< RcFirmwareFail: last firmware upload failed */
   ARTNET_RC_USER_FAIL    = 0x000f,  /**< RcUserFail: user changed locked address switch */
   ARTNET_RC_FACTORY_RES  = 0x0010,  /**< RcFactoryRes: factory reset performed */
+  ARTNET_RC_IP_PROG_OK   = 0x0011,  /**< RcIpProgOk: IP address programming successful */
 } artnet_node_report_code;
 
 /*
@@ -361,24 +362,24 @@ typedef enum {
 typedef struct artnet_node_entry_s {
   uint8_t ip[ARTNET_IP_SIZE];  /**< The IP address, Network byte ordered*/
   int16_t ver;          /**< The firmware version */
-  uint8_t net;          /**< The net address (bits 14-8 of 15-bit port address) */
-  int16_t sub;          /**< The subnet address (bits 7-4 of 15-bit port address) */
+  uint8_t netSwitch;    /**< The net address (bits 14-8 of 15-bit port address) */
+  uint8_t subSwitch;    /**< The subnet address (bits 7-4 of 15-bit port address, stored in upper nibble) */
   int16_t oem;          /**< The OEM value */
   uint8_t ubea;          /**< The UBEA version */
   uint8_t status;
-  uint8_t etsaman[ARTNET_ESTA_SIZE];        /**< The ESTA Manufacturer code */
-  uint8_t shortname[ARTNET_SHORT_NAME_LENGTH];  /**< The short node name */
-  uint8_t longname[ARTNET_LONG_NAME_LENGTH];  /**< The long node name */
-  uint8_t nodereport[ARTNET_REPORT_LENGTH];  /**< The node report */
+  uint8_t estaMan[ARTNET_ESTA_SIZE];       /**< The ESTA Manufacturer code */
+  uint8_t shortName[ARTNET_SHORT_NAME_LENGTH];  /**< The short node name */
+  uint8_t longName[ARTNET_LONG_NAME_LENGTH];  /**< The long node name */
+  uint8_t nodeReport[ARTNET_REPORT_LENGTH];  /**< The node report */
   int16_t numbports;        /**< The number of ports */
-  uint8_t porttypes[ARTNET_MAX_PORTS];    /**< The type of ports */
-  uint8_t goodinput[ARTNET_MAX_PORTS];
+  uint8_t portTypes[ARTNET_MAX_PORTS];    /**< The type of ports */
+  uint8_t goodInput[ARTNET_MAX_PORTS];
   uint8_t goodOutputA[ARTNET_MAX_PORTS];   /**< GoodOutputA status (Art-Net 4) */
-  uint8_t swin[ARTNET_MAX_PORTS];
-  uint8_t swout[ARTNET_MAX_PORTS];
+  uint8_t swIn[ARTNET_MAX_PORTS];
+  uint8_t swOut[ARTNET_MAX_PORTS];
   uint8_t acnPriority;      /**< sACN priority value (Art-Net 4, was swvideo) */
-  uint8_t swmacro;
-  uint8_t swremote;
+  uint8_t swMacro;
+  uint8_t swRemote;
   uint8_t mac[ARTNET_MAC_SIZE];        /**< The MAC address of the node */
   uint8_t bindIp[ARTNET_IP_SIZE];      /**< Bind IP address (Art-Net 4) */
   uint8_t bindIndex;                    /**< BindIndex (Art-Net 4) */
@@ -392,12 +393,12 @@ typedef struct artnet_node_entry_s {
 typedef artnet_node_entry_t *artnet_node_entry;
 
 typedef struct {
-  char short_name[ARTNET_SHORT_NAME_LENGTH];
-  char long_name[ARTNET_LONG_NAME_LENGTH];
-  uint8_t net;
-  uint8_t subnet;
-  uint8_t in_ports[ARTNET_MAX_PORTS];
-  uint8_t out_ports[ARTNET_MAX_PORTS];
+  char shortName[ARTNET_SHORT_NAME_LENGTH];
+  char longName[ARTNET_LONG_NAME_LENGTH];
+  uint8_t netSwitch;
+  uint8_t subSwitch;
+  uint8_t inPorts[ARTNET_MAX_PORTS];
+  uint8_t outPorts[ARTNET_MAX_PORTS];
 } artnet_node_config_t;
 
 
@@ -447,7 +448,7 @@ EXTERN int artnet_set_rdm_initiate_handler(artnet_node vn,
   int (*fh)(artnet_node n, int port, void *d),
   void *data);
 EXTERN int artnet_set_rdm_tod_handler(artnet_node vn,
-  int (*fh)(artnet_node n, int port, void *d),
+  int (*fh)(artnet_node n, int address, void *d),
   void *data);
 
 // send functions
@@ -508,6 +509,20 @@ EXTERN int artnet_send_rdmsub(artnet_node vn,
 // sync functions
 EXTERN int artnet_send_sync(artnet_node vn);
 
+// non-zero start code DMX
+EXTERN int artnet_send_nzs(artnet_node vn, int port_id, uint8_t start_code,
+  int16_t length, const uint8_t *data);
+
+// timecode functions
+EXTERN int artnet_send_timecode(artnet_node vn, uint8_t frames, uint8_t seconds,
+  uint8_t minutes, uint8_t hours, artnet_timecode_type_t type);
+EXTERN int artnet_send_timesync(artnet_node vn, uint8_t tm_sec, uint8_t tm_min,
+  uint8_t tm_hour, uint8_t tm_mday, uint8_t tm_mon, uint8_t tm_year);
+
+// trigger functions
+EXTERN int artnet_send_trigger(artnet_node vn, uint8_t oem_hi, uint8_t oem_lo,
+  uint8_t key, uint8_t sub_key, const uint8_t *data, int16_t length);
+
 // diagnostic functions
 EXTERN int artnet_send_diagnostic(artnet_node vn,
   artnet_diag_priority_t priority,
@@ -529,6 +544,8 @@ EXTERN uint8_t *artnet_read_dmx(artnet_node n, int port_id, int *length);
 
 // state changing functions
 EXTERN int artnet_set_node_type(artnet_node n, artnet_node_type type);
+EXTERN int artnet_set_style_code(artnet_node vn, artnet_style_code_t style);
+EXTERN int artnet_set_status2(artnet_node vn, uint8_t status2);
 EXTERN int artnet_set_short_name(artnet_node vn, const char *name);
 EXTERN int artnet_set_long_name(artnet_node n, const char *name);
 
@@ -552,6 +569,8 @@ EXTERN artnet_node_list artnet_get_nl(artnet_node n);
 EXTERN artnet_node_entry artnet_nl_first(artnet_node_list nl);
 EXTERN artnet_node_entry artnet_nl_next(artnet_node_list nl);
 EXTERN int artnet_nl_get_length(artnet_node_list nl);
+EXTERN int artnet_nl_foreach(artnet_node n,
+  int (*cb)(artnet_node_entry entry, void *data), void *data);
 
 // misc
 EXTERN int artnet_dump_config(artnet_node n);

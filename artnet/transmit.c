@@ -31,14 +31,16 @@ int artnet_tx_poll(node n, const char *ip, artnet_ttm_value_t ttm) {
   artnet_packet_t p;
   int ret;
 
-  if (n->state.mode != ARTNET_ON)
+  if (n->state.mode != ARTNET_ON) {
     return ARTNET_EACTION;
+  }
 
   if (n->state.node_type == ARTNET_SRV || n->state.node_type == ARTNET_RAW) {
     if (ip) {
       ret = artnet_net_inet_aton(ip, &p.to);
-      if (ret)
+      if (ret) {
         return ret;
+      }
     } else {
       p.to.s_addr = n->state.bcast_addr.s_addr;
     }
@@ -76,6 +78,25 @@ int artnet_tx_poll_reply(node n, int response) {
     n->state.ar_count++;
   }
 
+  printf("[ArtPollReply] to=%s, ip=%s, shortName=%s, status=0x%02X, status2=0x%02X, "
+         "net=%d, sub=%d, mac=%02X:%02X:%02X:%02X:%02X:%02X, ports=",
+         inet_ntoa(n->state.reply_addr),
+         inet_ntoa(n->state.ip_addr),
+         n->state.shortName,
+         (n->state.led_state << 6) | (n->state.style_code & 0x0F),
+         n->state.status2,
+         n->state.netSwitch,
+         n->state.subSwitch,
+         n->state.hw_addr[0], n->state.hw_addr[1], n->state.hw_addr[2],
+         n->state.hw_addr[3], n->state.hw_addr[4], n->state.hw_addr[5]);
+  for (i = 0; i < ARTNET_MAX_PORTS; i++) {
+    if (n->ports.out[i].port_enabled) {
+      uint16_t addr = n->ports.out[i].port_addr;
+      printf("%d:0x%04X ", i, addr);
+    }
+  }
+  printf("\n");
+
   reply.to = n->state.reply_addr;
   reply.type = ARTNET_REPLY;
   reply.length = sizeof(artnet_reply_t);
@@ -84,12 +105,12 @@ int artnet_tx_poll_reply(node n, int response) {
   memcpy(&reply.data, &n->ar_temp, sizeof(artnet_reply_t));
 
   for (i=0; i< ARTNET_MAX_PORTS; i++) {
-    reply.data.ar.goodinput[i] = n->ports.in[i].port_status;
+    reply.data.ar.goodInput[i] = n->ports.in[i].port_status;
     reply.data.ar.goodOutputA[i] = n->ports.out[i].port_status;
   }
 
-  snprintf((char *) &reply.data.ar.nodereport,
-           sizeof(reply.data.ar.nodereport),
+  snprintf((char *) &reply.data.ar.nodeReport,
+           sizeof(reply.data.ar.nodeReport),
            "%04x [%04i] libartnet",
            n->state.report_code,
            n->state.ar_count);
@@ -99,35 +120,67 @@ int artnet_tx_poll_reply(node n, int response) {
 
 
 /*
- * Send a tod request
+ * Send a tod request.
+ * Ports may span multiple nets (e.g. when using artnet_join), so we group
+ * enabled ports by net and send a separate ArtTodRequest per net group.
  */
 int artnet_tx_tod_request(node n) {
-  int i;
-  artnet_packet_t todreq;
+  int i, ret = ARTNET_EOK;
 
-  todreq.to = n->state.bcast_addr;
-  todreq.type = ARTNET_TODREQUEST;
-  todreq.length = sizeof(artnet_todrequest_t);
-  memset(&todreq.data,0x00, todreq.length);
+  // collect nets from enabled output ports
+  uint8_t nets[ARTNET_MAX_PORTS];
+  int net_count = 0;
 
-  // set up the data
-  memcpy(&todreq.data.todreq.id, ARTNET_STRING, ARTNET_STRING_SIZE);
-  todreq.data.todreq.opCode = htols(ARTNET_TODREQUEST);
-  todreq.data.todreq.verH = 0;
-  todreq.data.todreq.ver = ARTNET_VERSION;
-  todreq.data.todreq.command = ARTNET_TOD_FULL; // todfull
-  todreq.data.todreq.adCount = 0;
-
-  // include all enabled ports
-  for (i=0; i < ARTNET_MAX_PORTS; i++) {
-    if (n->ports.out[i].port_enabled) {
-      todreq.data.todreq.net = addr_net(n->ports.out[i].port_addr);
-      todreq.data.todreq.address[todreq.data.todreq.adCount++] =
-        (addr_subnet(n->ports.out[i].port_addr) << 4) | addr_port(n->ports.out[i].port_addr);
+  for (i = 0; i < ARTNET_MAX_PORTS; i++) {
+    if (!n->ports.out[i].port_enabled) {
+      continue;
+    }
+    uint8_t net = addr_net(n->ports.out[i].port_addr);
+    // check if we already have this net
+    int found = 0;
+    int j;
+    for (j = 0; j < net_count; j++) {
+      if (nets[j] == net) {
+        found = 1;
+        break;
+      }
+    }
+    if (!found) {
+      nets[net_count++] = net;
     }
   }
 
-  return artnet_net_send(n, &todreq);
+  // send one ArtTodRequest per unique net
+  for (i = 0; i < net_count; i++) {
+    artnet_packet_t todreq;
+    int p;
+
+    todreq.to = n->state.bcast_addr;
+    todreq.type = ARTNET_TODREQUEST;
+    todreq.length = sizeof(artnet_todrequest_t);
+    memset(&todreq.data, 0x00, todreq.length);
+
+    memcpy(&todreq.data.todreq.id, ARTNET_STRING, ARTNET_STRING_SIZE);
+    todreq.data.todreq.opCode = htols(ARTNET_TODREQUEST);
+    todreq.data.todreq.verH = 0;
+    todreq.data.todreq.ver = ARTNET_VERSION;
+    todreq.data.todreq.command = ARTNET_TOD_FULL;
+    todreq.data.todreq.net = nets[i];
+    todreq.data.todreq.adCount = 0;
+
+    // include all enabled ports belonging to this net
+    for (p = 0; p < ARTNET_MAX_PORTS; p++) {
+      if (n->ports.out[p].port_enabled &&
+          addr_net(n->ports.out[p].port_addr) == nets[i]) {
+        todreq.data.todreq.address[todreq.data.todreq.adCount++] =
+          (addr_subnet(n->ports.out[p].port_addr) << 4) | addr_port(n->ports.out[p].port_addr);
+      }
+    }
+
+    ret = ret || artnet_net_send(n, &todreq);
+  }
+
+  return ret;
 }
 
 
@@ -161,7 +214,7 @@ int artnet_tx_tod_data(node n, int id) {
   // codes aren't given. The windows drivers don't have these either....
   tod.data.toddata.cmdRes = ARTNET_TOD_FULL;
 
-  tod.data.toddata.address = addr_port(n->ports.out[id].port_addr);
+  tod.data.toddata.address = (addr_subnet(n->ports.out[id].port_addr) << 4) | addr_port(n->ports.out[id].port_addr);
   tod.data.toddata.net = addr_net(n->ports.out[id].port_addr);
   tod.data.toddata.uidTotalHi = short_get_high_byte(n->ports.out[id].port_tod.length);
   tod.data.toddata.uidTotal = short_get_low_byte(n->ports.out[id].port_tod.length);
@@ -176,10 +229,11 @@ int artnet_tx_tod_data(node n, int id) {
     tod.data.toddata.uidCount = lim;
 
     offset = (n->ports.out[id].port_tod.length - remaining) * ARTNET_RDM_UID_WIDTH;
-    if (n->ports.out[id].port_tod.data != NULL)
+    if (n->ports.out[id].port_tod.data != NULL) {
       memcpy(tod.data.toddata.tod,
              n->ports.out[id].port_tod.data + offset,
              lim * ARTNET_RDM_UID_WIDTH);
+    }
 
     ret = ret || artnet_net_send(n, &tod);
     remaining = remaining - lim;
@@ -209,7 +263,7 @@ int artnet_tx_tod_control(node n,
   tod.data.todcontrol.verH = 0;
   tod.data.todcontrol.ver = ARTNET_VERSION;
   tod.data.todcontrol.cmd = action;
-  tod.data.todcontrol.address = addr_port(address);
+  tod.data.todcontrol.address = (addr_subnet(address) << 4) | addr_port(address);
   tod.data.todcontrol.net = addr_net(address);
 
   return artnet_net_send(n, &tod);
@@ -239,7 +293,7 @@ int artnet_tx_rdm(node n, uint16_t address, uint8_t *data, int length) {
   rdm.data.rdm.ver = ARTNET_VERSION;
   rdm.data.rdm.rdmVer = ARTNET_RDM_VERSION;
   rdm.data.rdm.cmd = 0x00;
-  rdm.data.rdm.address = addr_port(address);
+  rdm.data.rdm.address = (addr_subnet(address) << 4) | addr_port(address);
   rdm.data.rdm.net = addr_net(address);
 
   len = min(length, ARTNET_MAX_RDM_DATA);
@@ -300,20 +354,24 @@ int artnet_tx_diagdata(node n, uint8_t priority, uint8_t logical_port,
   artnet_packet_t diag;
   int text_len;
 
-  if (n->state.mode != ARTNET_ON)
+  if (n->state.mode != ARTNET_ON) {
     return ARTNET_EACTION;
+  }
 
   // Art-Net 4: only send if diagnostics are enabled
-  if (!n->state.diag_enabled)
+  if (!n->state.diag_enabled) {
     return ARTNET_EACTION;
+  }
 
   // priority filtering: only send if >= minimum requested priority
-  if (priority < n->state.diag_priority)
+  if (priority < n->state.diag_priority) {
     return ARTNET_EOK;
+  }
 
   text_len = strlen(text);
-  if (text_len > ARTNET_DMX_LENGTH - 1)
+  if (text_len > ARTNET_DMX_LENGTH - 1) {
     text_len = ARTNET_DMX_LENGTH - 1;
+  }
 
   memset(&diag, 0x00, sizeof(diag));
   diag.type = ARTNET_DIAGDATA;
@@ -460,8 +518,9 @@ int artnet_tx_firmware_packet(node n, firmware_transfer_t *firm) {
 int artnet_tx_sync(node n) {
   artnet_packet_t p;
 
-  if (n->state.mode != ARTNET_ON)
+  if (n->state.mode != ARTNET_ON) {
     return ARTNET_EACTION;
+  }
 
   memset(&p, 0x00, sizeof(p));
   p.to.s_addr = n->state.bcast_addr.s_addr;
@@ -472,6 +531,174 @@ int artnet_tx_sync(node n) {
   p.data.asyn.opCode = htols(ARTNET_SYNC);
   p.data.asyn.verH = 0;
   p.data.asyn.ver = ARTNET_VERSION;
+
+  return artnet_net_send(n, &p);
+}
+
+
+/*
+ * Send an ArtNzs packet (non-zero start code DMX)
+ */
+int artnet_tx_nzs(node n, int port_id, uint8_t start_code,
+                  int16_t length, const uint8_t *data) {
+  artnet_packet_t p;
+  input_port_t *port;
+
+  if (n->state.mode != ARTNET_ON) {
+    return ARTNET_EACTION;
+  }
+
+  if (port_id < 0 || port_id >= ARTNET_MAX_PORTS) {
+    return ARTNET_EARG;
+  }
+  port = &n->ports.in[port_id];
+
+  if (length < 1 || length > ARTNET_DMX_LENGTH) {
+    return ARTNET_EARG;
+  }
+
+  if (port->port_status & PORT_STATUS_DISABLED_MASK) {
+    return ARTNET_EARG;
+  }
+
+  port->port_status = port->port_status | PORT_STATUS_ACT_MASK;
+
+  p.length = sizeof(artnet_nzs_t) - (ARTNET_DMX_LENGTH - length);
+
+  memcpy(&p.data.nzs.id, ARTNET_STRING, ARTNET_STRING_SIZE);
+  p.data.nzs.opCode = htols(ARTNET_NZS);
+  p.data.nzs.verH = 0;
+  p.data.nzs.ver = ARTNET_VERSION;
+  p.data.nzs.sequence = port->seq;
+  p.data.nzs.startCode = start_code;
+  p.data.nzs.universe = htols(port->port_addr);
+  p.data.nzs.lengthHi = short_get_high_byte(length);
+  p.data.nzs.length = short_get_low_byte(length);
+  memcpy(&p.data.nzs.data, data, length);
+
+  // Art-Net 4: unicast to subscribers
+  p.to.s_addr = n->state.bcast_addr.s_addr;
+
+  int nodes, i;
+  int limit = n->state.bcast_limit > 0 ? n->state.bcast_limit : (n->node_list.length ? n->node_list.length : 1);
+  SI *ips = malloc(sizeof(SI) * limit);
+
+  if (!ips) {
+    return ARTNET_EACTION;
+  }
+
+  nodes = find_nodes_from_uni(n, &n->node_list,
+                              port->port_addr,
+                              ips,
+                              limit);
+
+  for (i = 0; i < nodes; i++) {
+    p.to = ips[i];
+    artnet_net_send(n, &p);
+  }
+  free(ips);
+
+  port->seq++;
+  return ARTNET_EOK;
+}
+
+
+/*
+ * Send an ArtTimeCode packet
+ */
+int artnet_tx_timecode(node n, uint8_t frames, uint8_t seconds,
+                       uint8_t minutes, uint8_t hours,
+                       artnet_timecode_type_t type) {
+  artnet_packet_t p;
+
+  if (n->state.mode != ARTNET_ON) {
+    return ARTNET_EACTION;
+  }
+
+  memset(&p, 0x00, sizeof(p));
+  p.to.s_addr = n->state.bcast_addr.s_addr;
+  p.type = ARTNET_TIMECODE;
+  p.length = sizeof(artnet_timecode_t);
+
+  memcpy(&p.data.tc.id, ARTNET_STRING, ARTNET_STRING_SIZE);
+  p.data.tc.opCode = htols(ARTNET_TIMECODE);
+  p.data.tc.verH = 0;
+  p.data.tc.ver = ARTNET_VERSION;
+  p.data.tc.frames = frames;
+  p.data.tc.seconds = seconds;
+  p.data.tc.minutes = minutes;
+  p.data.tc.hours = hours;
+  p.data.tc.type = (uint8_t)type;
+
+  return artnet_net_send(n, &p);
+}
+
+
+/*
+ * Send an ArtTimeSync packet
+ */
+int artnet_tx_timesync(node n, uint8_t tm_sec, uint8_t tm_min,
+                       uint8_t tm_hour, uint8_t tm_mday,
+                       uint8_t tm_mon, uint8_t tm_year) {
+  artnet_packet_t p;
+
+  if (n->state.mode != ARTNET_ON) {
+    return ARTNET_EACTION;
+  }
+
+  memset(&p, 0x00, sizeof(p));
+  p.to.s_addr = n->state.bcast_addr.s_addr;
+  p.type = ARTNET_TIMESYNC;
+  p.length = sizeof(artnet_timesync_t);
+
+  memcpy(&p.data.tsync.id, ARTNET_STRING, ARTNET_STRING_SIZE);
+  p.data.tsync.opCode = htols(ARTNET_TIMESYNC);
+  p.data.tsync.verH = 0;
+  p.data.tsync.ver = ARTNET_VERSION;
+  p.data.tsync.tm_sec = tm_sec;
+  p.data.tsync.tm_min = tm_min;
+  p.data.tsync.tm_hour = tm_hour;
+  p.data.tsync.tm_mday = tm_mday;
+  p.data.tsync.tm_mon = tm_mon;
+  p.data.tsync.tm_year = tm_year;
+
+  return artnet_net_send(n, &p);
+}
+
+
+/*
+ * Send an ArtTrigger packet
+ */
+int artnet_tx_trigger(node n, uint8_t oem_hi, uint8_t oem_lo,
+                      uint8_t key, uint8_t sub_key,
+                      const uint8_t *data, int16_t length) {
+  artnet_packet_t p;
+
+  if (n->state.mode != ARTNET_ON) {
+    return ARTNET_EACTION;
+  }
+
+  if (length < 0 || length > ARTNET_DMX_LENGTH) {
+    return ARTNET_EARG;
+  }
+
+  memset(&p, 0x00, sizeof(p));
+  p.to.s_addr = n->state.bcast_addr.s_addr;
+  p.type = ARTNET_TRIGGER;
+  p.length = sizeof(artnet_trigger_t);
+
+  memcpy(&p.data.trigger.id, ARTNET_STRING, ARTNET_STRING_SIZE);
+  p.data.trigger.opCode = htols(ARTNET_TRIGGER);
+  p.data.trigger.verH = 0;
+  p.data.trigger.ver = ARTNET_VERSION;
+  p.data.trigger.oemCodeHi = oem_hi;
+  p.data.trigger.oemCodeLo = oem_lo;
+  p.data.trigger.key = key;
+  p.data.trigger.subKey = sub_key;
+
+  if (length > 0 && data) {
+    memcpy(&p.data.trigger.data, data, length);
+  }
 
   return artnet_net_send(n, &p);
 }
@@ -492,6 +719,46 @@ int artnet_tx_directory_reply(node n) {
   p.data.dirr.opCode = htols(ARTNET_DIRECTORYREPLY);
   p.data.dirr.verH = 0;
   p.data.dirr.ver = ARTNET_VERSION;
+
+  return artnet_net_send(n, &p);
+}
+
+
+/*
+ * Send an ArtIpProgReply packet
+ */
+int artnet_tx_ipprog_reply(node n) {
+  artnet_packet_t p;
+
+  if (n->state.mode != ARTNET_ON) {
+    return ARTNET_EACTION;
+  }
+
+  memset(&p, 0x00, sizeof(p));
+  p.to = n->state.reply_addr;
+  p.type = ARTNET_IPREPLY;
+  p.length = sizeof(artnet_ipprog_reply_t);
+
+  memcpy(&p.data.aipr.id, ARTNET_STRING, ARTNET_STRING_SIZE);
+  p.data.aipr.OpCode = htols(ARTNET_IPREPLY);
+  p.data.aipr.ProVerH = 0;
+  p.data.aipr.ProVer = ARTNET_VERSION;
+
+  // Status: bit 7 = DHCP enabled, bit 6 = programming
+  p.data.aipr.Status = 0x00;
+
+  // Report current IP settings
+  uint32_t ip = ntohl(n->state.ip_addr.s_addr);
+  p.data.aipr.ProgIpHi = (ip >> 24) & 0xFF;
+  p.data.aipr.ProgIp2  = (ip >> 16) & 0xFF;
+  p.data.aipr.ProgIp1  = (ip >> 8) & 0xFF;
+  p.data.aipr.ProgIpLo = ip & 0xFF;
+
+  uint32_t subnet = ntohl(n->state.bcast_addr.s_addr & n->state.ip_addr.s_addr);
+  p.data.aipr.ProgSmHi = (subnet >> 24) & 0xFF;
+  p.data.aipr.ProgSm2  = (subnet >> 16) & 0xFF;
+  p.data.aipr.ProgSm1  = (subnet >> 8) & 0xFF;
+  p.data.aipr.ProgSmLo = subnet & 0xFF;
 
   return artnet_net_send(n, &p);
 }
@@ -541,42 +808,43 @@ int artnet_tx_build_art_poll_reply(node n) {
   memcpy(&ar->ip, &n->state.ip_addr.s_addr, 4);
   ar->port = htols(ARTNET_PORT);
   ar->verH = 0;
-  ar->ver = 0;
-  ar->netSwitch = n->state.net;
-  ar->sub = n->state.subnet;
+  ar->ver = ARTNET_VERSION;
+  ar->netSwitch = n->state.netSwitch;
+  ar->subSwitch = n->state.subSwitch << 4;
   ar->oemH = n->state.oem_hi;
   ar->oem = n->state.oem_lo;
   ar->ubea = 0;
   // ar->status - recalc every time
 
   // ESTA Manufacturer ID
-  ar->etsaman[0] = n->state.esta_hi;
-  ar->etsaman[1] = n->state.esta_lo;
+  ar->estaMan[0] = n->state.esta_hi;
+  ar->estaMan[1] = n->state.esta_lo;
 
-  memcpy(&ar->shortname, &n->state.short_name, sizeof(n->state.short_name));
-  memcpy(&ar->longname, &n->state.long_name, sizeof(n->state.long_name));
+  memcpy(&ar->shortName, &n->state.shortName, sizeof(n->state.shortName));
+  memcpy(&ar->longName, &n->state.longName, sizeof(n->state.longName));
 
   // port stuff here
   ar->numbportsH = 0;
 
   for (i = ARTNET_MAX_PORTS; i > 0; i--) {
-    if (n->ports.out[i-1].port_enabled || n->ports.in[i-1].port_enabled)
+    if (n->ports.out[i-1].port_enabled || n->ports.in[i-1].port_enabled) {
       break;
+    }
   }
 
   ar->numbports = i;
 
   for (i=0; i< ARTNET_MAX_PORTS; i++) {
-    ar->porttypes[i] = n->ports.types[i];
-    ar->goodinput[i] = n->ports.in[i].port_status;
+    ar->portTypes[i] = n->ports.types[i];
+    ar->goodInput[i] = n->ports.in[i].port_status;
     ar->goodOutputA[i] = n->ports.out[i].port_status;
-    ar->swin[i] = addr_port(n->ports.in[i].port_addr);
-    ar->swout[i] = addr_port(n->ports.out[i].port_addr);
+    ar->swIn[i] = addr_port(n->ports.in[i].port_addr);
+    ar->swOut[i] = addr_port(n->ports.out[i].port_addr);
   }
 
   ar->acnPriority = 0;
-  ar->swmacro = 0;
-  ar->swremote = 0;
+  ar->swMacro = 0;
+  ar->swRemote = 0;
 
   // spares
   ar->sp1 = 0;
@@ -588,19 +856,24 @@ int artnet_tx_build_art_poll_reply(node n) {
   // bind index: 1 = root device
   ar->bindIndex = 1;
 
-  // Status1: LED state in bits 7-6
-  ar->status = n->state.led_state << 6;
+  // Status1: LED state in bits 7-6, bit 5 = 15-bit port addressing, bit 4 = RDM capable, style code in bits 3-0
+  ar->status = (n->state.led_state << 6) | 0x30 | (n->state.style_code & 0x0F);
 
-  // Status3: fail-safe mode in bits 7-6
-  ar->status3 = n->state.failsafe_mode;
+  // Status3: fail-safe mode in bits 7-6, bit 3 = port direction switching supported
+  ar->status3 = n->state.failsafe_mode | 0x08;
+
+  // Status2: default includes 15-bit port addressing support
+  ar->status2 = n->state.status2;
 
   // GoodOutputB: RDM disabled (bit 7), output style (bit 6)
   for (i = 0; i < ARTNET_MAX_PORTS; i++) {
     ar->goodOutputB[i] = 0;
-    if (!n->ports.out[i].rdm_enabled)
+    if (!n->ports.out[i].rdm_enabled) {
       ar->goodOutputB[i] |= ARTNET_GOODB_RDM_DISABLED;
-    if (n->ports.out[i].output_style)
+    }
+    if (n->ports.out[i].output_style) {
       ar->goodOutputB[i] |= ARTNET_GOODB_STYLE_CONSTANT;
+    }
   }
 
   return ARTNET_EOK;

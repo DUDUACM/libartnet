@@ -1,1 +1,2 @@
-add_subdirectory(dmx_send)
+add_subdirectory(dmx_srv_node_rx)
+add_subdirectory(dmx_srv_controller_tx_rx)
