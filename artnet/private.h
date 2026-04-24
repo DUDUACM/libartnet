@@ -311,6 +311,9 @@ typedef struct {
 typedef struct {
   g_port_t port;
   uint8_t seq;
+  uint8_t last_dmx_data[ARTNET_DMX_LENGTH]; // last DMX data sent (for keepalive retransmission)
+  int last_dmx_length;                       // length of last_dmx_data
+  time_t last_dmx_send_time;                 // timestamp of last ArtDmx send (for keepalive)
 } input_port_t;
 
 
@@ -351,6 +354,8 @@ typedef struct {
   clock_t timeB;
   clock_t last_dmx_time;   // last time ArtDmx was received on this port (ms via clock())
   int failsafe_triggered;   // whether fail-safe has been triggered (avoid repeated action)
+  uint8_t failsafe_data[ARTNET_DMX_LENGTH]; // recorded fail-safe scene data
+  int failsafe_length;      // length of failsafe_data
   SI ipA;
   SI ipB;
 } output_port_t;
@@ -442,6 +447,7 @@ typedef struct {
   SI reply_addr;
   SI ip_addr;
   SI bcast_addr;
+  SI subnet_mask;
   uint8_t hw_addr[ARTNET_MAC_SIZE];
   uint8_t default_netSwitch;
   uint8_t netSwitch_net_ctl;
@@ -466,6 +472,8 @@ typedef struct {
   uint8_t status2;       // Status2 register flags
   uint8_t failsafe_mode; // fail-safe mode (artnet_failsafe_mode_t value)
   SI rdm_reply_addr;     // last RDM requester IP for unicast replies (Art-Net 4)
+  uint8_t acn_priority;  // sACN priority for output ports (0-200, 0xFF=no change)
+  uint8_t default_resp_uid[ARTNET_RDM_UID_WIDTH]; // RDMnet/LLRP default responder UID
   int diag_enabled;       // whether to send diagnostics (ArtPoll Flags bit 2)
   int diag_unicast;       // unicast diagnostics to poller (ArtPoll Flags bit 3)
   uint8_t diag_priority;  // minimum diagnostic priority to send (from ArtPoll)

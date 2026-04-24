@@ -70,6 +70,7 @@ enum { IFNAME_SIZE = 32 }; // 32 sounds a reasonable size
 typedef struct iface_s {
   struct sockaddr_in ip_addr;
   struct sockaddr_in bcast_addr;
+  struct sockaddr_in netmask;
   int8_t hw_addr[ARTNET_MAC_SIZE];
   char   if_name[IFNAME_SIZE];
   struct iface_s *next;
@@ -176,6 +177,7 @@ static int get_ifaces(iface_t **if_head) {
         strncpy(iface->if_name, pAdapter->AdapterName, IFNAME_SIZE);
         memcpy(iface->hw_addr, pAdapter->Address, ARTNET_MAC_SIZE);
         iface->ip_addr.sin_addr.s_addr = net;
+        iface->netmask.sin_addr.s_addr = mask;
         iface->bcast_addr.sin_addr.s_addr = (
             (net & mask) | (0xFFFFFFFF ^ mask));
       }
@@ -211,6 +213,11 @@ static void add_iface_if_needed(iface_t **head, iface_t **tail,
   if (ifa->ifa_flags & IFF_BROADCAST) {
     sin = (struct sockaddr_in *) ifa->ifa_broadaddr;
     iface->bcast_addr.sin_addr = sin->sin_addr;
+  }
+
+  if (ifa->ifa_netmask) {
+    sin = (struct sockaddr_in *) ifa->ifa_netmask;
+    iface->netmask.sin_addr = sin->sin_addr;
   }
 }
 
@@ -399,6 +406,16 @@ static int get_ifaces(iface_t **if_head) {
         iface->bcast_addr.sin_addr = sin->sin_addr;
       }
 #endif
+#ifdef SIOCGIFNETMASK
+      {
+        if (ioctl(sd, SIOCGIFNETMASK, &ifrcopy) < 0) {
+          artnet_error("%s : ioctl error %s", __FUNCTION__, strerror(errno));
+        } else {
+          sin = (struct sockaddr_in *) &ifrcopy.ifr_addr;
+          iface->netmask.sin_addr = sin->sin_addr;
+        }
+      }
+#endif
       // fetch hardware address
 #ifdef SIOCGIFHWADDR
       if (flags & SIOCGIFHWADDR) {
@@ -478,6 +495,7 @@ int artnet_net_init(node n, const char *preferred_ip) {
         found = TRUE;
         n->state.ip_addr = ift->ip_addr.sin_addr;
         n->state.bcast_addr = ift->bcast_addr.sin_addr;
+        n->state.subnet_mask = ift->netmask.sin_addr;
         memcpy(&n->state.hw_addr, &ift->hw_addr, ARTNET_MAC_SIZE);
         break;
       }
@@ -493,6 +511,7 @@ int artnet_net_init(node n, const char *preferred_ip) {
       // copy ip address, bcast address and hardware address
       n->state.ip_addr = ift_head->ip_addr.sin_addr;
       n->state.bcast_addr = ift_head->bcast_addr.sin_addr;
+      n->state.subnet_mask = ift_head->netmask.sin_addr;
       memcpy(&n->state.hw_addr, &ift_head->hw_addr, ARTNET_MAC_SIZE);
     } else {
       artnet_error("No interfaces found!");

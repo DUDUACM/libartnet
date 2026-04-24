@@ -129,6 +129,9 @@ void handle_dmx(node n, artnet_packet p) {
     return;
   }
 
+  // Art-Net 4: record source IP for ArtSync validation
+  n->state.last_dmx_source = p->from;
+
   data_length = (int) bytes_to_short(p->data.admx.lengthHi,
                                      p->data.admx.length);
   data_length = min(data_length, ARTNET_DMX_LENGTH);
@@ -203,7 +206,7 @@ void handle_dmx(node n, artnet_packet p) {
         memcpy(&port->data, &p->data.admx.data, data_length);
       }
       else if (ipA != p->from.s_addr  && ipB == 0) {
-        // new source, start the merge
+        // new source, start the merge (A exists, new source becomes B)
         port->ipB.s_addr = p->from.s_addr;
         port->timeB = clock();
         memcpy(&port->dataB, &p->data.admx.data,data_length);
@@ -219,21 +222,22 @@ void handle_dmx(node n, artnet_packet p) {
         }
 
       }
-      else if (ipA == 0 && ipB == p->from.s_addr) {
-        // new source, start the merge
+      else if (ipA == 0 && ipB != 0 && ipB != p->from.s_addr) {
+        // new source, start the merge (B exists, new source becomes A)
         port->ipA.s_addr = p->from.s_addr;
-        port->timeB = clock();
-        memcpy(&port->dataB, &p->data.admx.data,data_length);
+        port->timeA = clock();
+        memcpy(&port->dataA, &p->data.admx.data, data_length);
         port->length = data_length;
 
-        // merge, newest data is portA
-        merge(n,i,data_length, port->dataA);
+        // merge, newest data is port A
+        merge(n, i, data_length, port->dataA);
 
         // notify controller: merge started
         port->port_status |= PORT_STATUS_MERGE;
         if (n->state.send_apr_on_change) {
           artnet_tx_poll_reply(n, TRUE);
         }
+
       }
       else if (ipA == p->from.s_addr && ipB != p->from.s_addr) {
         // continue merge
@@ -322,14 +326,14 @@ int handle_address(node n, artnet_packet p) {
   }
 
   // program subnet
-  old_subnet = (p->data.addr.subSwitch >> 4) & 0x0F;
+  old_subnet = p->data.addr.subSwitch & 0x0F;
   if (p->data.addr.subSwitch == PROGRAM_DEFAULTS) {
     // reset to defaults
     n->state.subSwitch = n->state.default_subSwitch;
     n->state.subSwitch_net_ctl = FALSE;
 
   } else if (p->data.addr.subSwitch & PROGRAM_CHANGE_MASK) {
-    n->state.subSwitch = ((p->data.addr.subSwitch & ~PROGRAM_CHANGE_MASK) >> 4) & 0x0F;
+    n->state.subSwitch = p->data.addr.subSwitch & 0x0F;
     n->state.subSwitch_net_ctl = TRUE;
   }
 
@@ -403,6 +407,7 @@ int handle_address(node n, artnet_packet p) {
         n->ports.out[i].ipB.s_addr = 0;
         n->ports.out[i].timeA = 0;
         n->ports.out[i].timeB = 0;
+        n->ports.out[i].port_status &= ~PORT_STATUS_MERGE;
       }
       break;
 
@@ -440,6 +445,11 @@ int handle_address(node n, artnet_packet p) {
       n->state.failsafe_mode = ARTNET_FAILSAFE_SCENE;
       break;
     case ARTNET_PC_FAIL_RECORD:
+      // Record current output data as fail-safe scene
+      for (i = 0; i < ARTNET_MAX_PORTS; i++) {
+        memcpy(n->ports.out[i].failsafe_data, n->ports.out[i].data, ARTNET_DMX_LENGTH);
+        n->ports.out[i].failsafe_length = n->ports.out[i].length;
+      }
       break;
 
     case ARTNET_PC_MERGE_LTP_O:
@@ -458,6 +468,11 @@ int handle_address(node n, artnet_packet p) {
       port_idx = cmd & 0x03;
       n->ports.types[port_idx] |= ARTNET_ENABLE_OUTPUT;
       n->ports.types[port_idx] &= ~ARTNET_ENABLE_INPUT;
+      n->ports.out[port_idx].ipA.s_addr = 0;
+      n->ports.out[port_idx].ipB.s_addr = 0;
+      n->ports.out[port_idx].timeA = 0;
+      n->ports.out[port_idx].timeB = 0;
+      n->ports.out[port_idx].port_status &= ~PORT_STATUS_MERGE;
       break;
 
     case ARTNET_PC_DIRECTION_RX_0:
@@ -467,6 +482,11 @@ int handle_address(node n, artnet_packet p) {
       port_idx = cmd & 0x03;
       n->ports.types[port_idx] |= ARTNET_ENABLE_INPUT;
       n->ports.types[port_idx] &= ~ARTNET_ENABLE_OUTPUT;
+      n->ports.out[port_idx].ipA.s_addr = 0;
+      n->ports.out[port_idx].ipB.s_addr = 0;
+      n->ports.out[port_idx].timeA = 0;
+      n->ports.out[port_idx].timeB = 0;
+      n->ports.out[port_idx].port_status &= ~PORT_STATUS_MERGE;
       break;
 
     case ARTNET_PC_MERGE_HTP_0:
@@ -539,6 +559,11 @@ int handle_address(node n, artnet_packet p) {
       break;
   }
 
+  // Art-Net 4: handle sACN priority field (0xFF = no change)
+  if (p->data.addr.acnPriority != 0xFF) {
+    n->state.acn_priority = p->data.addr.acnPriority;
+  }
+
   if (n->callbacks.program_c.fh != NULL) {
     n->callbacks.program_c.fh(n , n->callbacks.program_c.data);
   }
@@ -606,7 +631,8 @@ int handle_tod_request(node n, artnet_packet p) {
         if (n->ports.out[j].port_addr == make_addr(p->data.todreq.net, (p->data.todreq.address[i] >> 4) & 0x0F, p->data.todreq.address[i] & 0x0F) &&
             n->ports.out[j].port_enabled) {
           // reply with tod
-          ret = ret || artnet_tx_tod_data(n, j);
+          int tx_ret = artnet_tx_tod_data(n, j);
+          if (tx_ret) ret = tx_ret;
         }
       }
     }
@@ -629,7 +655,7 @@ void handle_tod_data(node n, artnet_packet p) {
   }
 
   if (n->callbacks.rdm_tod_c.fh != NULL) {
-    int addr = make_addr(p->data.toddata.net, (p->data.toddata.port >> 4) & 0x0F, p->data.toddata.port & 0x0F);
+    int addr = make_addr(p->data.toddata.net, (p->data.toddata.address >> 4) & 0x0F, p->data.toddata.address & 0x0F);
     n->callbacks.rdm_tod_c.fh(n, addr, n->callbacks.rdm_tod_c.data);
   }
   return;
@@ -698,10 +724,25 @@ void handle_rdm(node n, artnet_packet p) {
  * handle ArtSync packet
  * Flushes all buffered ArtDmx data to output simultaneously.
  * Enters sync mode; reverts to non-sync after 4s timeout (handled in check_timeouts).
+ * Art-Net 4: ignores ArtSync if source IP doesn't match last ArtDmx source.
  */
 void handle_sync(node n, artnet_packet p) {
   if (check_callback(n, p, n->callbacks.sync)) {
     return;
+  }
+
+  // Art-Net 4: ignore ArtSync if source IP doesn't match last ArtDmx source
+  if (n->state.last_dmx_source.s_addr != 0 &&
+      n->state.last_dmx_source.s_addr != p->from.s_addr) {
+    return;
+  }
+
+  // Art-Net 4: ignore ArtSync if any output port is merging from different sources
+  for (int i = 0; i < ARTNET_MAX_PORTS; i++) {
+    if (n->ports.out[i].port_status & PORT_STATUS_MERGE &&
+        n->ports.out[i].ipA.s_addr != n->ports.out[i].ipB.s_addr) {
+      return;
+    }
   }
 
   n->state.sync_mode = 1;
@@ -1109,68 +1150,73 @@ void handle_ipprog(node n, artnet_packet p) {
     return;
   }
 
-  // Command field bits:
-  //   bit 7: Enable DHCP
-  //   bit 6: Set program (1) / clear program (0)
-  //   bit 5: Set IP address
-  //   bit 4: Set subnet mask
-  //   bit 3: Set gateway
+  // Art-Net 4 Command field bits (from spec):
+  //   bit 7: Enable any programming (gate for all other bits)
+  //   bit 6: Enable DHCP (if set, ignore lower bits)
+  //   bit 5: unused
+  //   bit 4: Program default gateway
+  //   bit 3: Reset all to defaults
+  //   bit 2: Program IP address
+  //   bit 1: Program subnet mask
+  //   bit 0: Program port (deprecated)
 
-  if (cmd & 0x20) {
-    // Set IP address
-    struct in_addr new_ip;
-    new_ip.s_addr = (p->data.aip.ProgIpHi << 24) | (p->data.aip.ProgIp2 << 16) |
-                    (p->data.aip.ProgIp1 << 8) | p->data.aip.ProgIpLo;
-    if (cmd & 0x40) {
-      n->state.ip_addr = new_ip;
-      n->state.reply_addr = new_ip;
-      n->state.report_code = ARTNET_RC_IP_PROG_OK;
-      snprintf(n->state.report, ARTNET_REPORT_LENGTH,
-               "IP Programmed [%d.%d.%d.%d]",
-               p->data.aip.ProgIpHi, p->data.aip.ProgIp2,
-               p->data.aip.ProgIp1, p->data.aip.ProgIpLo);
-    } else {
-      n->state.report_code = ARTNET_RC_IP_PROG_OK;
-      snprintf(n->state.report, ARTNET_REPORT_LENGTH,
-               "IP Cleared [%d.%d.%d.%d]",
-               p->data.aip.ProgIpHi, p->data.aip.ProgIp2,
-               p->data.aip.ProgIp1, p->data.aip.ProgIpLo);
-    }
-  } else if (cmd & 0x10) {
-    // Set subnet mask
-    if (cmd & 0x40) {
-      n->state.report_code = ARTNET_RC_IP_PROG_OK;
-      snprintf(n->state.report, ARTNET_REPORT_LENGTH,
-               "Subnet Programmed [%d.%d.%d.%d]",
-               p->data.aip.ProgSmHi, p->data.aip.ProgSm2,
-               p->data.aip.ProgSm1, p->data.aip.ProgSmLo);
-    } else {
-      n->state.report_code = ARTNET_RC_IP_PROG_OK;
-      snprintf(n->state.report, ARTNET_REPORT_LENGTH,
-               "Subnet Cleared [%d.%d.%d.%d]",
-               p->data.aip.ProgSmHi, p->data.aip.ProgSm2,
-               p->data.aip.ProgSm1, p->data.aip.ProgSmLo);
-    }
-  } else if (cmd & 0x08) {
-    // Set gateway port
-    if (cmd & 0x40) {
-      n->state.report_code = ARTNET_RC_IP_PROG_OK;
-      snprintf(n->state.report, ARTNET_REPORT_LENGTH,
-               "Gateway Port Programmed [%d.%d.%d.%d]",
-               p->data.aip.ProgDgHi, p->data.aip.ProgDg2,
-               p->data.aip.ProgDg1, p->data.aip.ProgDgLo);
-    } else {
-      n->state.report_code = ARTNET_RC_IP_PROG_OK;
-      snprintf(n->state.report, ARTNET_REPORT_LENGTH,
-               "Gateway Port Cleared [%d.%d.%d.%d]",
-               p->data.aip.ProgDgHi, p->data.aip.ProgDg2,
-               p->data.aip.ProgDg1, p->data.aip.ProgDgLo);
-    }
-  } else if (cmd & 0x80) {
-    // DHCP enable - report only, actual DHCP requires OS-level support
+  // If bit 7 is not set, this is a query only (no programming)
+  if (!(cmd & 0x80)) {
+    artnet_tx_build_art_poll_reply(n);
+    artnet_tx_ipprog_reply(n);
+    return;
+  }
+
+  // DHCP enable
+  if (cmd & 0x40) {
     n->state.report_code = ARTNET_RC_IP_PROG_OK;
     snprintf(n->state.report, ARTNET_REPORT_LENGTH,
              "DHCP Enable requested (not supported in software)");
+  }
+  // Reset all to defaults
+  else if (cmd & 0x08) {
+    n->state.report_code = ARTNET_RC_IP_PROG_OK;
+    snprintf(n->state.report, ARTNET_REPORT_LENGTH,
+             "Reset to defaults requested");
+  }
+  // Program IP address (bit 2)
+  else if (cmd & 0x04) {
+    struct in_addr new_ip;
+    new_ip.s_addr = (p->data.aip.ProgIpHi << 24) | (p->data.aip.ProgIp2 << 16) |
+                    (p->data.aip.ProgIp1 << 8) | p->data.aip.ProgIpLo;
+    n->state.ip_addr = new_ip;
+    n->state.reply_addr = new_ip;
+    // Recompute broadcast address from new IP and subnet mask
+    n->state.bcast_addr.s_addr =
+        (new_ip.s_addr & n->state.subnet_mask.s_addr) | (~n->state.subnet_mask.s_addr);
+    n->state.report_code = ARTNET_RC_IP_PROG_OK;
+    snprintf(n->state.report, ARTNET_REPORT_LENGTH,
+             "IP Programmed [%d.%d.%d.%d]",
+             p->data.aip.ProgIpHi, p->data.aip.ProgIp2,
+             p->data.aip.ProgIp1, p->data.aip.ProgIpLo);
+  }
+  // Program subnet mask (bit 1)
+  else if (cmd & 0x02) {
+    struct in_addr new_mask;
+    new_mask.s_addr = (p->data.aip.ProgSmHi << 24) | (p->data.aip.ProgSm2 << 16) |
+                      (p->data.aip.ProgSm1 << 8) | p->data.aip.ProgSmLo;
+    n->state.subnet_mask = new_mask;
+    // Recompute broadcast address from current IP and new subnet mask
+    n->state.bcast_addr.s_addr =
+        (n->state.ip_addr.s_addr & new_mask.s_addr) | (~new_mask.s_addr);
+    n->state.report_code = ARTNET_RC_IP_PROG_OK;
+    snprintf(n->state.report, ARTNET_REPORT_LENGTH,
+             "Subnet Programmed [%d.%d.%d.%d]",
+             p->data.aip.ProgSmHi, p->data.aip.ProgSm2,
+             p->data.aip.ProgSm1, p->data.aip.ProgSmLo);
+  }
+  // Program default gateway (bit 4)
+  else if (cmd & 0x10) {
+    n->state.report_code = ARTNET_RC_IP_PROG_OK;
+    snprintf(n->state.report, ARTNET_REPORT_LENGTH,
+             "Gateway Programmed [%d.%d.%d.%d]",
+             p->data.aip.ProgDgHi, p->data.aip.ProgDg2,
+             p->data.aip.ProgDg1, p->data.aip.ProgDgLo);
   }
 
   // Fire program callback to notify application

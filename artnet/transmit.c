@@ -74,8 +74,9 @@ int artnet_tx_poll_reply(node n, int response) {
   artnet_packet_t reply = {0};
   int i = 0;
 
+  n->state.ar_count++;
+
   if (!response && n->state.mode == ARTNET_ON) {
-    n->state.ar_count++;
   }
 
   printf("[ArtPollReply] to=%s, ip=%s, shortName=%s, status=0x%02X, status2=0x%02X, "
@@ -83,7 +84,7 @@ int artnet_tx_poll_reply(node n, int response) {
          inet_ntoa(n->state.reply_addr),
          inet_ntoa(n->state.ip_addr),
          n->state.shortName,
-         (n->state.led_state << 6) | (n->state.style_code & 0x0F),
+         (n->state.led_state << 6) | 0x20 | 0x02,
          n->state.status2,
          n->state.netSwitch,
          n->state.subSwitch,
@@ -106,7 +107,7 @@ int artnet_tx_poll_reply(node n, int response) {
 
   for (i=0; i< ARTNET_MAX_PORTS; i++) {
     reply.data.ar.goodInput[i] = n->ports.in[i].port_status;
-    reply.data.ar.goodOutputA[i] = n->ports.out[i].port_status;
+    reply.data.ar.goodOutputA[i] = n->ports.out[i].port_status | n->ports.out[i].proto_sel;
   }
 
   snprintf((char *) &reply.data.ar.nodeReport,
@@ -208,7 +209,8 @@ int artnet_tx_tod_data(node n, int id) {
   tod.data.toddata.verH = 0;
   tod.data.toddata.ver = ARTNET_VERSION;
   tod.data.toddata.rdmVer = ARTNET_RDM_VERSION;
-  tod.data.toddata.port = id;
+  tod.data.toddata.port = id + 1;
+  tod.data.toddata.bindIndex = 1;
 
   // this is interesting, the spec mentions TOD_ADD and TOD_SUBTRACT, but the
   // codes aren't given. The windows drivers don't have these either....
@@ -410,15 +412,15 @@ int artnet_tx_firmware_reply(node n, in_addr_t ip,
   memset(&p, 0x0, sizeof(p));
 
   p.to.s_addr = ip;
-  p.length = sizeof(artnet_firmware_t);
+  p.length = sizeof(artnet_firmware_reply_t);
   p.type = ARTNET_FIRMWAREREPLY;
 
   // now build packet
-  memcpy(&p.data.firmware.id, ARTNET_STRING, ARTNET_STRING_SIZE);
-  p.data.firmware.opCode = htols(ARTNET_FIRMWAREREPLY);
-  p.data.firmware.verH = 0;
-  p.data.firmware.ver = ARTNET_VERSION;
-  p.data.firmware.type = code;
+  memcpy(&p.data.firmwarer.id, ARTNET_STRING, ARTNET_STRING_SIZE);
+  p.data.firmwarer.opCode = htols(ARTNET_FIRMWAREREPLY);
+  p.data.firmwarer.verH = 0;
+  p.data.firmwarer.ver = ARTNET_VERSION;
+  p.data.firmwarer.type = code;
 
   return artnet_net_send(n, &p);
 }
@@ -754,7 +756,7 @@ int artnet_tx_ipprog_reply(node n) {
   p.data.aipr.ProgIp1  = (ip >> 8) & 0xFF;
   p.data.aipr.ProgIpLo = ip & 0xFF;
 
-  uint32_t subnet = ntohl(n->state.bcast_addr.s_addr & n->state.ip_addr.s_addr);
+  uint32_t subnet = ntohl(n->state.subnet_mask.s_addr);
   p.data.aipr.ProgSmHi = (subnet >> 24) & 0xFF;
   p.data.aipr.ProgSm2  = (subnet >> 16) & 0xFF;
   p.data.aipr.ProgSm1  = (subnet >> 8) & 0xFF;
@@ -810,7 +812,7 @@ int artnet_tx_build_art_poll_reply(node n) {
   ar->verH = 0;
   ar->ver = ARTNET_VERSION;
   ar->netSwitch = n->state.netSwitch;
-  ar->subSwitch = n->state.subSwitch << 4;
+  ar->subSwitch = n->state.subSwitch;
   ar->oemH = n->state.oem_hi;
   ar->oem = n->state.oem_lo;
   ar->ubea = 0;
@@ -837,12 +839,12 @@ int artnet_tx_build_art_poll_reply(node n) {
   for (i=0; i< ARTNET_MAX_PORTS; i++) {
     ar->portTypes[i] = n->ports.types[i];
     ar->goodInput[i] = n->ports.in[i].port_status;
-    ar->goodOutputA[i] = n->ports.out[i].port_status;
+    ar->goodOutputA[i] = n->ports.out[i].port_status | n->ports.out[i].proto_sel;
     ar->swIn[i] = addr_port(n->ports.in[i].port_addr);
     ar->swOut[i] = addr_port(n->ports.out[i].port_addr);
   }
 
-  ar->acnPriority = 0;
+  ar->acnPriority = n->state.acn_priority;
   ar->swMacro = 0;
   ar->swRemote = 0;
 
@@ -856,8 +858,11 @@ int artnet_tx_build_art_poll_reply(node n) {
   // bind index: 1 = root device
   ar->bindIndex = 1;
 
-  // Status1: LED state in bits 7-6, bit 5 = 15-bit port addressing, bit 4 = RDM capable, style code in bits 3-0
-  ar->status = (n->state.led_state << 6) | 0x30 | (n->state.style_code & 0x0F);
+  // bind IP: root device IP address
+  memcpy(&ar->bindIp, &n->state.ip_addr.s_addr, 4);
+
+  // Status1: LED state in bits 7-6, bits 5-4 = port address programming (0b10 = network), bit 2 = ROM boot, bit 1 = RDM support, bit 0 = UBEA
+  ar->status = (n->state.led_state << 6) | 0x20 | 0x02;
 
   // Status3: fail-safe mode in bits 7-6, bit 3 = port direction switching supported
   ar->status3 = n->state.failsafe_mode | 0x08;
@@ -875,6 +880,9 @@ int artnet_tx_build_art_poll_reply(node n) {
       ar->goodOutputB[i] |= ARTNET_GOODB_STYLE_CONSTANT;
     }
   }
+
+  // DefaultRespUID: RDMnet & LLRP default responder UID
+  memcpy(&ar->defaultRespUid, n->state.default_resp_uid, ARTNET_RDM_UID_WIDTH);
 
   return ARTNET_EOK;
 }

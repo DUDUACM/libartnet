@@ -53,7 +53,7 @@ static void print_nodes(artnet_node n) {
            entry->ip[0], entry->ip[1], entry->ip[2], entry->ip[3],
            (char *)entry->shortName,
            entry->netSwitch,
-           (entry->subSwitch >> 4) & 0x0F);
+           entry->subSwitch & 0x0F);
     int p;
     for (p = 0; p < entry->numbports; p++) {
       printf(" %d", entry->swOut[p] & 0x0F);

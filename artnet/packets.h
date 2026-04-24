@@ -203,7 +203,7 @@ struct artnet_ipprog_reply_s {
   uint8_t  ProVer;
   uint8_t  Filler1;
   uint8_t  Filler2;
-  uint8_t  Status;
+  uint8_t  Filler3;
   uint8_t  Filler4;
   uint8_t  ProgIpHi;
   uint8_t  ProgIp2;
@@ -215,14 +215,14 @@ struct artnet_ipprog_reply_s {
   uint8_t  ProgSmLo;
   uint8_t  ProgPortHi;
   uint8_t  ProgPortLo;
+  uint8_t  Status;
+  uint8_t  Spare2;
   uint8_t  ProgDgHi;
   uint8_t  ProgDg2;
   uint8_t  ProgDg1;
   uint8_t  ProgDgLo;
-  uint8_t  Spare1;
-  uint8_t  Spare2;
-  uint8_t  Spare3;
-  uint8_t  Spare4;
+  uint8_t  Spare7;
+  uint8_t  Spare8;
 } PACKED;
 
 typedef struct artnet_ipprog_reply_s artnet_ipprog_reply_t;

@@ -50,7 +50,7 @@ uint8_t PORT_DISABLE_MASK = 0x01;
 uint8_t TOD_RESPONSE_FULL = 0x00;
 uint8_t TOD_RESPONSE_NAK = 0xff;
 uint8_t MIN_PACKET_SIZE = 10;
-int MERGE_TIMEOUT_MS = 200;
+int MERGE_TIMEOUT_MS = 10000;
 int NODELIST_TIMEOUT_SECONDS = 15;
 int DMX_FAILSAFE_TIMEOUT_MS = 800;
 uint8_t FIRMWARE_TIMEOUT_SECONDS = 20;
@@ -119,6 +119,8 @@ artnet_node artnet_new(const char *ip, int verbose) {
   n->state.reply_addr.s_addr = 0;
   n->state.mode = ARTNET_STANDBY;
   n->state.status2 = ARTNET_STATUS2_15BIT_ADDR | ARTNET_STATUS2_RDM_CONTROL;
+  n->state.acn_priority = 0xFF;  // 0xFF = no change
+  memset(n->state.default_resp_uid, 0, ARTNET_RDM_UID_WIDTH);
 
   // set all ports to MERGE HTP mode and disable
   for (i=0; i < ARTNET_MAX_PORTS; i++) {
@@ -126,7 +128,12 @@ artnet_node artnet_new(const char *ip, int verbose) {
     n->ports.out[i].port_enabled = FALSE;
     n->ports.out[i].last_dmx_time = 0;
     n->ports.out[i].failsafe_triggered = FALSE;
+    n->ports.out[i].failsafe_length = 0;
+    memset(n->ports.out[i].failsafe_data, 0, ARTNET_DMX_LENGTH);
     n->ports.in[i].port_enabled = FALSE;
+    n->ports.in[i].last_dmx_send_time = 0;
+    n->ports.in[i].last_dmx_length = 0;
+    memset(n->ports.in[i].last_dmx_data, 0, ARTNET_DMX_LENGTH);
 
     // reset tods
     reset_tod(&n->ports.in[i].port_tod);
@@ -176,12 +183,9 @@ int artnet_start(artnet_node vn) {
     if ((ret = artnet_tx_tod_request(n))) {
       return ret;
     }
-  } else {
-    // send a reply on startup
-    if ((ret = artnet_tx_poll_reply(n, FALSE))) {
-      return ret;
-    }
   }
+  // Art-Net 4: nodes must not send unsolicited ArtPollReply at startup
+  // wait for ArtPoll before replying
   return ret;
 }
 
@@ -773,6 +777,12 @@ int artnet_send_dmx(artnet_node vn,
     free(ips);
   }
   port->seq++;
+
+  // Store data for input keepalive retransmission (Art-Net 4)
+  memcpy(port->last_dmx_data, data, length);
+  port->last_dmx_length = length;
+  port->last_dmx_send_time = time(NULL);
+
   return ARTNET_EOK;
 }
 
@@ -863,7 +873,7 @@ int artnet_send_address(artnet_node vn,
     p.data.addr.opCode = htols(ARTNET_ADDRESS);
     p.data.addr.verH = 0;
     p.data.addr.ver = ARTNET_VERSION;
-    p.data.addr.netSwitch = netAddr;
+    p.data.addr.netSwitch = (netAddr != PROGRAM_NO_CHANGE) ? (netAddr | PROGRAM_CHANGE_MASK) : netAddr;
     p.data.addr.bindIndex = 1;
 
     memset(p.data.addr.shortName, 0, ARTNET_SHORT_NAME_LENGTH);
@@ -877,7 +887,7 @@ int artnet_send_address(artnet_node vn,
     memcpy(&p.data.addr.swIn, inAddr, ARTNET_MAX_PORTS);
     memcpy(&p.data.addr.swOut, outAddr, ARTNET_MAX_PORTS);
 
-    p.data.addr.subSwitch = subAddr << 4;
+    p.data.addr.subSwitch = (subAddr != PROGRAM_NO_CHANGE) ? ((subAddr & 0x0F) | PROGRAM_CHANGE_MASK) : subAddr;
     p.data.addr.acnPriority = 0x00;
     p.data.addr.command = cmd;
 
@@ -1438,6 +1448,30 @@ int artnet_set_subnet_addr(artnet_node vn, uint8_t subnet) {
 
 
 /**
+ * Sets the RDMnet & LLRP default responder UID (Art-Net 4).
+ *
+ * @param n the artnet_node
+ * @param uid pointer to 6-byte UID array
+ */
+int artnet_set_default_resp_uid(artnet_node vn, const uint8_t uid[ARTNET_RDM_UID_WIDTH]) {
+  node n = (node) vn;
+  int ret = 0;
+
+  check_nullnode(vn);
+
+  memcpy(n->state.default_resp_uid, uid, ARTNET_RDM_UID_WIDTH);
+
+  if (n->state.mode == ARTNET_ON) {
+    if ((ret = artnet_tx_build_art_poll_reply(n))) {
+      return ret;
+    }
+  }
+
+  return ARTNET_EOK;
+}
+
+
+/**
  * Sets the short name of the node.
  * The string should be null terminated and a maxmium of 18 Characters will be used
  *
@@ -1908,7 +1942,7 @@ int find_nodes_from_uni(node n, node_list_t *nl, uint16_t uni, SI *ips, int size
     for (tmp = nl->first; tmp; tmp = tmp->next) {
       int added = FALSE;
       for (i = 0; i < tmp->pub.numbports; i++) {
-        uint16_t entry_uni = make_addr(tmp->pub.netSwitch, (tmp->pub.subSwitch >> 4) & 0x0F, tmp->pub.swOut[i] & 0x0F);
+        uint16_t entry_uni = make_addr(tmp->pub.netSwitch, tmp->pub.subSwitch & 0x0F, tmp->pub.swOut[i] & 0x0F);
         if (entry_uni == uni && ips) {
           if (j < size && !added) {
             ips[j++] = tmp->ip;
@@ -1980,6 +2014,7 @@ node_entry_private_t *find_private_entry(node n, artnet_node_entry e) {
 
 void check_timeouts(node n) {
   clock_t now = clock();
+  time_t now_time = time(NULL);
   int i = 0;
 
   // fail-safe: check for DMX data loss on enabled output ports
@@ -2003,7 +2038,10 @@ void check_timeouts(node n) {
           port->length = ARTNET_DMX_LENGTH;
           break;
         case ARTNET_FAILSAFE_SCENE:
-          // scene playback is application-specific; library treats as HOLD
+          if (port->failsafe_length > 0) {
+            memcpy(port->data, port->failsafe_data, ARTNET_DMX_LENGTH);
+            port->length = port->failsafe_length;
+          }
           // fall through
         case ARTNET_FAILSAFE_HOLD:
         default:
@@ -2016,8 +2054,22 @@ void check_timeouts(node n) {
   }
 
   // ArtSync timeout: revert to non-sync mode after 4 seconds without ArtSync
-  if (n->state.sync_mode && (now - n->state.last_sync_time >= 4)) {
+  // Use time_t for comparison (last_sync_time is time_t from time(NULL))
+  if (n->state.sync_mode && (now_time - n->state.last_sync_time >= 4)) {
     n->state.sync_mode = 0;
+  }
+
+  // DMX input keepalive: retransmit last DMX data every 1 second (Art-Net 4 Rev BK recommends 800-1000ms for sACN compat)
+  for (i = 0; i < ARTNET_MAX_PORTS; i++) {
+    input_port_t *in_port = &n->ports.in[i];
+    if (!in_port->port_enabled || in_port->last_dmx_send_time == 0) {
+      continue;
+    }
+    if (now_time - in_port->last_dmx_send_time >= 1) {
+      if (in_port->last_dmx_length > 0) {
+        artnet_send_dmx((artnet_node)n, i, in_port->last_dmx_length, in_port->last_dmx_data);
+      }
+    }
   }
 
   // node list cleanup: remove nodes that haven't responded in NODELIST_TIMEOUT_SECONDS
@@ -2044,7 +2096,7 @@ void check_timeouts(node n) {
   NL_WRITE_END(n);
 
   if (n->firmware.peer.s_addr != 0
-      && (now - n->firmware.last_time >= FIRMWARE_TIMEOUT_SECONDS)) {
+      && (now_time - n->firmware.last_time >= FIRMWARE_TIMEOUT_SECONDS)) {
 
     printf("firmware timeout\n");
     reset_firmware_upload(n);

@@ -363,7 +363,7 @@ typedef struct artnet_node_entry_s {
   uint8_t ip[ARTNET_IP_SIZE];  /**< The IP address, Network byte ordered*/
   int16_t ver;          /**< The firmware version */
   uint8_t netSwitch;    /**< The net address (bits 14-8 of 15-bit port address) */
-  uint8_t subSwitch;    /**< The subnet address (bits 7-4 of 15-bit port address, stored in upper nibble) */
+  uint8_t subSwitch;    /**< The subnet address (bits 7-4 of 15-bit port address, stored in lower nibble per Art-Net 4) */
   int16_t oem;          /**< The OEM value */
   uint8_t ubea;          /**< The UBEA version */
   uint8_t status;
@@ -560,6 +560,7 @@ EXTERN int artnet_set_port_addr(artnet_node n,
                                 uint8_t addr);
 EXTERN int artnet_set_net_addr(artnet_node n, uint8_t net);
 EXTERN int artnet_set_subnet_addr(artnet_node n, uint8_t subnet);
+EXTERN int artnet_set_default_resp_uid(artnet_node n, const uint8_t uid[ARTNET_RDM_UID_WIDTH]);
 EXTERN int artnet_get_universe_addr(artnet_node n,
                                     int id,
                                     artnet_port_dir_t dir);
