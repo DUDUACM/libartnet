@@ -15,8 +15,15 @@ set(ARTNET_PUBLIC_HEADERS
     common.h
 )
 
+# Internal headers (listed so IDEs show them in the project tree)
+set(ARTNET_PRIVATE_HEADERS
+    private.h
+    misc.h
+    tod.h
+)
+
 # Create the library
-add_library(artnet ${ARTNET_SOURCES})
+add_library(artnet ${ARTNET_SOURCES} ${ARTNET_PUBLIC_HEADERS} ${ARTNET_PRIVATE_HEADERS})
 
 # Add alias for namespaced target
 add_library(libartnet::artnet ALIAS artnet)
