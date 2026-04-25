@@ -2,6 +2,8 @@
 
 A C library for the [Art-Net 4](https://art-net.org.uk/) protocol, implementing DMX512 data distribution over UDP/IP networks.
 
+Based on [OpenLightingProject/libartnet](https://github.com/OpenLightingProject/libartnet), upgraded to Art-Net 4 compliance with full 15-bit port addressing support.
+
 Art-Net 4 Protocol Specification: [ArtNet4.md](ArtNet4.md)
 
 ## Features

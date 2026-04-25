@@ -49,6 +49,12 @@ All notable changes to this project are documented in this file.
 - Removed MSVC project files (replaced by CMake)
 - Removed Debian packaging files
 - Updated build to CMake-only
+- Library version now derived from project version instead of hardcoded
+- `-Werror` is now optional, controlled by `BUILD_WERROR` option (default OFF)
+- Added `-Wextra` to default compiler warnings
+- Added `BUILD_EXAMPLES` option (default ON) to skip example compilation
+- Added `CMAKE_C_EXTENSIONS OFF` for strict C99 compatibility
+- Updated README.md with upstream project attribution
 
 ## [1.1.1] - 2024-04-22
 

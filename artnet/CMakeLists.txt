@@ -30,8 +30,8 @@ add_library(libartnet::artnet ALIAS artnet)
 
 # Set library properties
 set_target_properties(artnet PROPERTIES
-    VERSION 1.0.0
-    SOVERSION 1
+    VERSION ${PROJECT_VERSION}
+    SOVERSION ${PROJECT_VERSION_MAJOR}
     OUTPUT_NAME artnet
     PUBLIC_HEADER "${ARTNET_PUBLIC_HEADERS}"
 )
@@ -53,7 +53,11 @@ target_compile_definitions(artnet PRIVATE HAVE_CONFIG_H)
 if(MSVC)
     target_compile_options(artnet PRIVATE /W4)
 else()
-    target_compile_options(artnet PRIVATE -Wall -Werror -Wformat -W)
+    if(BUILD_WERROR)
+        target_compile_options(artnet PRIVATE -Wall -Wextra -Werror -Wformat -W)
+    else()
+        target_compile_options(artnet PRIVATE -Wall -Wextra -Wformat -W)
+    endif()
 endif()
 
 # Platform-specific linking

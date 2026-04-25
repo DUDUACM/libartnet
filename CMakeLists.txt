@@ -6,6 +6,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # Set C standard
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
+set(CMAKE_C_EXTENSIONS OFF)
 
 # Include GNUInstallDirs for standard installation directories
 include(GNUInstallDirs)
@@ -13,6 +14,8 @@ include(GNUInstallDirs)
 # Options
 option(BUILD_SHARED_LIBS "Build shared libraries" ON)
 option(ENABLE_IPV6 "Enable IPv6 support" ON)
+option(BUILD_EXAMPLES "Build example programs" ON)
+option(BUILD_WERROR "Treat compiler warnings as errors" OFF)
 
 # Platform-specific settings
 if(WIN32)
@@ -85,7 +88,9 @@ configure_file(
 add_subdirectory(artnet)
 
 # Add examples
-add_subdirectory(examples)
+if(BUILD_EXAMPLES)
+    add_subdirectory(examples)
+endif()
 
 # Generate pkg-config file
 configure_file(
