@@ -22,6 +22,7 @@
 #define ARTNET_MISC_H
 
 #include <errno.h>
+#include <stdint.h>
 #include <string.h>
 
 extern char artnet_errstr[256];
