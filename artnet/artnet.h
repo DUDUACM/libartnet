@@ -25,7 +25,7 @@
 // order is important here for osx
 #include <sys/types.h>
 
-#if !defined(WIN32) && !defined(_MSC_VER)
+#if !defined(_WIN32) && !defined(_MSC_VER)
 #include <sys/select.h>
 #else
 #include <winsock2.h>

@@ -22,7 +22,7 @@
 #  include <config.h>
 #endif
 
-#if !defined(WIN32) && !defined(_MSC_VER)
+#if !defined(_WIN32) && !defined(_MSC_VER)
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
