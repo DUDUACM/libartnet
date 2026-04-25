@@ -91,6 +91,7 @@ static void print_usage(const char *prog) {
 }
 
 int main(int argc, char *argv[]) {
+  setvbuf(stdout, NULL, _IONBF, 0);
   const char *ip = NULL;
   int net = DEFAULT_NET;
   int subnet = DEFAULT_SUBNET;

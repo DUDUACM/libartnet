@@ -48,18 +48,17 @@ typedef SSIZE_T ssize_t;
 #include "private.h"
 
 #ifdef HAVE_GETIFADDRS
- #ifdef HAVE_LINUX_IF_PACKET_H
-   #define USE_GETIFADDRS
- #endif
+  #define USE_GETIFADDRS
 #endif
 
 #ifdef USE_GETIFADDRS
   #include <ifaddrs.h>
-  #include <linux/types.h> // required by if_packet
-  #include <linux/if_packet.h>
-#elif defined(__APPLE__)
-  #include <ifaddrs.h>
-  #include <net/if_dl.h>
+  #ifdef HAVE_LINUX_IF_PACKET_H
+    #include <linux/types.h> // required by if_packet
+    #include <linux/if_packet.h>
+  #elif defined(__APPLE__)
+    #include <net/if_dl.h>
+  #endif
 #endif
 
 
@@ -259,6 +258,7 @@ static int get_ifaces(iface_t **if_head) {
         continue;
       }
 
+#ifdef AF_PACKET
       if (ifa_iter->ifa_addr->sa_family == AF_PACKET) {
         // Linux: hardware address via sockaddr_ll
         struct sockaddr_ll *sll = (struct sockaddr_ll*) ifa_iter->ifa_addr;
@@ -266,9 +266,10 @@ static int get_ifaces(iface_t **if_head) {
           memcpy(if_iter->hw_addr, sll->sll_addr, ARTNET_MAC_SIZE);
           break;
         }
-      }
+      } else
+#endif
 #ifdef AF_LINK
-      else if (ifa_iter->ifa_addr->sa_family == AF_LINK) {
+      if (ifa_iter->ifa_addr->sa_family == AF_LINK) {
         // macOS/BSD: hardware address via sockaddr_dl
         struct sockaddr_dl *sdl = (struct sockaddr_dl*) ifa_iter->ifa_addr;
         if (sdl->sdl_alen == ARTNET_MAC_SIZE &&
