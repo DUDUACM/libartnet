@@ -159,7 +159,7 @@ int artnet_start(artnet_node vn) {
     return ARTNET_ESTATE;
   }
 
-  if ((ret = artnet_net_start(n))) {
+  if ((ret = artnet_net_start(n)) != 0) {
     return ret;
   }
 
@@ -170,17 +170,17 @@ int artnet_start(artnet_node vn) {
   }
 
   // build the initial reply
-  if ((ret = artnet_tx_build_art_poll_reply(n))) {
+  if ((ret = artnet_tx_build_art_poll_reply(n)) != 0) {
     return ret;
   }
 
   if (n->state.node_type == ARTNET_SRV) {
     // poll the network
-    if ((ret = artnet_tx_poll(n,NULL, ARTNET_TTM_AUTO))) {
+    if ((ret = artnet_tx_poll(n,NULL, ARTNET_TTM_AUTO)) != 0) {
       return ret;
     }
 
-    if ((ret = artnet_tx_tod_request(n))) {
+    if ((ret = artnet_tx_tod_request(n)) != 0) {
       return ret;
     }
   }
@@ -725,7 +725,7 @@ int artnet_send_dmx(artnet_node vn,
   p.data.admx.verH = 0;
   p.data.admx.ver = ARTNET_VERSION;
   p.data.admx.sequence = port->seq;
-  p.data.admx.physical = port_id;
+  p.data.admx.physical = (uint8_t)port_id;
   p.data.admx.universe = htols(port->port_addr);
 
   // set length
@@ -1432,7 +1432,7 @@ int artnet_set_subnet_addr(artnet_node vn, uint8_t subnet) {
 
     if (n->state.mode == ARTNET_ON) {
 
-      if ((ret = artnet_tx_build_art_poll_reply(n))) {
+      if ((ret = artnet_tx_build_art_poll_reply(n)) != 0) {
         return ret;
       }
 
@@ -1462,7 +1462,7 @@ int artnet_set_default_resp_uid(artnet_node vn, const uint8_t uid[ARTNET_RDM_UID
   memcpy(n->state.default_resp_uid, uid, ARTNET_RDM_UID_WIDTH);
 
   if (n->state.mode == ARTNET_ON) {
-    if ((ret = artnet_tx_build_art_poll_reply(n))) {
+    if ((ret = artnet_tx_build_art_poll_reply(n)) != 0) {
       return ret;
     }
   }
@@ -1524,7 +1524,7 @@ int artnet_set_port_type(artnet_node vn,
     return ARTNET_EARG;
   }
 
-  n->ports.types[port_id] = settings | data;
+  n->ports.types[port_id] = (uint8_t)(settings | data);
   return ARTNET_EOK;
 }
 
@@ -1597,7 +1597,7 @@ int artnet_set_port_addr(artnet_node vn,
     }
 
     if (n->state.mode == ARTNET_ON) {
-      if ((ret = artnet_tx_build_art_poll_reply(n))) {
+      if ((ret = artnet_tx_build_art_poll_reply(n)) != 0) {
         return ret;
       }
 
@@ -1692,10 +1692,13 @@ int artnet_dump_config(artnet_node vn) {
  */
 artnet_socket_t artnet_get_sd(artnet_node vn) {
   node n = (node) vn;
-  check_nullnode(vn);
+  if (vn == NULL) {
+    artnet_error("%s : argument 1 (artnet_node) was null", __FUNCTION__);
+    return (artnet_socket_t)ARTNET_EARG;
+  }
 
   if (n->state.mode != ARTNET_ON) {
-    return ARTNET_EACTION;
+    return (artnet_socket_t)ARTNET_EACTION;
   }
 
   return n->sd;
@@ -2067,7 +2070,7 @@ void check_timeouts(node n) {
     }
     if (now_time - in_port->last_dmx_send_time >= 1) {
       if (in_port->last_dmx_length > 0) {
-        artnet_send_dmx((artnet_node)n, i, in_port->last_dmx_length, in_port->last_dmx_data);
+        artnet_send_dmx((artnet_node)n, i, (int16_t)in_port->last_dmx_length, in_port->last_dmx_data);
       }
     }
   }

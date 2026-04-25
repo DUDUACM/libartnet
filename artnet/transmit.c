@@ -174,7 +174,7 @@ int artnet_tx_tod_request(node n) {
       if (n->ports.out[p].port_enabled &&
           addr_net(n->ports.out[p].port_addr) == nets[i]) {
         todreq.data.todreq.address[todreq.data.todreq.adCount++] =
-          (addr_subnet(n->ports.out[p].port_addr) << 4) | addr_port(n->ports.out[p].port_addr);
+          (uint8_t)((addr_subnet(n->ports.out[p].port_addr) << 4) | addr_port(n->ports.out[p].port_addr));
       }
     }
 
@@ -209,14 +209,14 @@ int artnet_tx_tod_data(node n, int id) {
   tod.data.toddata.verH = 0;
   tod.data.toddata.ver = ARTNET_VERSION;
   tod.data.toddata.rdmVer = ARTNET_RDM_VERSION;
-  tod.data.toddata.port = id + 1;
+  tod.data.toddata.port = (uint8_t)(id + 1);
   tod.data.toddata.bindIndex = 1;
 
   // this is interesting, the spec mentions TOD_ADD and TOD_SUBTRACT, but the
   // codes aren't given. The windows drivers don't have these either....
   tod.data.toddata.cmdRes = ARTNET_TOD_FULL;
 
-  tod.data.toddata.address = (addr_subnet(n->ports.out[id].port_addr) << 4) | addr_port(n->ports.out[id].port_addr);
+  tod.data.toddata.address = (uint8_t)((addr_subnet(n->ports.out[id].port_addr) << 4) | addr_port(n->ports.out[id].port_addr));
   tod.data.toddata.net = addr_net(n->ports.out[id].port_addr);
   tod.data.toddata.uidTotalHi = short_get_high_byte(n->ports.out[id].port_tod.length);
   tod.data.toddata.uidTotal = short_get_low_byte(n->ports.out[id].port_tod.length);
@@ -227,8 +227,8 @@ int artnet_tx_tod_data(node n, int id) {
   while (remaining > 0) {
     memset(&tod.data.toddata.tod,0x00, ARTNET_MAX_UID_COUNT * ARTNET_RDM_UID_WIDTH);
     lim = min(ARTNET_MAX_UID_COUNT, remaining);
-    tod.data.toddata.blockCount = bloc++;
-    tod.data.toddata.uidCount = lim;
+    tod.data.toddata.blockCount = (uint8_t)bloc++;
+    tod.data.toddata.uidCount = (uint8_t)lim;
 
     offset = (n->ports.out[id].port_tod.length - remaining) * ARTNET_RDM_UID_WIDTH;
     if (n->ports.out[id].port_tod.data != NULL) {
@@ -265,7 +265,7 @@ int artnet_tx_tod_control(node n,
   tod.data.todcontrol.verH = 0;
   tod.data.todcontrol.ver = ARTNET_VERSION;
   tod.data.todcontrol.cmd = action;
-  tod.data.todcontrol.address = (addr_subnet(address) << 4) | addr_port(address);
+  tod.data.todcontrol.address = (uint8_t)((addr_subnet(address) << 4) | addr_port(address));
   tod.data.todcontrol.net = addr_net(address);
 
   return artnet_net_send(n, &tod);
@@ -295,7 +295,7 @@ int artnet_tx_rdm(node n, uint16_t address, uint8_t *data, int length) {
   rdm.data.rdm.ver = ARTNET_VERSION;
   rdm.data.rdm.rdmVer = ARTNET_RDM_VERSION;
   rdm.data.rdm.cmd = 0x00;
-  rdm.data.rdm.address = (addr_subnet(address) << 4) | addr_port(address);
+  rdm.data.rdm.address = (uint8_t)((addr_subnet(address) << 4) | addr_port(address));
   rdm.data.rdm.net = addr_net(address);
 
   len = min(length, ARTNET_MAX_RDM_DATA);
@@ -370,7 +370,7 @@ int artnet_tx_diagdata(node n, uint8_t priority, uint8_t logical_port,
     return ARTNET_EOK;
   }
 
-  text_len = strlen(text);
+  text_len = (int)strlen(text);
   if (text_len > ARTNET_DMX_LENGTH - 1) {
     text_len = ARTNET_DMX_LENGTH - 1;
   }
@@ -489,7 +489,7 @@ int artnet_tx_firmware_packet(node n, firmware_transfer_t *firm) {
   p.data.firmware.verH = 0;
   p.data.firmware.ver = ARTNET_VERSION;
   p.data.firmware.type =  type;
-  p.data.firmware.blockId = firm->expected_block;
+  p.data.firmware.blockId = (uint8_t)firm->expected_block;
 
   artnet_misc_int_to_bytes(firm->bytes_total / sizeof(uint16_t),
                            p.data.firmware.length);
@@ -498,7 +498,7 @@ int artnet_tx_firmware_packet(node n, firmware_transfer_t *firm) {
          firm->data + (firm->bytes_current / sizeof(uint16_t)),
          data_len);
 
-  if ((ret = artnet_net_send(n, &p))) {
+  if ((ret = artnet_net_send(n, &p)) != 0) {
     // send failed
     return ret;
   } else {
@@ -751,16 +751,16 @@ int artnet_tx_ipprog_reply(node n) {
 
   // Report current IP settings
   uint32_t ip = ntohl(n->state.ip_addr.s_addr);
-  p.data.aipr.ProgIpHi = (ip >> 24) & 0xFF;
-  p.data.aipr.ProgIp2  = (ip >> 16) & 0xFF;
-  p.data.aipr.ProgIp1  = (ip >> 8) & 0xFF;
-  p.data.aipr.ProgIpLo = ip & 0xFF;
+  p.data.aipr.ProgIpHi = (uint8_t)((ip >> 24) & 0xFF);
+  p.data.aipr.ProgIp2  = (uint8_t)((ip >> 16) & 0xFF);
+  p.data.aipr.ProgIp1  = (uint8_t)((ip >> 8) & 0xFF);
+  p.data.aipr.ProgIpLo = (uint8_t)(ip & 0xFF);
 
   uint32_t subnet = ntohl(n->state.subnet_mask.s_addr);
-  p.data.aipr.ProgSmHi = (subnet >> 24) & 0xFF;
-  p.data.aipr.ProgSm2  = (subnet >> 16) & 0xFF;
-  p.data.aipr.ProgSm1  = (subnet >> 8) & 0xFF;
-  p.data.aipr.ProgSmLo = subnet & 0xFF;
+  p.data.aipr.ProgSmHi = (uint8_t)((subnet >> 24) & 0xFF);
+  p.data.aipr.ProgSm2  = (uint8_t)((subnet >> 16) & 0xFF);
+  p.data.aipr.ProgSm1  = (uint8_t)((subnet >> 8) & 0xFF);
+  p.data.aipr.ProgSmLo = (uint8_t)(subnet & 0xFF);
 
   return artnet_net_send(n, &p);
 }
@@ -808,7 +808,7 @@ int artnet_tx_build_art_poll_reply(node n) {
   memcpy(&ar->id, ARTNET_STRING, ARTNET_STRING_SIZE);
   ar->opCode = htols(ARTNET_REPLY);
   memcpy(&ar->ip, &n->state.ip_addr.s_addr, 4);
-  ar->port = htols(ARTNET_PORT);
+  ar->port = (uint16_t)htols(ARTNET_PORT);
   ar->verH = 0;
   ar->ver = ARTNET_VERSION;
   ar->netSwitch = n->state.netSwitch;
@@ -834,7 +834,7 @@ int artnet_tx_build_art_poll_reply(node n) {
     }
   }
 
-  ar->numbports = i;
+  ar->numbports = (uint8_t)i;
 
   for (i=0; i< ARTNET_MAX_PORTS; i++) {
     ar->portTypes[i] = n->ports.types[i];

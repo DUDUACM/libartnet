@@ -106,7 +106,7 @@ extern uint16_t HIGH_BYTE;
 #endif
 
 // htols : convert short from host to little endian order
-#ifdef WIN32
+#ifdef _WIN32
 #  define htols(x)  (x)
 #else
 # ifdef HAVE_ENDIAN_H
@@ -125,8 +125,8 @@ extern uint16_t HIGH_BYTE;
 #endif
 
 // convert from shorts to bytes and back again
-#define short_get_high_byte(x) ((HIGH_BYTE & x) >> 8)
-#define short_get_low_byte(x)  (LOW_BYTE & x)
+#define short_get_high_byte(x) ((uint8_t)((HIGH_BYTE & x) >> 8))
+#define short_get_low_byte(x)  ((uint8_t)(LOW_BYTE & x))
 
 // seqlock for node list thread safety
 #define NL_WRITE_BEGIN(n) ((n)->state.nl_seq++)

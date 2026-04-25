@@ -43,6 +43,7 @@ All notable changes to this project are documented in this file.
   - Sign-comparison warnings and missing includes
   - Uninitialized local variables
 - Compiler warnings with GCC 12.2.0
+- All MSVC warnings resolved with `/W4` level (C4244, C4267, C4706, C4245, D9025)
 
 ### Changed
 - Removed autotools build system (configure.ac, Makefile.am)

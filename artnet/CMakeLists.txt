@@ -51,7 +51,9 @@ target_compile_definitions(artnet PRIVATE HAVE_CONFIG_H)
 
 # Compiler flags
 if(MSVC)
-    target_compile_options(artnet PRIVATE /W4)
+    # Replace CMake's default /W3 with /W4 to avoid D9025 override warning
+    string(REPLACE "/W3" "/W4" CMAKE_C_FLAGS "${CMAKE_C_FLAGS}")
+    target_compile_definitions(artnet PRIVATE _CRT_SECURE_NO_WARNINGS _WINSOCK_DEPRECATED_NO_WARNINGS)
 else()
     if(BUILD_WERROR)
         target_compile_options(artnet PRIVATE -Wall -Wextra -Werror -Wformat -W)

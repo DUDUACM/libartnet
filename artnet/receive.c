@@ -568,7 +568,7 @@ int handle_address(node n, artnet_packet p) {
     n->callbacks.program_c.fh(n , n->callbacks.program_c.data);
   }
 
-  if ((ret = artnet_tx_build_art_poll_reply(n))) {
+  if ((ret = artnet_tx_build_art_poll_reply(n)) != 0) {
     return ret;
   }
 
@@ -603,7 +603,7 @@ int _artnet_handle_input(node n, artnet_packet p) {
     }
   }
 
-  if ((ret = artnet_tx_build_art_poll_reply(n))) {
+  if ((ret = artnet_tx_build_art_poll_reply(n)) != 0) {
     return ret;
   }
 

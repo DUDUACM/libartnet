@@ -51,6 +51,6 @@ int32_t artnet_misc_nbytes_to_32(uint8_t bytes[4]) {
 void artnet_misc_int_to_bytes(int data, uint8_t *bytes) {
     bytes[3] = (data & 0x000000FF);
     bytes[2] = (data & 0x0000FF00) >> 8;
-    bytes[1] = (data & 0x00FF0000) >> 16;
+    bytes[1] = (uint8_t)((data & 0x00FF0000) >> 16);
     bytes[0] = (data & 0xFF000000) >> 24;
 }

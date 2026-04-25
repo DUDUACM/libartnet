@@ -463,7 +463,7 @@ int artnet_net_init(node n, const char *preferred_ip) {
   int i = 0;
   int ret = ARTNET_EOK;
 
-  if ((ret = get_ifaces(&ift_head))) {
+  if ((ret = get_ifaces(&ift_head)) != 0) {
     goto e_return;
   }
 
@@ -561,7 +561,7 @@ int artnet_net_start(node n) {
 
     memset(&servAddr, 0x00, sizeof(servAddr));
     servAddr.sin_family = AF_INET;
-    servAddr.sin_port = htons(ARTNET_PORT);
+    servAddr.sin_port = htons((u_short)ARTNET_PORT);
     servAddr.sin_addr.s_addr = htonl(INADDR_ANY);
 
     if (n->state.verbose) {
@@ -663,7 +663,7 @@ int artnet_net_recv(node n, artnet_packet p, int delay) {
   socklen_t cliLen = sizeof(cliAddr);
   fd_set rset;
   struct timeval tv;
-  int maxfdp1 = n->sd + 1;
+  int maxfdp1 = (int)n->sd + 1;
 
   FD_ZERO(&rset);
   FD_SET((unsigned int) n->sd, &rset);
@@ -708,7 +708,7 @@ int artnet_net_recv(node n, artnet_packet p, int delay) {
     return ARTNET_EOK;
   }
 
-  p->length = len;
+  p->length = (int)len;
   memcpy(&(p->from), &cliAddr.sin_addr, sizeof(struct in_addr));
   // should set to in here if we need it
   return ARTNET_EOK;
@@ -727,7 +727,7 @@ int artnet_net_send(node n, artnet_packet p) {
   }
 
   addr.sin_family = AF_INET;
-  addr.sin_port = htons(ARTNET_PORT);
+  addr.sin_port = htons((u_short)ARTNET_PORT);
   addr.sin_addr = p->to;
   p->from = n->state.ip_addr;
 
