@@ -229,9 +229,12 @@ typedef enum {
 typedef enum {
   ARTNET_STATUS3_FAILSAFE_SHIFT = 6,
   ARTNET_STATUS3_FAILSAFE_MASK  = 0xC0,  /**< bits 7-6: fail-safe mode */
-  ARTNET_STATUS3_FAILOVER       = 0x20,  /**< bit 5: supports fail-over */
+  ARTNET_STATUS3_FAILOVER       = 0x20,  /**< bit 5: supports programmable fail-safe */
   ARTNET_STATUS3_LLRP           = 0x10,  /**< bit 4: supports LLRP */
   ARTNET_STATUS3_PORT_DIRECTION = 0x08,  /**< bit 3: supports port direction switching */
+  ARTNET_STATUS3_RDMNET         = 0x04,  /**< bit 2: supports RDMnet */
+  ARTNET_STATUS3_BACKGROUND_QUEUE = 0x02, /**< bit 1: BackgroundQueue is supported */
+  ARTNET_STATUS3_BG_DISCOVERY_CTRL = 0x01, /**< bit 0: background discovery can be disabled by ArtAddress */
 } artnet_status3_t;
 
 /*
@@ -251,6 +254,8 @@ typedef enum {
   ARTNET_GOODB_RDM_DISABLED    = 0x80,  /**< bit 7: RDM is disabled */
   ARTNET_GOODB_STYLE_CONSTANT  = 0x40,  /**< bit 6: output style is constant */
   ARTNET_GOODB_STYLE_DELTA     = 0x00,  /**< bit 6 clr: output style is delta */
+  ARTNET_GOODB_DISCOVERY_IDLE  = 0x20,  /**< bit 5: discovery is currently not running */
+  ARTNET_GOODB_BG_DISCOVERY_DISABLED = 0x10, /**< bit 4: background discovery is disabled */
 } artnet_good_output_b_t;
 
 /*
@@ -388,6 +393,10 @@ typedef struct artnet_node_entry_s {
   uint8_t goodOutputB[ARTNET_MAX_PORTS]; /**< GoodOutputB status (Art-Net 4) */
   uint8_t status3;                      /**< Status3 register (Art-Net 4) */
   uint8_t defaultRespUid[ARTNET_RDM_UID_WIDTH]; /**< Default responder UID (Art-Net 4) */
+  uint8_t userHi;                       /**< User specific data high byte (Art-Net 4) */
+  uint8_t userLo;                       /**< User specific data low byte (Art-Net 4) */
+  uint16_t refreshRate;                 /**< Max DMX refresh rate in Hz (Art-Net 4) */
+  uint8_t bgQueuePolicy;                /**< BackgroundQueuePolicy (Art-Net 4) */
 } artnet_node_entry_t;
 
 /** A pointer to an artnet_node_entry_t */

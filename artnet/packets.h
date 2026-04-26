@@ -119,6 +119,8 @@ struct	artnet_poll_s {
   uint8_t  targetPortAddressTopLo;
   uint8_t  targetPortAddressBottomHi;
   uint8_t  targetPortAddressBottomLo;
+  uint8_t  estaMan[2];  // ESTA manufacturer code (Art-Net 4)
+  uint8_t  oem[2];      // OEM code (Art-Net 4)
 } PACKED;
 
 typedef struct artnet_poll_s artnet_poll_t;
@@ -152,6 +154,7 @@ struct artnet_reply_s {
   uint8_t  swRemote;
   uint8_t  sp1;
   uint8_t  sp2;
+  uint8_t  sp3;          // third spare byte (spec requires 3 spares)
   uint8_t  style;
   uint8_t  mac[ARTNET_MAC_SIZE];
   uint8_t  bindIp[ARTNET_IP_SIZE];
@@ -160,7 +163,12 @@ struct artnet_reply_s {
   uint8_t  goodOutputB[ARTNET_MAX_PORTS];
   uint8_t  status3;
   uint8_t  defaultRespUid[ARTNET_RDM_UID_WIDTH];
-  uint8_t  filler[15];
+  uint8_t  userHi;              // user specific data (Art-Net 4)
+  uint8_t  userLo;              // user specific data (Art-Net 4)
+  uint8_t  refreshRateHi;       // max DMX refresh rate in Hz, high byte (Art-Net 4)
+  uint8_t  refreshRateLo;       // max DMX refresh rate in Hz, low byte (Art-Net 4)
+  uint8_t  bgQueuePolicy;       // BackgroundQueuePolicy (Art-Net 4)
+  uint8_t  filler[10];
 } PACKED;
 
 typedef struct artnet_reply_s artnet_reply_t;

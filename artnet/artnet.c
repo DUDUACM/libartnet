@@ -1995,6 +1995,10 @@ void copy_apr_to_node_entry(artnet_node_entry e, artnet_reply_t *reply) {
   memcpy(&e->goodOutputB, &reply->goodOutputB, ARTNET_MAX_PORTS);
   e->status3 = reply->status3;
   memcpy(&e->defaultRespUid, &reply->defaultRespUid, ARTNET_RDM_UID_WIDTH);
+  e->userHi = reply->userHi;
+  e->userLo = reply->userLo;
+  e->refreshRate = bytes_to_short(reply->refreshRateHi, reply->refreshRateLo);
+  e->bgQueuePolicy = reply->bgQueuePolicy;
 }
 
 /*

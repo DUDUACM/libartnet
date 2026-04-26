@@ -55,6 +55,12 @@ int artnet_tx_poll(node n, const char *ip, artnet_ttm_value_t ttm) {
     p.data.ap.flags = (artnet_poll_flags_t)~ttm;
     p.data.ap.diagPriority = ARTNET_DIAG_LOW;
 
+    // Art-Net 4: ESTA manufacturer and OEM code
+    p.data.ap.estaMan[0] = n->state.esta_hi;
+    p.data.ap.estaMan[1] = n->state.esta_lo;
+    p.data.ap.oem[0] = n->state.oem_hi;
+    p.data.ap.oem[1] = n->state.oem_lo;
+
     p.length = sizeof(artnet_poll_t);
     return artnet_net_send(n, &p);
 
@@ -851,6 +857,7 @@ int artnet_tx_build_art_poll_reply(node n) {
   // spares
   ar->sp1 = 0;
   ar->sp2 = 0;
+  ar->sp3 = 0;
 
   // style: product type (StNode, StController, etc.)
   ar->style = n->state.style_code;
@@ -886,6 +893,13 @@ int artnet_tx_build_art_poll_reply(node n) {
 
   // DefaultRespUID: RDMnet & LLRP default responder UID
   memcpy(&ar->defaultRespUid, n->state.default_resp_uid, ARTNET_RDM_UID_WIDTH);
+
+  // Art-Net 4: user data and refresh rate
+  ar->userHi = 0;
+  ar->userLo = 0;
+  ar->refreshRateHi = 0;
+  ar->refreshRateLo = 0;  // 0 = max DMX512 rate (44Hz)
+  ar->bgQueuePolicy = 0;  // collect using STATUS_NONE
 
   return ARTNET_EOK;
 }
