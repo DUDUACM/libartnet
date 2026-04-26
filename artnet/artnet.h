@@ -152,7 +152,8 @@ typedef enum  {
   ARTNET_PORT_AVAB = 0x02,  /**< Data is Avab */
   ARTNET_PORT_CMX = 0x03,    /**< Data is Colortran CMX */
   ARTNET_PORT_ADB = 0x04,    /**< Data is ABD 62.5 */
-  ARTNET_PORT_ARTNET = 0x05  /**< Data is ArtNet */
+  ARTNET_PORT_ARTNET = 0x05,  /**< Data is ArtNet */
+  ARTNET_PORT_DALI = 0x06     /**< Data is DALI */
 } artnet_port_data_code;
 
 
@@ -402,6 +403,7 @@ typedef enum {
   ARTNET_FIRMWARE_REPLY_HANDLER,  /**< Called on reciept of an ArtFirmwareReply packet */
   ARTNET_SYNC_HANDLER,            /**< Called on reciept of an ArtSync packet */
   ARTNET_NZS_HANDLER,             /**< Called on reciept of an ArtNzs packet */
+  ARTNET_DIAGDATA_HANDLER,        /**< Called on reciept of an ArtDiagData packet */
   ARTNET_COMMAND_HANDLER,         /**< Called on reciept of an ArtCommand packet */
   ARTNET_TIMECODE_HANDLER,        /**< Called on reciept of an ArtTimeCode packet */
   ARTNET_TIMESYNC_HANDLER,        /**< Called on reciept of an ArtTimeSync packet */
@@ -594,6 +596,20 @@ EXTERN int artnet_send_trigger(artnet_node vn, uint8_t oem_hi, uint8_t oem_lo,
 // data request/reply functions
 EXTERN int artnet_send_data_reply(artnet_node vn, const char *ip,
   uint16_t request_code, const char *payload, int16_t length);
+
+// directory functions
+EXTERN int artnet_send_directory(artnet_node vn);
+EXTERN int artnet_send_directory_reply(artnet_node vn,
+  const uint8_t *entries, int entry_count, int entry_total);
+
+// file transfer functions
+EXTERN int artnet_send_file_tn_master(artnet_node vn,
+  artnet_node_entry e, uint8_t type, uint8_t blockId,
+  uint32_t totalLength, const uint16_t *data, int dataLen);
+EXTERN int artnet_send_file_fn_master(artnet_node vn,
+  artnet_node_entry e, const char *filename);
+EXTERN int artnet_send_file_fn_reply(artnet_node vn,
+  uint8_t blockId, uint16_t totalLength, uint8_t *data, int dataLen);
 
 // diagnostic functions
 EXTERN int artnet_send_diagnostic(artnet_node vn,

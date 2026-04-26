@@ -319,7 +319,7 @@ typedef struct artnet_address_s artnet_address_t;
 
 // ---------------------------------------------------------------------------
 // ArtDmx (OpCode 0x5000)
-// Carries DMX512 data with zero start code. Broadcast or unicast.
+// Carries DMX512 data with zero start code. Unicast only (Art-Net 4).
 // ---------------------------------------------------------------------------
 struct artnet_dmx_s {
   uint8_t  id[8];                           // ID: "Art-Net" + 0x00
@@ -564,7 +564,7 @@ typedef struct artnet_sync_s artnet_sync_t;
 
 // ---------------------------------------------------------------------------
 // ArtNzs (OpCode 0x5100)
-// Carries DMX512 data with non-zero start code (excl. RDM). Broadcast or unicast.
+// Carries DMX512 data with non-zero start code (excl. RDM). Unicast only (Art-Net 4).
 // ---------------------------------------------------------------------------
 struct artnet_nzs_s {
   uint8_t  id[8];                           // ID: "Art-Net" + 0x00

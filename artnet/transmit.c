@@ -87,7 +87,7 @@ int artnet_tx_poll_reply(node n, int response) {
   }
 
   printf("[ArtPollReply] to=%s, ip=%s, shortName=%s, status=0x%02X, status2=0x%02X, "
-         "net=%d, sub=%d, mac=%02X:%02X:%02X:%02X:%02X:%02X, ports=",
+         "net=%d, sub=%d, mac=%02X:%02X:%02X:%02X:%02X:%02X",
          inet_ntoa(n->state.reply_addr),
          inet_ntoa(n->state.ip_addr),
          n->state.shortName,
@@ -98,9 +98,15 @@ int artnet_tx_poll_reply(node n, int response) {
          n->state.hw_addr[0], n->state.hw_addr[1], n->state.hw_addr[2],
          n->state.hw_addr[3], n->state.hw_addr[4], n->state.hw_addr[5]);
   for (i = 0; i < ARTNET_MAX_PORTS; i++) {
+    if (n->ports.in[i].port_enabled) {
+      uint16_t addr = n->ports.in[i].port_addr;
+      printf(", in%d=0x%04X", i, addr);
+    }
+  }
+  for (i = 0; i < ARTNET_MAX_PORTS; i++) {
     if (n->ports.out[i].port_enabled) {
       uint16_t addr = n->ports.out[i].port_addr;
-      printf("%d:0x%04X ", i, addr);
+      printf(", out%d=0x%04X", i, addr);
     }
   }
   printf("\n");
@@ -759,6 +765,30 @@ int artnet_tx_trigger(node n, uint8_t oem_hi, uint8_t oem_lo,
 
 
 /*
+ * Send an ArtDirectory request packet (broadcast)
+ */
+int artnet_tx_directory(node n) {
+  artnet_packet_t p = {0};
+
+  if (n->state.mode != ARTNET_ON) {
+    return ARTNET_EACTION;
+  }
+
+  memset(&p, 0x00, sizeof(p));
+  p.to.s_addr = n->state.bcast_addr.s_addr;
+  p.type = ARTNET_DIRECTORY;
+  p.length = sizeof(artnet_directory_t);
+
+  memcpy(&p.data.dir.id, ARTNET_STRING, ARTNET_STRING_SIZE);
+  p.data.dir.opCode = htols(ARTNET_DIRECTORY);
+  p.data.dir.verH = 0;
+  p.data.dir.ver = ARTNET_VERSION;
+
+  return artnet_net_send(n, &p);
+}
+
+
+/*
  * Send an ArtDirectoryReply packet (empty directory)
  */
 int artnet_tx_directory_reply(node n) {
@@ -827,6 +857,87 @@ int artnet_tx_ipprog_reply(node n) {
 /*
  * Send an ArtFileFnReply packet
  */
+/*
+ * Send an ArtFileTnMaster packet (upload file block to node). Unicast.
+ */
+int artnet_tx_file_tn_master(node n, in_addr_t ip, uint8_t type,
+                              uint8_t blockId, uint32_t totalLength,
+                              const uint16_t *data, int dataLen) {
+  artnet_packet_t p = {0};
+  int len = 0;
+
+  if (n->state.mode != ARTNET_ON) {
+    return ARTNET_EACTION;
+  }
+
+  len = min(dataLen, ARTNET_FIRMWARE_SIZE);
+  len = max(len, 0);
+
+  memset(&p, 0x00, sizeof(p));
+  p.to.s_addr = ip;
+  p.type = ARTNET_FILETNMASTER;
+
+  memcpy(&p.data.filetn.id, ARTNET_STRING, ARTNET_STRING_SIZE);
+  p.data.filetn.opCode = htols(ARTNET_FILETNMASTER);
+  p.data.filetn.verH = 0;
+  p.data.filetn.ver = ARTNET_VERSION;
+  p.data.filetn.type = type;
+  p.data.filetn.blockId = blockId;
+
+  // total file length in big-endian
+  p.data.filetn.length[0] = (totalLength >> 24) & 0xFF;
+  p.data.filetn.length[1] = (totalLength >> 16) & 0xFF;
+  p.data.filetn.length[2] = (totalLength >> 8) & 0xFF;
+  p.data.filetn.length[3] = totalLength & 0xFF;
+
+  if (len > 0 && data) {
+    memcpy(&p.data.filetn.data, data, len * sizeof(uint16_t));
+  }
+
+  p.length = sizeof(artnet_file_tn_master_t) - ARTNET_FIRMWARE_SIZE * sizeof(uint16_t) + len * sizeof(uint16_t);
+
+  return artnet_net_send(n, &p);
+}
+
+
+/*
+ * Send an ArtFileFnMaster packet (request file download from node). Unicast.
+ */
+int artnet_tx_file_fn_master(node n, in_addr_t ip, const char *filename) {
+  artnet_packet_t p = {0};
+  size_t flen;
+
+  if (n->state.mode != ARTNET_ON) {
+    return ARTNET_EACTION;
+  }
+
+  if (!filename || filename[0] == '\0') {
+    return ARTNET_EARG;
+  }
+
+  flen = strlen(filename);
+  if (flen > 255) flen = 255;
+
+  memset(&p, 0x00, sizeof(p));
+  p.to.s_addr = ip;
+  p.type = ARTNET_FILEFNMASTER;
+
+  memcpy(&p.data.filefn.id, ARTNET_STRING, ARTNET_STRING_SIZE);
+  p.data.filefn.opCode = htols(ARTNET_FILEFNMASTER);
+  p.data.filefn.verH = 0;
+  p.data.filefn.ver = ARTNET_VERSION;
+
+  p.data.filefn.lengthHi = short_get_high_byte((uint16_t)flen);
+  p.data.filefn.lengthLo = short_get_low_byte((uint16_t)flen);
+  memcpy(&p.data.filefn.filename, filename, flen);
+  p.data.filefn.filename[flen] = 0x00;
+
+  p.length = sizeof(artnet_file_fn_master_t);
+
+  return artnet_net_send(n, &p);
+}
+
+
 int artnet_tx_file_fn_reply(node n, uint8_t blockId, uint16_t totalLength,
                             uint8_t *data, int dataLen) {
   artnet_packet_t p = {0};

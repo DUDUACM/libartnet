@@ -263,6 +263,7 @@ typedef struct {
   callback_t firmware_reply;
   callback_t sync;
   callback_t nzs;
+  callback_t diagdata;
   callback_t command;
   callback_t timecode;
   callback_t timesync;
@@ -572,7 +573,12 @@ int artnet_tx_data_reply(node n, const char *ip, uint16_t request_code,
                          const char *payload, int16_t length);
 int artnet_tx_ipprog_reply(node n);
 int artnet_tx_sync(node n);
+int artnet_tx_directory(node n);
 int artnet_tx_directory_reply(node n);
+int artnet_tx_file_tn_master(node n, in_addr_t ip, uint8_t type,
+                             uint8_t blockId, uint32_t totalLength,
+                             const uint16_t *data, int dataLen);
+int artnet_tx_file_fn_master(node n, in_addr_t ip, const char *filename);
 int artnet_tx_file_fn_reply(node n, uint8_t blockId, uint16_t totalLength,
                             uint8_t *data, int dataLen);
 

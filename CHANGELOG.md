@@ -2,6 +2,56 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.1.4] - 2026-04-26
+
+### Added
+- `artnet_send_directory()` for broadcasting ArtDirectory requests
+- `artnet_send_directory_reply()` for sending ArtDirectoryReply with file entries
+- `artnet_send_file_tn_master()` for uploading file blocks to nodes (ArtFileTnMaster)
+- `artnet_send_file_fn_master()` for requesting file downloads from nodes (ArtFileFnMaster)
+- `artnet_send_file_fn_reply()` for responding with file data blocks (ArtFileFnReply)
+- 12 example programs covering all 30 Art-Net 4 packet types:
+  - `dmx_tx`: DMX transmitter with ArtSync, ArtNzs (`-z`), and raw 15-bit addressing (`-r`)
+  - `dmx_rx`: DMX receiver with ArtSync handler
+  - `timecode_tx` / `timecode_rx`: SMPTE/EBU timecode send/receive
+  - `target_node`: remotely manageable DMX node (ArtAddress, ArtInput)
+  - `node_manager`: interactive remote management (names, addresses, ports, LED, failsafe, trigger, IP)
+  - `rdm_controller`: RDM discovery (ArtTodRequest), TOD control (ArtTodControl), RDM commands
+  - `timesync_tx`: ArtTimeSync with system clock
+  - `diag_monitor`: passive monitor for DiagData, TimeSync, Trigger, Command
+  - `file_transfer`: file upload/download via ArtFileTnMaster/ArtFileFnMaster
+  - `directory_query`: ArtDirectory query with ArtDirectoryReply display
+
+### Fixed
+- ArtPollReply debug print now shows both input and output ports (was output only)
+- Port direction convention documented: OUTPUT port = receive DMX from network per Art-Net spec
+
+### Changed
+- Simplified all examples to 4 universes (single node) instead of 8 universes (2 joined nodes)
+- All DMX examples include ArtSync support
+- Removed `dmx_srv_controller_tx_rx` example (superseded by dmx_tx, dmx_rx, node_manager)
+- Updated README.md with detailed per-example descriptions, options, and usage workflows
+
+## [1.1.3] - 2026-04-26
+
+### Added
+- DALI port data type (`ARTNET_PORT_DALI = 0x06`) per Art-Net 4 spec
+- `ARTNET_DIAGDATA_HANDLER` callback for ArtDiagData packets
+- Dedicated handle functions for all packet types in receive.c:
+  `handle_rdm_sub`, `handle_diagdata`, `handle_data_request`,
+  `handle_data_reply`, `handle_media`, `handle_media_control_reply`
+
+### Fixed
+- ArtDmx and ArtNzs packet comments corrected to "Unicast only" per Art-Net 4 spec
+- ArtMedia (0x9000) receive now routes through `handle_media()` callback
+- ArtMediaControlReply (0x9300) receive now routes through `handle_media_control_reply()`
+- ArtRdmSub (0x8400) receive now routes through `handle_rdm_sub()`
+- ArtDiagData (0x2300) receive now routes through `handle_diagdata()`
+- ArtDataRequest (0x2700) receive now routes through `handle_data_request()`
+- ArtDataReply (0x2800) receive now routes through `handle_data_reply()`
+- README.md: corrected multiple wrong opcode values in Supported Packet Types table
+- README.md: added missing packet types (ArtRdmSub, ArtMedia, ArtMediaControlReply)
+
 ## [1.1.2] - 2026-04-25
 
 ### Added

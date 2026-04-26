@@ -78,28 +78,22 @@ target_link_libraries(your_target PRIVATE libartnet::artnet)
 
 ## Examples
 
-Two example programs are included:
+Twelve example programs are included:
 
-### DMX Node (`dmx_srv_node_rx`)
+### DMX Transmitter (`dmx_tx`)
 
-Art-Net node that receives and transmits DMX on 8 universes (2 joined nodes):
-
-```bash
-./build/examples/dmx_srv_node_rx/dmx_srv_node_rx
-./build/examples/dmx_srv_node_rx/dmx_srv_node_rx -i 192.168.1.10 -n 0 -s 0 -u 0
-./build/examples/dmx_srv_node_rx/dmx_srv_node_rx --no-chase  # receive only
-```
-
-### DMX Controller (`dmx_srv_controller_tx_rx`)
-
-Art-Net controller that discovers nodes, receives DMX, and sends a sine wave chase:
+Sends a sine wave chase on 4 universes (single node, 40 FPS) with ArtSync. Supports standard DMX (ArtDmx), non-zero start code (ArtNzs), and raw 15-bit universe addressing.
 
 ```bash
-./build/examples/dmx_srv_controller_tx_rx/dmx_srv_controller_tx_rx
-./build/examples/dmx_srv_controller_tx_rx/dmx_srv_controller_tx_rx -i 192.168.1.100 --no-chase
-```
+# Standard DMX on universes 0-3
+./build/examples/dmx_tx/dmx_tx
 
-### Common Options
+# ArtNzs with start code 0xCF
+./build/examples/dmx_tx/dmx_tx -z 0xCF
+
+# Raw 15-bit universe addressing (net=1, subnet=2, universe=3)
+./build/examples/dmx_tx/dmx_tx -n 1 -s 2 -u 3 -r
+```
 
 | Option | Description |
 |--------|-------------|
@@ -108,7 +102,234 @@ Art-Net controller that discovers nodes, receives DMX, and sends a sine wave cha
 | `-s <subnet>` | Subnet address 0-15 (default: 0) |
 | `-u <universe>` | Starting port address 0-15 (default: 0) |
 | `-c <channels>` | DMX channels per universe 1-512 (default: 512) |
-| `--no-chase` | Disable DMX transmit, only receive |
+| `-z <code>` | Non-zero start code for ArtNzs (default: 0 = ArtDmx) |
+| `-r` | Use raw 15-bit universe addressing |
+
+### DMX Receiver (`dmx_rx`)
+
+Receives DMX on 4 universes and prints first/last channel values. Registers an ArtSync handler that prints `[Sync] frame complete` when a full frame is received.
+
+```bash
+# Start receiver (must match transmitter's net/subnet/universe)
+./build/examples/dmx_rx/dmx_rx
+
+# Bind to specific IP, start at universe 1
+./build/examples/dmx_rx/dmx_rx -i 192.168.1.11 -n 0 -s 0 -u 1
+```
+
+| Option | Description |
+|--------|-------------|
+| `-i <ip>` | IP address to bind (default: auto-detect) |
+| `-n <net>` | Net address 0-127 (default: 0) |
+| `-s <subnet>` | Subnet address 0-15 (default: 0) |
+| `-u <universe>` | Starting port address 0-15 (default: 0) |
+
+### Target Node (`target_node`)
+
+A DMX receiver node that supports remote management via ArtAddress and ArtInput. When a controller remotely changes its configuration (name, address, port), it prints the updated configuration via the program handler callback.
+
+```bash
+# Start target node on a specific IP
+./build/examples/target_node/target_node -i 192.168.1.20
+
+# Start with custom address
+./build/examples/target_node/target_node -i 192.168.1.20 -n 1 -s 2 -u 3
+```
+
+| Option | Description |
+|--------|-------------|
+| `-i <ip>` | IP address to bind (default: auto-detect) |
+| `-n <net>` | Net address 0-127 (default: 0) |
+| `-s <subnet>` | Subnet address 0-15 (default: 0) |
+| `-u <universe>` | Starting port address 0-15 (default: 0) |
+
+### Node Manager (`node_manager`)
+
+Interactive controller for remote node management. Discovers nodes via ArtPoll and provides a command-line menu to change names, addresses, port states, LED indicators, and failsafe modes.
+
+```bash
+# Start manager
+./build/examples/node_manager/node_manager -i 192.168.1.100
+```
+
+| Option | Description |
+|--------|-------------|
+| `-i <ip>` | IP address to bind (default: auto-detect) |
+
+Interactive commands:
+
+| Key | Action |
+|-----|--------|
+| `p` | Send ArtPoll to discover nodes |
+| `l` | List discovered nodes (IP, name, address, ports) |
+| `1` | Change node short name (ArtAddress) |
+| `2` | Change node long name (ArtAddress) |
+| `3` | Change node net address 0-127 (ArtAddress) |
+| `4` | Change node subnet address 0-15 (ArtAddress) |
+| `5` | Change a specific port's universe 0-15 (ArtAddress) |
+| `6` | Enable a port (ArtInput) |
+| `7` | Disable a port (ArtInput) |
+| `8` | LED Locate — rapid flash for identification |
+| `9` | LED Mute — turn off LEDs |
+| `0` | LED Normal — restore normal LED behavior |
+| `f` | Failsafe: Hold last state on data loss |
+| `g` | Failsafe: Zero all outputs on data loss |
+| `h` | Failsafe: Full output on data loss |
+| `j` | Failsafe: Play recorded scene on data loss |
+| `q` | Quit |
+
+Example workflow:
+```
+# Terminal 1: start a target node
+./build/examples/target_node/target_node -i 192.168.1.20
+
+# Terminal 2: start manager, discover and reconfigure
+./build/examples/node_manager/node_manager -i 192.168.1.100
+> p                    # discover nodes
+> l                    # list found nodes
+> 1                    # change short name -> select node -> enter name
+> 3                    # change net -> select node -> enter new net value
+> 8                    # LED locate -> select node -> node flashes LEDs
+```
+
+### TimeCode Transmitter (`timecode_tx`)
+
+Sends SMPTE/EBU timecode frames at the selected frame rate (Film 24fps, EBU 25fps, DF 29.97fps, SMPTE 30fps). Timecode auto-increments from 00:00:00:00.
+
+```bash
+# Send EBU 25fps timecode (default)
+./build/examples/timecode_tx/timecode_tx
+
+# Send SMPTE 30fps on a specific IP
+./build/examples/timecode_tx/timecode_tx -i 192.168.1.10 -t 3
+
+# Send Film 24fps with custom stream ID
+./build/examples/timecode_tx/timecode_tx -t 0 -s 1
+```
+
+| Option | Description |
+|--------|-------------|
+| `-i <ip>` | IP address to bind (default: auto-detect) |
+| `-t <type>` | TimeCode type: 0=Film(24fps), 1=EBU(25fps), 2=DF(29.97fps), 3=SMPTE(30fps) |
+| `-s <stream>` | Stream ID 0-255 (default: 0 = master) |
+
+### TimeCode Receiver (`timecode_rx`)
+
+Listens for ArtTimeCode packets and prints the received timecode (HH:MM:SS:FF), type, and stream ID.
+
+```bash
+# Start receiver
+./build/examples/timecode_rx/timecode_rx
+
+# Bind to specific IP
+./build/examples/timecode_rx/timecode_rx -i 192.168.1.11
+```
+
+| Option | Description |
+|--------|-------------|
+| `-i <ip>` | IP address to bind (default: auto-detect) |
+
+### RDM Controller (`rdm_controller`)
+
+Interactive RDM controller that discovers RDM devices via ArtTodRequest, displays the Table of Devices (TOD), flushes TOD, and sends raw RDM commands. Prints TOD data and RDM responses as they arrive.
+
+```bash
+./build/examples/rdm_controller/rdm_controller -i 192.168.1.100
+```
+
+| Option | Description |
+|--------|-------------|
+| `-i <ip>` | IP address to bind (default: auto-detect) |
+
+Interactive commands:
+
+| Key | Action |
+|-----|--------|
+| `p` | Send ArtPoll to discover nodes |
+| `t` | Send ArtTodRequest to discover RDM devices |
+| `f` | Flush TOD on all nodes (ArtTodControl) |
+| `r` | Send raw RDM command to a device |
+| `q` | Quit |
+
+### TimeSync Transmitter (`timesync_tx`)
+
+Sends ArtTimeSync packets with the current system date/time at a configurable interval. Useful for synchronizing clocks across Art-Net nodes.
+
+```bash
+# Send every 1 second (default)
+./build/examples/timesync_tx/timesync_tx
+
+# Send every 5 seconds
+./build/examples/timesync_tx/timesync_tx -i 192.168.1.10 -r 5000
+```
+
+| Option | Description |
+|--------|-------------|
+| `-i <ip>` | IP address to bind (default: auto-detect) |
+| `-r <ms>` | Send interval in milliseconds (default: 1000, range: 100-60000) |
+
+### Diagnostic Monitor (`diag_monitor`)
+
+Listens for and prints ArtDiagData, ArtTimeSync, ArtTrigger, and ArtCommand packets. A passive network monitor useful for debugging and observing Art-Net traffic.
+
+```bash
+./build/examples/diag_monitor/diag_monitor -i 192.168.1.11
+```
+
+| Option | Description |
+|--------|-------------|
+| `-i <ip>` | IP address to bind (default: auto-detect) |
+
+Output format:
+
+| Prefix | Packet Type | Information Displayed |
+|--------|-------------|-----------------------|
+| `[Diag]` | ArtDiagData | Priority, port, message text |
+| `[TimeSync]` | ArtTimeSync | Date and time (YYYY-MM-DD HH:MM:SS) |
+| `[Trigger]` | ArtTrigger | OEM code, key type, sub-key |
+| `[Command]` | ArtCommand | ESTA manufacturer code, text |
+
+### File Transfer (`file_transfer`)
+
+Interactive controller for uploading and downloading files to/from Art-Net nodes via ArtFileTnMaster and ArtFileFnMaster. Displays ArtFileFnReply data blocks as they arrive.
+
+```bash
+./build/examples/file_transfer/file_transfer -i 192.168.1.100
+```
+
+| Option | Description |
+|--------|-------------|
+| `-i <ip>` | IP address to bind (default: auto-detect) |
+
+Interactive commands:
+
+| Key | Action |
+|-----|--------|
+| `p` | Send ArtPoll to discover nodes |
+| `l` | List discovered nodes |
+| `u` | Upload file data block to a node (ArtFileTnMaster) |
+| `d` | Download file from a node (ArtFileFnMaster) |
+| `q` | Quit |
+
+### Directory Query (`directory_query`)
+
+Interactive controller that sends ArtDirectory to query node file lists and displays ArtDirectoryReply responses.
+
+```bash
+./build/examples/directory_query/directory_query -i 192.168.1.100
+```
+
+| Option | Description |
+|--------|-------------|
+| `-i <ip>` | IP address to bind (default: auto-detect) |
+
+Interactive commands:
+
+| Key | Action |
+|-----|--------|
+| `p` | Send ArtPoll to discover nodes |
+| `d` | Send ArtDirectory to query file lists |
+| `q` | Quit |
 
 ## Supported Packet Types
 
@@ -116,33 +337,36 @@ Art-Net controller that discovers nodes, receives DMX, and sends a sine wave cha
 |--------|--------|-----------|-------------|
 | ArtPoll | 0x2000 | TX/RX | Discover nodes on the network |
 | ArtPollReply | 0x2100 | TX/RX | Node identification response |
+| ArtDiagData | 0x2300 | TX/RX | Diagnostic text messages |
+| ArtCommand | 0x2400 | TX/RX | String command |
+| ArtDataRequest | 0x2700 | TX/RX | Manufacturer data request |
+| ArtDataReply | 0x2800 | TX/RX | Manufacturer data reply |
 | ArtDmx | 0x5000 | TX/RX | DMX512 data transfer |
 | ArtNzs | 0x5100 | TX/RX | Non-zero start code DMX |
 | ArtSync | 0x5200 | TX/RX | Synchronize DMX output |
-| ArtAddress | 0x6000 | TX | Remote programming |
-| ArtInput | 0x7000 | TX | Remote port configuration |
+| ArtAddress | 0x6000 | TX/RX | Remote programming |
+| ArtInput | 0x7000 | TX/RX | Remote port configuration |
 | ArtTodRequest | 0x8000 | TX/RX | Request Table of Devices |
 | ArtTodData | 0x8100 | TX/RX | Transfer Table of Devices |
-| ArtTodControl | 0x8200 | RX | RDM discovery control |
+| ArtTodControl | 0x8200 | TX/RX | RDM discovery control |
 | ArtRdm | 0x8300 | TX/RX | RDM sub-device communication |
-| ArtFirmwareMaster | 0x9000 | TX | Firmware upload |
-| ArtFirmwareReply | 0x9100 | TX/RX | Firmware upload response |
+| ArtRdmSub | 0x8400 | TX/RX | Compressed RDM sub-device data |
+| ArtMedia | 0x9000 | RX | Media server data |
+| ArtMediaPatch | 0x9100 | TX/RX | Media patch control |
+| ArtMediaControl | 0x9200 | TX/RX | Media playback control |
+| ArtMediaControlReply | 0x9300 | RX | Media control response |
 | ArtTimeCode | 0x9700 | TX/RX | Time code distribution |
-| ArtTimeSync | 0x9800 | TX | Time synchronization |
-| ArtTrigger | 0x9900 | TX | Trigger macros/show keys |
-| ArtCommand | 0x9400 | RX | String command |
-| ArtDiagData | 0x2300 | TX | Diagnostic text messages |
+| ArtTimeSync | 0x9800 | TX/RX | Time synchronization |
+| ArtTrigger | 0x9900 | TX/RX | Trigger macros/show keys |
+| ArtDirectory | 0x9A00 | TX/RX | Directory request |
+| ArtDirectoryReply | 0x9B00 | TX/RX | Directory response |
+| ArtFirmwareMaster | 0xF200 | TX/RX | Firmware upload |
+| ArtFirmwareReply | 0xF300 | TX/RX | Firmware upload response |
+| ArtFileTnMaster | 0xF400 | TX/RX | File upload to node |
+| ArtFileFnMaster | 0xF500 | TX/RX | File download from node |
+| ArtFileFnReply | 0xF600 | TX/RX | File download response |
 | ArtIpProg | 0xF800 | TX/RX | IP programming |
-| ArtIpProgReply | 0xF810 | TX | IP programming response |
-| ArtDirectory | 0x9A00 | RX | Directory request |
-| ArtDirectoryReply | 0x9B00 | TX | Directory response |
-| ArtFileTnMaster | 0x9C00 | RX | File transfer name |
-| ArtFileFnMaster | 0x9D00 | RX | File transfer function |
-| ArtFileFnReply | 0x9E00 | TX | File transfer response |
-| ArtMediaPatch | 0x9200 | RX | Media patch control |
-| ArtMediaControl | 0x9300 | RX | Media playback control |
-| ArtDataRequest | 0x2700 | RX | Manufacturer data request |
-| ArtDataReply | 0x2800 | TX | Manufacturer data reply |
+| ArtIpProgReply | 0xF900 | TX/RX | IP programming response |
 
 ## API Overview
 
@@ -238,7 +462,7 @@ artnet_set_firmware_handler(node, my_fw_callback, NULL);
 artnet_set_program_handler(node, my_prog_callback, NULL);
 ```
 
-All 28 handler types are available via `artnet_set_handler()`: `ARTNET_RECV_HANDLER`, `ARTNET_POLL_HANDLER`, `ARTNET_REPLY_HANDLER`, `ARTNET_SYNC_HANDLER`, `ARTNET_TIMECODE_HANDLER`, `ARTNET_TRIGGER_HANDLER`, `ARTNET_DATAREQUEST_HANDLER`, `ARTNET_DATAREPLY_HANDLER`, and more. See `artnet.h` for the complete list.
+All 30 handler types are available via `artnet_set_handler()`: `ARTNET_RECV_HANDLER`, `ARTNET_POLL_HANDLER`, `ARTNET_REPLY_HANDLER`, `ARTNET_SYNC_HANDLER`, `ARTNET_TIMECODE_HANDLER`, `ARTNET_TRIGGER_HANDLER`, `ARTNET_DIAGDATA_HANDLER`, `ARTNET_DATAREQUEST_HANDLER`, `ARTNET_DATAREPLY_HANDLER`, and more. See `artnet.h` for the complete list.
 
 ## License
 

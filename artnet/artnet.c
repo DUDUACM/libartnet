@@ -469,6 +469,9 @@ int artnet_set_handler(artnet_node vn,
     case ARTNET_NZS_HANDLER:
       callback = &n->callbacks.nzs;
       break;
+    case ARTNET_DIAGDATA_HANDLER:
+      callback = &n->callbacks.diagdata;
+      break;
     case ARTNET_COMMAND_HANDLER:
       callback = &n->callbacks.command;
       break;
@@ -1182,6 +1185,118 @@ int artnet_send_data_reply(artnet_node vn, const char *ip,
   check_nullnode(vn);
 
   return artnet_tx_data_reply(n, ip, request_code, payload, length);
+}
+
+
+/*
+ * Send an ArtDirectory request (broadcast) to discover node file lists.
+ */
+int artnet_send_directory(artnet_node vn) {
+  node n = (node) vn;
+  check_nullnode(vn);
+
+  return artnet_tx_directory(n);
+}
+
+
+/*
+ * Send an ArtDirectoryReply with directory entries.
+ */
+int artnet_send_directory_reply(artnet_node vn,
+                                const uint8_t *entries,
+                                int entry_count,
+                                int entry_total) {
+  node n = (node) vn;
+  artnet_packet_t p = {0};
+  int len;
+
+  check_nullnode(vn);
+
+  if (n->state.mode != ARTNET_ON) {
+    return ARTNET_EACTION;
+  }
+
+  len = entry_count > 2048 ? 2048 : entry_count;
+
+  memset(&p, 0x00, sizeof(p));
+  p.to = n->state.reply_addr;
+  p.type = ARTNET_DIRECTORYREPLY;
+
+  memcpy(&p.data.dirr.id, ARTNET_STRING, ARTNET_STRING_SIZE);
+  p.data.dirr.opCode = htols(ARTNET_DIRECTORYREPLY);
+  p.data.dirr.verH = 0;
+  p.data.dirr.ver = ARTNET_VERSION;
+
+  p.data.dirr.dirCountHi = short_get_high_byte((uint16_t)len);
+  p.data.dirr.dirCountLo = short_get_low_byte((uint16_t)len);
+  p.data.dirr.dirTotalHi = short_get_high_byte((uint16_t)entry_total);
+  p.data.dirr.dirTotalLo = short_get_low_byte((uint16_t)entry_total);
+
+  if (entries && len > 0) {
+    memcpy(&p.data.dirr.dirEntry, entries, len);
+  }
+
+  p.length = sizeof(artnet_directory_reply_t) - 2048 + len;
+
+  return artnet_net_send(n, &p);
+}
+
+
+/*
+ * Upload a file block to a node via ArtFileTnMaster.
+ */
+int artnet_send_file_tn_master(artnet_node vn,
+                                artnet_node_entry e,
+                                uint8_t type,
+                                uint8_t blockId,
+                                uint32_t totalLength,
+                                const uint16_t *data,
+                                int dataLen) {
+  node n = (node) vn;
+  node_entry_private_t *ent = find_private_entry(n, e);
+
+  check_nullnode(vn);
+
+  if (e == NULL || ent == NULL) {
+    return ARTNET_EARG;
+  }
+
+  return artnet_tx_file_tn_master(n, ent->ip.s_addr, type, blockId,
+                                   totalLength, data, dataLen);
+}
+
+
+/*
+ * Request a file download from a node via ArtFileFnMaster.
+ */
+int artnet_send_file_fn_master(artnet_node vn,
+                                artnet_node_entry e,
+                                const char *filename) {
+  node n = (node) vn;
+  node_entry_private_t *ent = find_private_entry(n, e);
+
+  check_nullnode(vn);
+
+  if (e == NULL || ent == NULL) {
+    return ARTNET_EARG;
+  }
+
+  return artnet_tx_file_fn_master(n, ent->ip.s_addr, filename);
+}
+
+
+/*
+ * Send an ArtFileFnReply (file data block in response to ArtFileFnMaster).
+ */
+int artnet_send_file_fn_reply(artnet_node vn,
+                               uint8_t blockId,
+                               uint16_t totalLength,
+                               uint8_t *data,
+                               int dataLen) {
+  node n = (node) vn;
+  check_nullnode(vn);
+
+  return artnet_tx_file_fn_reply(n, blockId, totalLength, data, dataLen);
 }
 
 

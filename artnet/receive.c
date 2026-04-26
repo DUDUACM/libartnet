@@ -969,6 +969,49 @@ void handle_media_control(node n, artnet_packet p) {
   }
 }
 
+/*
+ * handle ArtRdmSub (compressed RDM sub-device data)
+ */
+void handle_rdm_sub(node n, artnet_packet p) {
+  n->state.rdm_reply_addr = p->from;
+  check_callback(n, p, n->callbacks.rdm);
+}
+
+/*
+ * handle ArtDiagData
+ */
+void handle_diagdata(node n, artnet_packet p) {
+  check_callback(n, p, n->callbacks.diagdata);
+}
+
+/*
+ * handle ArtDataRequest
+ */
+void handle_data_request(node n, artnet_packet p) {
+  check_callback(n, p, n->callbacks.datareq);
+}
+
+/*
+ * handle ArtDataReply
+ */
+void handle_data_reply(node n, artnet_packet p) {
+  check_callback(n, p, n->callbacks.datarep);
+}
+
+/*
+ * handle ArtMedia
+ */
+void handle_media(node n, artnet_packet p) {
+  check_callback(n, p, n->callbacks.media);
+}
+
+/*
+ * handle ArtMediaControlReply
+ */
+void handle_media_control_reply(node n, artnet_packet p) {
+  check_callback(n, p, n->callbacks.mediacontrol);
+}
+
 /**
  * handle a firmware master
  */
@@ -1339,25 +1382,16 @@ int handle(node n, artnet_packet p) {
       handle_rdm(n, p);
       break;
     case ARTNET_RDMSUB:
-      // ArtRdmSub: compressed RDM sub-device data
-      // store requester IP for unicast replies
-      n->state.rdm_reply_addr = p->from;
-      if (check_callback(n, p, n->callbacks.rdm)) {
-        break;
-      }
+      handle_rdm_sub(n, p);
       break;
     case ARTNET_DIAGDATA:
-      // generic recv callback already checked above, no specific handler needed
+      handle_diagdata(n, p);
       break;
     case ARTNET_DATAREQUEST:
-      if (check_callback(n, p, n->callbacks.datareq)) {
-        break;
-      }
+      handle_data_request(n, p);
       break;
     case ARTNET_DATAREPLY:
-      if (check_callback(n, p, n->callbacks.datarep)) {
-        break;
-      }
+      handle_data_reply(n, p);
       break;
     case ARTNET_SYNC:
       handle_sync(n, p);
@@ -1393,9 +1427,7 @@ int handle(node n, artnet_packet p) {
       handle_file_fn_reply(n, p);
       break;
     case ARTNET_MEDIA:
-      if (check_callback(n, p, n->callbacks.media)) {
-        break;
-      }
+      handle_media(n, p);
       break;
     case ARTNET_MEDIAPATCH:
       handle_media_patch(n, p);
@@ -1404,9 +1436,7 @@ int handle(node n, artnet_packet p) {
       handle_media_control(n, p);
       break;
     case ARTNET_MEDIACONTROLREPLY:
-      if (check_callback(n, p, n->callbacks.mediacontrol)) {
-        break;
-      }
+      handle_media_control_reply(n, p);
       break;
     case ARTNET_VIDEOSETUP:
       printf("vid setup\n");

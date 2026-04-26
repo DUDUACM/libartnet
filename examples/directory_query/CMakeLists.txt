@@ -1,0 +1,2 @@
+add_executable(directory_query directory_query.c)
+target_link_libraries(directory_query PRIVATE artnet)
