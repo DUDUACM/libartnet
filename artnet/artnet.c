@@ -1987,6 +1987,7 @@ void copy_apr_to_node_entry(artnet_node_entry e, artnet_reply_t *reply) {
   e->acnPriority = reply->acnPriority;
   e->swMacro = reply->swMacro;
   e->swRemote = reply->swRemote;
+  e->style = reply->style;
   memcpy(&e->mac, &reply->mac, ARTNET_MAC_SIZE);
   memcpy(&e->bindIp, &reply->bindIp, ARTNET_IP_SIZE);
   e->bindIndex = reply->bindIndex;

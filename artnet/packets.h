@@ -152,6 +152,7 @@ struct artnet_reply_s {
   uint8_t  swRemote;
   uint8_t  sp1;
   uint8_t  sp2;
+  uint8_t  style;
   uint8_t  mac[ARTNET_MAC_SIZE];
   uint8_t  bindIp[ARTNET_IP_SIZE];
   uint8_t  bindIndex;

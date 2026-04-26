@@ -380,6 +380,7 @@ typedef struct artnet_node_entry_s {
   uint8_t acnPriority;      /**< sACN priority value (Art-Net 4, was swvideo) */
   uint8_t swMacro;
   uint8_t swRemote;
+  uint8_t style;                        /**< Product style code (StNode, StController, etc.) */
   uint8_t mac[ARTNET_MAC_SIZE];        /**< The MAC address of the node */
   uint8_t bindIp[ARTNET_IP_SIZE];      /**< Bind IP address (Art-Net 4) */
   uint8_t bindIndex;                    /**< BindIndex (Art-Net 4) */

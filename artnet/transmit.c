@@ -112,7 +112,7 @@ int artnet_tx_poll_reply(node n, int response) {
 
   snprintf((char *) &reply.data.ar.nodeReport,
            sizeof(reply.data.ar.nodeReport),
-           "%04x [%04i] libartnet",
+           "#%04x [%04i] libartnet",
            n->state.report_code,
            n->state.ar_count);
 
@@ -851,6 +851,9 @@ int artnet_tx_build_art_poll_reply(node n) {
   // spares
   ar->sp1 = 0;
   ar->sp2 = 0;
+
+  // style: product type (StNode, StController, etc.)
+  ar->style = n->state.style_code;
 
   // hw address
   memcpy(&ar->mac, &n->state.hw_addr, ARTNET_MAC_SIZE);
