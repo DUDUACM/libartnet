@@ -130,9 +130,10 @@ int main(int argc, char *argv[]) {
   print_menu();
 
   while (running) {
+    artnet_read(node, 0);
+
     fd_set fds;
     struct timeval tv = {0, 100000};
-
     FD_ZERO(&fds);
     FD_SET(0, &fds);
 
@@ -191,12 +192,9 @@ int main(int argc, char *argv[]) {
       case '\n':
         break;
       default:
-        print_menu();
-        continue;
+        break;
       }
       if (running) print_menu();
-    } else {
-      artnet_read(node, 0);
     }
   }
 

@@ -15,12 +15,12 @@ All notable changes to this project are documented in this file.
   - `dmx_rx`: DMX receiver with ArtSync handler
   - `timecode_tx` / `timecode_rx`: SMPTE/EBU timecode send/receive
   - `target_node`: remotely manageable DMX node (ArtAddress, ArtInput)
-  - `node_manager`: interactive remote management (names, addresses, ports, LED, failsafe, trigger, IP)
-  - `rdm_controller`: RDM discovery (ArtTodRequest), TOD control (ArtTodControl), RDM commands
-  - `timesync_tx`: ArtTimeSync with system clock
-  - `diag_monitor`: passive monitor for DiagData, TimeSync, Trigger, Command
-  - `file_transfer`: file upload/download via ArtFileTnMaster/ArtFileFnMaster
-  - `directory_query`: ArtDirectory query with ArtDirectoryReply display
+  - `node_manager`: interactive remote management (names, addresses, ports, LED, failsafe, trigger, IP) *(not yet tested)*
+  - `rdm_controller`: RDM discovery (ArtTodRequest), TOD control (ArtTodControl), RDM commands *(not yet tested)*
+  - `timesync_tx`: ArtTimeSync with system clock *(not yet tested)*
+  - `diag_monitor`: passive monitor for DiagData, TimeSync, Trigger, Command *(not yet tested)*
+  - `file_transfer`: file upload/download via ArtFileTnMaster/ArtFileFnMaster *(not yet tested)*
+  - `directory_query`: ArtDirectory query with ArtDirectoryReply display *(not yet tested)*
 
 ### Fixed
 - ArtPollReply debug print now shows both input and output ports (was output only)

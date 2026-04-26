@@ -414,20 +414,18 @@ int main(int argc, char *argv[]) {
 #endif
 
   char cmd[256];
-  while (running) {
-    fd_set fds;
-    struct timeval tv = {0, 100000}; /* 100ms */
+  print_menu();
 
+  while (running) {
+    artnet_read(node, 0);
+
+    fd_set fds;
+    struct timeval tv = {0, 100000};
     FD_ZERO(&fds);
     FD_SET(0, &fds);
-    int maxfd = 0;
 
-    /* non-blocking check for stdin */
-    if (select(maxfd + 1, &fds, NULL, NULL, &tv) > 0 && FD_ISSET(0, &fds)) {
+    if (select(1, &fds, NULL, NULL, &tv) > 0 && FD_ISSET(0, &fds)) {
       if (!fgets(cmd, sizeof(cmd), stdin)) break;
-
-      /* process any pending network packets first */
-      artnet_read(node, 0);
 
       switch (cmd[0]) {
         case 'p': cmd_poll(node); break;
@@ -450,11 +448,9 @@ int main(int argc, char *argv[]) {
         case 'i': cmd_ipprog(node); break;
         case 'q': running = 0; break;
         case '\n': break;
-        default: print_menu(); break;
+        default: break;
       }
       if (running) print_menu();
-    } else {
-      artnet_read(node, 0);
     }
   }
 
