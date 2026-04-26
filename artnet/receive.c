@@ -90,17 +90,40 @@ int handle_poll(node n, artnet_packet p) {
     // Art-Net 4: diagnostic configuration from ArtPoll Flags
     // Keep most restrictive settings when multiple controllers are present
     if (p->data.ap.flags & ARTNET_POLL_FLAG_DIAG_ENABLE) {
+      // track distinct controller IPs for multi-controller broadcast rule
+      SI poller_ip = p->from;
+      int known = 0;
+      int i;
+      for (i = 0; i < n->state.diag_controller_count && i < 4; i++) {
+        if (n->state.diag_controller_ips[i].s_addr == poller_ip.s_addr) {
+          known = 1;
+          break;
+        }
+      }
+      if (!known && n->state.diag_controller_count < 4) {
+        n->state.diag_controller_ips[n->state.diag_controller_count] = poller_ip;
+        n->state.diag_controller_count++;
+      }
+
       n->state.diag_enabled = TRUE;
-      if ((p->data.ap.flags & ARTNET_POLL_FLAG_DIAG_UNICAST) != 0)
-        n->state.diag_unicast = TRUE;
+
+      // Art-Net 4 spec: if multiple controllers request diagnostics,
+      // diagnostics SHALL be broadcast (ignore Flags bit 3)
+      if (n->state.diag_controller_count > 1) {
+        n->state.diag_unicast = FALSE;
+      } else {
+        n->state.diag_unicast = ((p->data.ap.flags & ARTNET_POLL_FLAG_DIAG_UNICAST) != 0);
+      }
+
       // keep lowest priority threshold (most restrictive)
-      if (p->data.ap.diagPriority < n->state.diag_priority)
+      if (p->data.ap.diagPriority < n->state.diag_priority) {
         n->state.diag_priority = p->data.ap.diagPriority;
+      }
     }
 
-    // Art-Net 4: schedule ArtPollReply with random delay (0-4 seconds)
+    // Art-Net 4: schedule ArtPollReply with random delay (0-1 second)
     n->state.apr_pending = TRUE;
-    n->state.apr_pending_time = time(NULL) + (rand() % 4001) / 1000;
+    n->state.apr_pending_time = time(NULL) + (rand() % 1001) / 1000;
     return ARTNET_EOK;
 
   }
@@ -698,6 +721,9 @@ int handle_tod_control(node n, artnet_packet p) {
     return ARTNET_EOK;
   }
 
+  // Art-Net 4: store requester IP for unicast TodData replies
+  n->state.tod_reply_addr = p->from;
+
   for (i=0; i < ARTNET_MAX_PORTS; i++) {
     if (n->ports.out[i].port_addr == make_addr(p->data.todcontrol.net, (p->data.todcontrol.address >> 4) & 0x0F, p->data.todcontrol.address & 0x0F) &&
         n->ports.out[i].port_enabled) {
@@ -779,14 +805,6 @@ void handle_sync(node n, artnet_packet p) {
     return;
   }
 
-  // Art-Net 4: ignore ArtSync if any output port is merging from different sources
-  for (int i = 0; i < ARTNET_MAX_PORTS; i++) {
-    if (n->ports.out[i].port_status & PORT_STATUS_MERGE &&
-        n->ports.out[i].ipA.s_addr != n->ports.out[i].ipB.s_addr) {
-      return;
-    }
-  }
-
   n->state.sync_mode = 1;
   n->state.last_sync_time = time(NULL);
 }
@@ -804,7 +822,7 @@ void handle_nzs(node n, artnet_packet p) {
 
   for (i = 0; i < ARTNET_MAX_PORTS; i++) {
     if (n->ports.out[i].port_enabled &&
-        p->data.admx.universe == htols(n->ports.out[i].port_addr)) {
+        p->data.nzs.universe == htols(n->ports.out[i].port_addr)) {
       if (n->callbacks.dmx_c.fh != NULL) {
         n->callbacks.dmx_c.fh(n, i, n->callbacks.dmx_c.data);
       }
@@ -1375,7 +1393,7 @@ int handle(node n, artnet_packet p) {
       handle_file_fn_reply(n, p);
       break;
     case ARTNET_MEDIA:
-      if (check_callback(n, p, n->callbacks.mediapatch)) {
+      if (check_callback(n, p, n->callbacks.media)) {
         break;
       }
       break;

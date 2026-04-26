@@ -273,6 +273,7 @@ typedef struct {
   callback_t file_fn_master;
   callback_t file_fn_reply;
   callback_t mediapatch;
+  callback_t media;
   callback_t mediacontrol;
   callback_t datareq;
   callback_t datarep;
@@ -481,6 +482,8 @@ typedef struct {
   uint8_t default_resp_uid[ARTNET_RDM_UID_WIDTH]; // RDMnet/LLRP default responder UID
   int diag_enabled;       // whether to send diagnostics (ArtPoll Flags bit 2)
   int diag_unicast;       // unicast diagnostics to poller (ArtPoll Flags bit 3)
+  int diag_controller_count; // number of distinct controllers requesting diagnostics
+  SI diag_controller_ips[4]; // IPs of up to 4 diagnostic-requesting controllers
   uint8_t diag_priority;  // minimum diagnostic priority to send (from ArtPoll)
   uint8_t bqp_policy;     // BackgroundQueuePolicy (ArtAddress 0xe0-0xef)
   int sync_mode;           // ArtSync: buffering mode active
@@ -565,7 +568,7 @@ int artnet_tx_timesync(node n, uint8_t tm_sec, uint8_t tm_min,
 int artnet_tx_trigger(node n, uint8_t oem_hi, uint8_t oem_lo,
                       uint8_t key, uint8_t sub_key,
                       const uint8_t *data, int16_t length);
-int artnet_tx_data_reply(node n, const char *ip, uint8_t request_code,
+int artnet_tx_data_reply(node n, const char *ip, uint16_t request_code,
                          const char *payload, int16_t length);
 int artnet_tx_ipprog_reply(node n);
 int artnet_tx_sync(node n);

@@ -616,7 +616,7 @@ int artnet_tx_nzs(node n, int port_id, uint8_t start_code,
 /*
  * Send an ArtDataReply packet (Art-Net 4)
  */
-int artnet_tx_data_reply(node n, const char *ip, uint8_t request_code,
+int artnet_tx_data_reply(node n, const char *ip, uint16_t request_code,
                          const char *payload, int16_t length) {
   artnet_packet_t p = {0};
 
@@ -926,8 +926,8 @@ int artnet_tx_build_art_poll_reply(node n) {
   // Status1: LED state in bits 7-6, bits 5-4 = port address programming (0b10 = network), bit 2 = ROM boot, bit 1 = RDM support, bit 0 = UBEA
   ar->status = (n->state.led_state << 6) | 0x20 | 0x02;
 
-  // Status3: fail-safe mode in bits 7-6, bit 3 = port direction switching supported
-  ar->status3 = n->state.failsafe_mode | 0x08;
+  // Status3: fail-safe mode in bits 7-6, bit 5 = programmable failsafe support, bit 3 = port direction switching
+  ar->status3 = n->state.failsafe_mode | 0x28;
 
   // Status2: default includes 15-bit port addressing support
   ar->status2 = n->state.status2;
@@ -951,7 +951,7 @@ int artnet_tx_build_art_poll_reply(node n) {
   ar->userLo = 0;
   ar->refreshRateHi = 0;
   ar->refreshRateLo = 0;  // 0 = max DMX512 rate (44Hz)
-  ar->bgQueuePolicy = 0;  // collect using STATUS_NONE
+  ar->bgQueuePolicy = n->state.bqp_policy;
 
   return ARTNET_EOK;
 }

@@ -53,7 +53,7 @@ uint8_t MIN_PACKET_SIZE = 10;
 int MERGE_TIMEOUT_MS = 10000;
 int NODELIST_TIMEOUT_SECONDS = 15;
 int DMX_FAILSAFE_TIMEOUT_MS = 800;
-uint8_t FIRMWARE_TIMEOUT_SECONDS = 20;
+uint8_t FIRMWARE_TIMEOUT_SECONDS = 30;
 uint8_t RECV_NO_DATA = 1;
 uint8_t MAX_NODE_BCAST_LIMIT = 30; // always bcast after this point
 
@@ -499,6 +499,9 @@ int artnet_set_handler(artnet_node vn,
     case ARTNET_MEDIAPATCH_HANDLER:
       callback = &n->callbacks.mediapatch;
       break;
+    case ARTNET_MEDIA_HANDLER:
+      callback = &n->callbacks.media;
+      break;
     case ARTNET_MEDIACONTROL_HANDLER:
       callback = &n->callbacks.mediacontrol;
       break;
@@ -710,8 +713,8 @@ int artnet_send_dmx(artnet_node vn,
   }
   port = &n->ports.in[port_id];
 
-  if (length < 1 || length > ARTNET_DMX_LENGTH) {
-    artnet_error("%s : Length of dmx data out of bounds (%i < 1 || %i > ARTNET_MAX_DMX)", __FUNCTION__, length);
+  if (length < 2 || length > ARTNET_DMX_LENGTH) {
+    artnet_error("%s : Length of dmx data out of bounds (%i < 2 || %i > ARTNET_MAX_DMX)", __FUNCTION__, length);
     return ARTNET_EARG;
   }
 
@@ -1173,7 +1176,7 @@ int artnet_send_trigger(artnet_node vn, uint8_t oem_hi, uint8_t oem_lo,
  * Send an ArtDataReply packet (Art-Net 4)
  */
 int artnet_send_data_reply(artnet_node vn, const char *ip,
-                           uint8_t request_code, const char *payload,
+                           uint16_t request_code, const char *payload,
                            int16_t length) {
   node n = (node) vn;
   check_nullnode(vn);

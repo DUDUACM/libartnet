@@ -412,6 +412,7 @@ typedef enum {
   ARTNET_FILE_FN_MASTER_HANDLER,  /**< Called on reciept of an ArtFileFnMaster packet */
   ARTNET_FILE_FN_REPLY_HANDLER,   /**< Called on reciept of an ArtFileFnReply packet */
   ARTNET_MEDIAPATCH_HANDLER,      /**< Called on reciept of an ArtMediaPatch packet */
+  ARTNET_MEDIA_HANDLER,           /**< Called on reciept of an ArtMedia packet */
   ARTNET_MEDIACONTROL_HANDLER,    /**< Called on reciept of an ArtMediaControl packet */
   ARTNET_DATAREQUEST_HANDLER,     /**< Called on reciept of an ArtDataRequest packet */
   ARTNET_DATAREPLY_HANDLER,       /**< Called on reciept of an ArtDataReply packet */
@@ -592,7 +593,7 @@ EXTERN int artnet_send_trigger(artnet_node vn, uint8_t oem_hi, uint8_t oem_lo,
 
 // data request/reply functions
 EXTERN int artnet_send_data_reply(artnet_node vn, const char *ip,
-  uint8_t request_code, const char *payload, int16_t length);
+  uint16_t request_code, const char *payload, int16_t length);
 
 // diagnostic functions
 EXTERN int artnet_send_diagnostic(artnet_node vn,

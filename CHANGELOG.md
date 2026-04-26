@@ -51,7 +51,17 @@ All notable changes to this project are documented in this file.
 - ArtTodControl handles all 5 command codes (TOD_FULL/FLUSH/END/INC_ON/INC_OFF)
 - Multi-controller diagnostic configuration uses most-restrictive accumulation (min priority)
 - ArtPollReply ar_count wraps at 9999 as required by specification
-- ArtPollReply random delay (0-4 seconds) in ARTNET_REPLY_AUTO mode to prevent packet storms
+- ArtPollReply random delay corrected to 0-1 second per specification (was 0-4 seconds)
+- Firmware transfer timeout corrected to 30 seconds per specification (was 20 seconds)
+- ArtTodControl now stores requester IP for unicast ArtTodData replies
+- ArtPollReply bgQueuePolicy now reflects programmed value from ArtAddress
+- ArtDataReply request_code parameter widened to uint16_t for manufacturer-specific codes
+- ArtDmx minimum data length enforced as 2 per specification (was 1)
+- ArtNzs handler uses correct struct accessor instead of ArtDmx struct
+- ArtPollReply Status3 bit 5 set to indicate programmable failsafe support
+- ArtSync no longer blocked globally when a single port is merging
+- ArtMedia packet routed to dedicated callback (was incorrectly routed to mediapatch)
+- Multi-controller diagnostic broadcast rule: diagnostics now broadcast when multiple controllers request them
 
 ### Changed
 - Removed autotools build system (configure.ac, Makefile.am)
