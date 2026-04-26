@@ -158,7 +158,8 @@ typedef enum {
   STMEDIA = 0x02,
   STROUTE = 0x03,
   STBACKUP = 0x04,
-  STCONFIG = 0x05
+  STCONFIG = 0x05,
+  STVISUAL = 0x06
 } artnet_node_style_code;
 
 // artnet_port_data in artnet.h
@@ -273,6 +274,8 @@ typedef struct {
   callback_t file_fn_reply;
   callback_t mediapatch;
   callback_t mediacontrol;
+  callback_t datareq;
+  callback_t datarep;
   dmx_callback_t dmx_c;
   firmware_callback_t firmware_c;
   program_callback_t program_c;
@@ -448,6 +451,7 @@ typedef struct {
   SI ip_addr;
   SI bcast_addr;
   SI subnet_mask;
+  SI gateway;
   uint8_t hw_addr[ARTNET_MAC_SIZE];
   uint8_t default_netSwitch;
   uint8_t netSwitch_net_ctl;
@@ -472,15 +476,19 @@ typedef struct {
   uint8_t status2;       // Status2 register flags
   uint8_t failsafe_mode; // fail-safe mode (artnet_failsafe_mode_t value)
   SI rdm_reply_addr;     // last RDM requester IP for unicast replies (Art-Net 4)
+  SI tod_reply_addr;     // last TOD requester IP for unicast replies (Art-Net 4)
   uint8_t acn_priority;  // sACN priority for output ports (0-200, 0xFF=no change)
   uint8_t default_resp_uid[ARTNET_RDM_UID_WIDTH]; // RDMnet/LLRP default responder UID
   int diag_enabled;       // whether to send diagnostics (ArtPoll Flags bit 2)
   int diag_unicast;       // unicast diagnostics to poller (ArtPoll Flags bit 3)
   uint8_t diag_priority;  // minimum diagnostic priority to send (from ArtPoll)
+  uint8_t bqp_policy;     // BackgroundQueuePolicy (ArtAddress 0xe0-0xef)
   int sync_mode;           // ArtSync: buffering mode active
   time_t last_sync_time;   // ArtSync: last ArtSync received time
   SI last_dmx_source;      // ArtSync: last ArtDmx source IP for sync validation
   volatile uint32_t nl_seq; // seqlock version for node list thread safety
+  time_t apr_pending_time;  // ArtPollReply: scheduled send time (random delay)
+  int apr_pending;          // ArtPollReply: whether a reply is pending
 } node_state_t;
 
 
@@ -550,13 +558,15 @@ int artnet_tx_nzs(node n, int port_id, uint8_t start_code,
                   int16_t length, const uint8_t *data);
 int artnet_tx_timecode(node n, uint8_t frames, uint8_t seconds,
                        uint8_t minutes, uint8_t hours,
-                       artnet_timecode_type_t type);
+                       artnet_timecode_type_t type, uint8_t stream_id);
 int artnet_tx_timesync(node n, uint8_t tm_sec, uint8_t tm_min,
                        uint8_t tm_hour, uint8_t tm_mday,
                        uint8_t tm_mon, uint8_t tm_year);
 int artnet_tx_trigger(node n, uint8_t oem_hi, uint8_t oem_lo,
                       uint8_t key, uint8_t sub_key,
                       const uint8_t *data, int16_t length);
+int artnet_tx_data_reply(node n, const char *ip, uint8_t request_code,
+                         const char *payload, int16_t length);
 int artnet_tx_ipprog_reply(node n);
 int artnet_tx_sync(node n);
 int artnet_tx_directory_reply(node n);

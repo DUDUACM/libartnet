@@ -502,6 +502,12 @@ int artnet_set_handler(artnet_node vn,
     case ARTNET_MEDIACONTROL_HANDLER:
       callback = &n->callbacks.mediacontrol;
       break;
+    case ARTNET_DATAREQUEST_HANDLER:
+      callback = &n->callbacks.datareq;
+      break;
+    case ARTNET_DATAREPLY_HANDLER:
+      callback = &n->callbacks.datarep;
+      break;
     default:
       artnet_error("%s : Invalid handler defined", __FUNCTION__);
       return ARTNET_EARG;
@@ -1129,11 +1135,11 @@ int artnet_send_nzs(artnet_node vn, int port_id, uint8_t start_code,
  */
 int artnet_send_timecode(artnet_node vn, uint8_t frames, uint8_t seconds,
                          uint8_t minutes, uint8_t hours,
-                         artnet_timecode_type_t type) {
+                         artnet_timecode_type_t type, uint8_t stream_id) {
   node n = (node) vn;
   check_nullnode(vn);
 
-  return artnet_tx_timecode(n, frames, seconds, minutes, hours, type);
+  return artnet_tx_timecode(n, frames, seconds, minutes, hours, type, stream_id);
 }
 
 
@@ -1160,6 +1166,19 @@ int artnet_send_trigger(artnet_node vn, uint8_t oem_hi, uint8_t oem_lo,
   check_nullnode(vn);
 
   return artnet_tx_trigger(n, oem_hi, oem_lo, key, sub_key, data, length);
+}
+
+
+/*
+ * Send an ArtDataReply packet (Art-Net 4)
+ */
+int artnet_send_data_reply(artnet_node vn, const char *ip,
+                           uint8_t request_code, const char *payload,
+                           int16_t length) {
+  node n = (node) vn;
+  check_nullnode(vn);
+
+  return artnet_tx_data_reply(n, ip, request_code, payload, length);
 }
 
 
@@ -1465,6 +1484,20 @@ int artnet_set_default_resp_uid(artnet_node vn, const uint8_t uid[ARTNET_RDM_UID
     if ((ret = artnet_tx_build_art_poll_reply(n)) != 0) {
       return ret;
     }
+  }
+
+  return ARTNET_EOK;
+}
+
+
+int artnet_set_gateway(artnet_node vn, const char *ip) {
+  node n = (node) vn;
+
+  check_nullnode(vn);
+
+  if (inet_pton(AF_INET, ip, &n->state.gateway) != 1) {
+    artnet_error("Invalid gateway address %s", ip);
+    return ARTNET_EARG;
   }
 
   return ARTNET_EOK;
@@ -2111,5 +2144,11 @@ void check_timeouts(node n) {
 
     n->state.report_code = ARTNET_RC_FIRMWARE_FAIL;
     // spec says to set ArtPollReply->Status here, but don't know to what value
+  }
+
+  // ArtPollReply random delay: send pending reply after scheduled time
+  if (n->state.apr_pending && now_time >= n->state.apr_pending_time) {
+    n->state.apr_pending = FALSE;
+    artnet_tx_poll_reply(n, TRUE);
   }
 }

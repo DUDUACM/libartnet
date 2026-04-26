@@ -131,7 +131,7 @@ int main(int argc, char *argv[]) {
     artnet_set_node_type(nodes[i], ARTNET_NODE);
     artnet_set_style_code(nodes[i], ARTNET_ST_NODE);
     artnet_set_short_name(nodes[i], "LibArtNet 8Uni");
-    artnet_set_long_name(nodes[i], "libartnet Art-Net 4 Example Node");
+    artnet_set_long_name(nodes[i], "libartnet Art-Net 4 Node");
     artnet_setoem(nodes[i], 0xFF, 0x00);
     artnet_setesta(nodes[i], 0x00, 0xFF);
 

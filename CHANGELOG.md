@@ -17,7 +17,10 @@ All notable changes to this project are documented in this file.
 - Controller mode with automatic ArtPoll on start
 - `artnet_raw_send_dmx()` for sending to arbitrary 15-bit universe addresses
 - `artnet_send_nzs()` for non-zero start code DMX
-- `artnet_send_timecode()`, `artnet_send_timesync()` for time code
+- `artnet_send_timecode()`, `artnet_send_timesync()` for time code (with stream_id parameter)
+- `artnet_send_data_reply()` for ArtDataReply transmission
+- `ARTNET_DATAREQUEST_HANDLER` and `ARTNET_DATAREPLY_HANDLER` dedicated callbacks
+- `ARTNET_TOD_END`, `ARTNET_TOD_INC_ON`, `ARTNET_TOD_INC_OFF` TOD control commands
 - `artnet_send_trigger()` for trigger messages
 - `artnet_send_diagnostic()` for diagnostic messages
 - `artnet_set_style_code()`, `artnet_set_status2()` configuration APIs
@@ -44,6 +47,11 @@ All notable changes to this project are documented in this file.
   - Uninitialized local variables
 - Compiler warnings with GCC 12.2.0
 - All MSVC warnings resolved with `/W4` level (C4244, C4267, C4706, C4245, D9025)
+- ArtTodData unicasts to the TOD requester instead of broadcasting (Art-Net 4 requirement)
+- ArtTodControl handles all 5 command codes (TOD_FULL/FLUSH/END/INC_ON/INC_OFF)
+- Multi-controller diagnostic configuration uses most-restrictive accumulation (min priority)
+- ArtPollReply ar_count wraps at 9999 as required by specification
+- ArtPollReply random delay (0-4 seconds) in ARTNET_REPLY_AUTO mode to prevent packet storms
 
 ### Changed
 - Removed autotools build system (configure.ac, Makefile.am)

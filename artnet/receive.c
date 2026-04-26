@@ -88,15 +88,20 @@ int handle_poll(node n, artnet_packet p) {
     }
 
     // Art-Net 4: diagnostic configuration from ArtPoll Flags
+    // Keep most restrictive settings when multiple controllers are present
     if (p->data.ap.flags & ARTNET_POLL_FLAG_DIAG_ENABLE) {
       n->state.diag_enabled = TRUE;
-      n->state.diag_unicast = (p->data.ap.flags & ARTNET_POLL_FLAG_DIAG_UNICAST) != 0;
-      n->state.diag_priority = p->data.ap.diagPriority;
-    } else {
-      n->state.diag_enabled = FALSE;
+      if ((p->data.ap.flags & ARTNET_POLL_FLAG_DIAG_UNICAST) != 0)
+        n->state.diag_unicast = TRUE;
+      // keep lowest priority threshold (most restrictive)
+      if (p->data.ap.diagPriority < n->state.diag_priority)
+        n->state.diag_priority = p->data.ap.diagPriority;
     }
 
-    return artnet_tx_poll_reply(n, TRUE);
+    // Art-Net 4: schedule ArtPollReply with random delay (0-4 seconds)
+    n->state.apr_pending = TRUE;
+    n->state.apr_pending_time = time(NULL) + (rand() % 4001) / 1000;
+    return ARTNET_EOK;
 
   }
   return ARTNET_EOK;
@@ -452,7 +457,7 @@ int handle_address(node n, artnet_packet p) {
       }
       break;
 
-    case ARTNET_PC_MERGE_LTP_O:
+    case ARTNET_PC_MERGE_LTP_0:
     case ARTNET_PC_MERGE_LTP_1:
     case ARTNET_PC_MERGE_LTP_2:
     case ARTNET_PC_MERGE_LTP_3:
@@ -555,6 +560,25 @@ int handle_address(node n, artnet_packet p) {
       n->ports.out[port_idx].rdm_enabled = 0;
       break;
 
+    case ARTNET_PC_BQP_NONE:
+    case ARTNET_PC_BQP_ADVISORY:
+    case ARTNET_PC_BQP_WARNING:
+    case ARTNET_PC_BQP_ERROR:
+    case ARTNET_PC_BQP_DISABLED:
+    case ARTNET_PC_BQP_USER5:
+    case ARTNET_PC_BQP_USER6:
+    case ARTNET_PC_BQP_USER7:
+    case ARTNET_PC_BQP_USER8:
+    case ARTNET_PC_BQP_USER9:
+    case ARTNET_PC_BQP_USER10:
+    case ARTNET_PC_BQP_USER11:
+    case ARTNET_PC_BQP_USER12:
+    case ARTNET_PC_BQP_USER13:
+    case ARTNET_PC_BQP_USER14:
+    case ARTNET_PC_BQP_USER15:
+      n->state.bqp_policy = cmd;
+      break;
+
     default:
       break;
   }
@@ -612,6 +636,9 @@ int _artnet_handle_input(node n, artnet_packet p) {
 int handle_tod_request(node n, artnet_packet p) {
   int i = 0, j = 0, limit = 0;
   int ret = ARTNET_EOK;
+
+  // Art-Net 4: store requester IP for unicast TodData replies
+  n->state.tod_reply_addr = p->from;
 
   if (check_callback(n, p, n->callbacks.todrequest)) {
     return ARTNET_EOK;
@@ -685,6 +712,21 @@ int handle_tod_control(node n, artnet_packet p) {
           if (n->callbacks.rdm_init_c.fh != NULL) {
             n->callbacks.rdm_init_c.fh(n, i, n->callbacks.rdm_init_c.data);
           }
+          break;
+        case ARTNET_TOD_END:
+          // AtcEnd: RDM discovery cycle complete, no action needed
+          break;
+        case ARTNET_TOD_INC_ON:
+          // AtcIncOn: start incremental RDM discovery
+          if (n->callbacks.rdm_init_c.fh != NULL) {
+            n->callbacks.rdm_init_c.fh(n, i, n->callbacks.rdm_init_c.data);
+          }
+          break;
+        case ARTNET_TOD_INC_OFF:
+          // AtcIncOff: end incremental RDM discovery, no action needed
+          break;
+        default:
+          artnet_error("unknown TOD control command 0x%02hhx", p->data.todcontrol.cmd);
           break;
       }
       // reply with current TOD for all commands
@@ -1167,56 +1209,63 @@ void handle_ipprog(node n, artnet_packet p) {
     return;
   }
 
-  // DHCP enable
+  // DHCP enable (bit 6: if set, ignore lower bits)
   if (cmd & 0x40) {
-    n->state.report_code = ARTNET_RC_IP_PROG_OK;
+    n->state.report_code = ARTNET_RC_DEBUG;
     snprintf(n->state.report, ARTNET_REPORT_LENGTH,
              "DHCP Enable requested (not supported in software)");
   }
-  // Reset all to defaults
+  // Reset all to defaults (bit 3)
   else if (cmd & 0x08) {
-    n->state.report_code = ARTNET_RC_IP_PROG_OK;
+    n->state.report_code = ARTNET_RC_DEBUG;
     snprintf(n->state.report, ARTNET_REPORT_LENGTH,
              "Reset to defaults requested");
   }
-  // Program IP address (bit 2)
-  else if (cmd & 0x04) {
-    struct in_addr new_ip;
-    new_ip.s_addr = (p->data.aip.ProgIpHi << 24) | (p->data.aip.ProgIp2 << 16) |
-                    (p->data.aip.ProgIp1 << 8) | p->data.aip.ProgIpLo;
-    n->state.ip_addr = new_ip;
-    n->state.reply_addr = new_ip;
-    // Recompute broadcast address from new IP and subnet mask
-    n->state.bcast_addr.s_addr =
-        (new_ip.s_addr & n->state.subnet_mask.s_addr) | (~n->state.subnet_mask.s_addr);
-    n->state.report_code = ARTNET_RC_IP_PROG_OK;
-    snprintf(n->state.report, ARTNET_REPORT_LENGTH,
-             "IP Programmed [%d.%d.%d.%d]",
-             p->data.aip.ProgIpHi, p->data.aip.ProgIp2,
-             p->data.aip.ProgIp1, p->data.aip.ProgIpLo);
-  }
-  // Program subnet mask (bit 1)
-  else if (cmd & 0x02) {
-    struct in_addr new_mask;
-    new_mask.s_addr = (p->data.aip.ProgSmHi << 24) | (p->data.aip.ProgSm2 << 16) |
-                      (p->data.aip.ProgSm1 << 8) | p->data.aip.ProgSmLo;
-    n->state.subnet_mask = new_mask;
-    // Recompute broadcast address from current IP and new subnet mask
-    n->state.bcast_addr.s_addr =
-        (n->state.ip_addr.s_addr & new_mask.s_addr) | (~new_mask.s_addr);
-    n->state.report_code = ARTNET_RC_IP_PROG_OK;
-    snprintf(n->state.report, ARTNET_REPORT_LENGTH,
-             "Subnet Programmed [%d.%d.%d.%d]",
-             p->data.aip.ProgSmHi, p->data.aip.ProgSm2,
-             p->data.aip.ProgSm1, p->data.aip.ProgSmLo);
-  }
-  // Program default gateway (bit 4)
-  else if (cmd & 0x10) {
-    n->state.report_code = ARTNET_RC_IP_PROG_OK;
-    snprintf(n->state.report, ARTNET_REPORT_LENGTH,
-             "Gateway Programmed [%d.%d.%d.%d]",
-             p->data.aip.ProgDgHi, p->data.aip.ProgDg2,
-             p->data.aip.ProgDg1, p->data.aip.ProgDgLo);
+  else {
+    // Individual programming commands can be combined (bits 4, 2, 1)
+    // Program IP address (bit 2)
+    if (cmd & 0x04) {
+      struct in_addr new_ip;
+      new_ip.s_addr = (p->data.aip.ProgIpHi << 24) | (p->data.aip.ProgIp2 << 16) |
+                      (p->data.aip.ProgIp1 << 8) | p->data.aip.ProgIpLo;
+      n->state.ip_addr = new_ip;
+      n->state.reply_addr = new_ip;
+      n->state.bcast_addr.s_addr =
+          (new_ip.s_addr & n->state.subnet_mask.s_addr) | (~n->state.subnet_mask.s_addr);
+      n->state.report_code = ARTNET_RC_DEBUG;
+      snprintf(n->state.report, ARTNET_REPORT_LENGTH,
+               "IP Programmed [%d.%d.%d.%d]",
+               p->data.aip.ProgIpHi, p->data.aip.ProgIp2,
+               p->data.aip.ProgIp1, p->data.aip.ProgIpLo);
+    }
+
+    // Program subnet mask (bit 1)
+    if (cmd & 0x02) {
+      struct in_addr new_mask;
+      new_mask.s_addr = (p->data.aip.ProgSmHi << 24) | (p->data.aip.ProgSm2 << 16) |
+                        (p->data.aip.ProgSm1 << 8) | p->data.aip.ProgSmLo;
+      n->state.subnet_mask = new_mask;
+      n->state.bcast_addr.s_addr =
+          (n->state.ip_addr.s_addr & new_mask.s_addr) | (~new_mask.s_addr);
+      n->state.report_code = ARTNET_RC_DEBUG;
+      snprintf(n->state.report, ARTNET_REPORT_LENGTH,
+               "Subnet Programmed [%d.%d.%d.%d]",
+               p->data.aip.ProgSmHi, p->data.aip.ProgSm2,
+               p->data.aip.ProgSm1, p->data.aip.ProgSmLo);
+    }
+
+    // Program default gateway (bit 4)
+    if (cmd & 0x10) {
+      struct in_addr new_gw;
+      new_gw.s_addr = (p->data.aip.ProgDgHi << 24) | (p->data.aip.ProgDg2 << 16) |
+                      (p->data.aip.ProgDg1 << 8) | p->data.aip.ProgDgLo;
+      n->state.gateway = new_gw;
+      n->state.report_code = ARTNET_RC_DEBUG;
+      snprintf(n->state.report, ARTNET_REPORT_LENGTH,
+               "Gateway Programmed [%d.%d.%d.%d]",
+               p->data.aip.ProgDgHi, p->data.aip.ProgDg2,
+               p->data.aip.ProgDg1, p->data.aip.ProgDgLo);
+    }
   }
 
   // Fire program callback to notify application
@@ -1282,6 +1331,16 @@ int handle(node n, artnet_packet p) {
     case ARTNET_DIAGDATA:
       // generic recv callback already checked above, no specific handler needed
       break;
+    case ARTNET_DATAREQUEST:
+      if (check_callback(n, p, n->callbacks.datareq)) {
+        break;
+      }
+      break;
+    case ARTNET_DATAREPLY:
+      if (check_callback(n, p, n->callbacks.datarep)) {
+        break;
+      }
+      break;
     case ARTNET_SYNC:
       handle_sync(n, p);
       break;
@@ -1331,7 +1390,7 @@ int handle(node n, artnet_packet p) {
         break;
       }
       break;
-    case ARTNET_VIDEOSTEUP:
+    case ARTNET_VIDEOSETUP:
       printf("vid setup\n");
       break;
     case ARTNET_VIDEOPALETTE:

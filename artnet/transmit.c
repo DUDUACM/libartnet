@@ -81,6 +81,7 @@ int artnet_tx_poll_reply(node n, int response) {
   int i = 0;
 
   n->state.ar_count++;
+  n->state.ar_count %= 10000;
 
   if (!response && n->state.mode == ARTNET_ON) {
   }
@@ -203,7 +204,8 @@ int artnet_tx_tod_data(node n, int id) {
   // ok we need to check how many uid's we have,
   // may need to send more than one datagram
 
-  tod.to = n->state.bcast_addr;
+  // Art-Net 4: TodData must be unicast to the requester
+  tod.to = n->state.tod_reply_addr;
   tod.type = ARTNET_TODDATA;
   tod.length = sizeof(artnet_toddata_t);
 
@@ -612,11 +614,54 @@ int artnet_tx_nzs(node n, int port_id, uint8_t start_code,
 
 
 /*
+ * Send an ArtDataReply packet (Art-Net 4)
+ */
+int artnet_tx_data_reply(node n, const char *ip, uint8_t request_code,
+                         const char *payload, int16_t length) {
+  artnet_packet_t p = {0};
+
+  if (n->state.mode != ARTNET_ON) {
+    return ARTNET_EACTION;
+  }
+
+  if (length > 512) {
+    length = 512;
+  }
+
+  memset(&p, 0x00, sizeof(p));
+  if (ip && artnet_net_inet_aton(ip, &p.to) == 0) {
+    return ARTNET_EARG;
+  }
+
+  p.type = ARTNET_DATAREPLY;
+  p.length = sizeof(artnet_data_reply_t);
+
+  memcpy(&p.data.datarep.id, ARTNET_STRING, ARTNET_STRING_SIZE);
+  p.data.datarep.opCode = htols(ARTNET_DATAREPLY);
+  p.data.datarep.verH = 0;
+  p.data.datarep.ver = ARTNET_VERSION;
+  p.data.datarep.estaManHi = n->state.esta_hi;
+  p.data.datarep.estaManLo = (uint8_t)n->state.esta_lo;
+  p.data.datarep.oemHi = n->state.oem_hi;
+  p.data.datarep.oemLo = n->state.oem_lo;
+  p.data.datarep.requestHi = short_get_high_byte(request_code);
+  p.data.datarep.requestLo = short_get_low_byte(request_code);
+  p.data.datarep.payLenHi = short_get_high_byte(length);
+  p.data.datarep.payLenLo = short_get_low_byte(length);
+  if (payload && length > 0) {
+    memcpy(p.data.datarep.payLoad, payload, length);
+  }
+
+  return artnet_net_send(n, &p);
+}
+
+
+/*
  * Send an ArtTimeCode packet
  */
 int artnet_tx_timecode(node n, uint8_t frames, uint8_t seconds,
                        uint8_t minutes, uint8_t hours,
-                       artnet_timecode_type_t type) {
+                       artnet_timecode_type_t type, uint8_t stream_id) {
   artnet_packet_t p = {0};
 
   if (n->state.mode != ARTNET_ON) {
@@ -632,6 +677,7 @@ int artnet_tx_timecode(node n, uint8_t frames, uint8_t seconds,
   p.data.tc.opCode = htols(ARTNET_TIMECODE);
   p.data.tc.verH = 0;
   p.data.tc.ver = ARTNET_VERSION;
+  p.data.tc.streamId = stream_id;
   p.data.tc.frames = frames;
   p.data.tc.seconds = seconds;
   p.data.tc.minutes = minutes;
@@ -749,10 +795,10 @@ int artnet_tx_ipprog_reply(node n) {
 
   memcpy(&p.data.aipr.id, ARTNET_STRING, ARTNET_STRING_SIZE);
   p.data.aipr.OpCode = htols(ARTNET_IPREPLY);
-  p.data.aipr.ProVerH = 0;
-  p.data.aipr.ProVer = ARTNET_VERSION;
+  p.data.aipr.ProVerHi = 0;
+  p.data.aipr.ProVerLo = ARTNET_VERSION;
 
-  // Status: bit 7 = DHCP enabled, bit 6 = programming
+  // Status: bit 6 = DHCP enabled
   p.data.aipr.Status = 0x00;
 
   // Report current IP settings
@@ -767,6 +813,12 @@ int artnet_tx_ipprog_reply(node n) {
   p.data.aipr.ProgSm2  = (uint8_t)((subnet >> 16) & 0xFF);
   p.data.aipr.ProgSm1  = (uint8_t)((subnet >> 8) & 0xFF);
   p.data.aipr.ProgSmLo = (uint8_t)(subnet & 0xFF);
+
+  uint32_t gw = ntohl(n->state.gateway.s_addr);
+  p.data.aipr.ProgDgHi = (uint8_t)((gw >> 24) & 0xFF);
+  p.data.aipr.ProgDg2  = (uint8_t)((gw >> 16) & 0xFF);
+  p.data.aipr.ProgDg1  = (uint8_t)((gw >> 8) & 0xFF);
+  p.data.aipr.ProgDgLo = (uint8_t)(gw & 0xFF);
 
   return artnet_net_send(n, &p);
 }

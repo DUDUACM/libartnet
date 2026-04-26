@@ -60,64 +60,85 @@ typedef enum {
 } artnet_port_settings_t;
 
 
+/*
+ * ArtAddress Command field values (spec ArtAddress Command table).
+ * Port-indexed commands with suffix _1/_2/_3 are deprecated in Art-Net 4
+ * (Art-Net 4 uses BindIndex instead of port-1/2/3 within a single packet).
+ */
 typedef enum {
-  ARTNET_PC_NONE = 0x00,
-  ARTNET_PC_CANCEL = 0x01,
-  ARTNET_PC_LED_NORMAL = 0x02,
-  ARTNET_PC_LED_MUTE = 0x03,
-  ARTNET_PC_LED_LOCATE = 0x04,
-  ARTNET_PC_RESET = 0x05,
-  ARTNET_PC_ANALYSIS_ON = 0x06,
-  ARTNET_PC_ANALYSIS_OFF = 0x07,
-  ARTNET_PC_FAIL_HOLD = 0x08,
-  ARTNET_PC_FAIL_ZERO = 0x09,
-  ARTNET_PC_FAIL_FULL = 0x0a,
-  ARTNET_PC_FAIL_SCENE = 0x0b,
-  ARTNET_PC_FAIL_RECORD = 0x0c,
-  ARTNET_PC_MERGE_LTP_O = 0x10,
-  ARTNET_PC_MERGE_LTP_1 = 0x11,
-  ARTNET_PC_MERGE_LTP_2 = 0x12,
-  ARTNET_PC_MERGE_LTP_3 = 0x13,
-  ARTNET_PC_DIRECTION_TX_0 = 0x20,
-  ARTNET_PC_DIRECTION_TX_1 = 0x21,
-  ARTNET_PC_DIRECTION_TX_2 = 0x22,
-  ARTNET_PC_DIRECTION_TX_3 = 0x23,
-  ARTNET_PC_DIRECTION_RX_0 = 0x30,
-  ARTNET_PC_DIRECTION_RX_1 = 0x31,
-  ARTNET_PC_DIRECTION_RX_2 = 0x32,
-  ARTNET_PC_DIRECTION_RX_3 = 0x33,
-  ARTNET_PC_MERGE_HTP_0 = 0x50,
-  ARTNET_PC_MERGE_HTP_1 = 0x51,
-  ARTNET_PC_MERGE_HTP_2 = 0x52,
-  ARTNET_PC_MERGE_HTP_3 = 0x53,
-  ARTNET_PC_ARTNET_SEL_0 = 0x60,
-  ARTNET_PC_ARTNET_SEL_1 = 0x61,
-  ARTNET_PC_ARTNET_SEL_2 = 0x62,
-  ARTNET_PC_ARTNET_SEL_3 = 0x63,
-  ARTNET_PC_ACN_SEL_0 = 0x70,
-  ARTNET_PC_ACN_SEL_1 = 0x71,
-  ARTNET_PC_ACN_SEL_2 = 0x72,
-  ARTNET_PC_ACN_SEL_3 = 0x73,
-  ARTNET_PC_CLR_0 = 0x90,
-  ARTNET_PC_CLR_1 = 0x91,
-  ARTNET_PC_CLR_2 = 0x92,
-  ARTNET_PC_CLR_3 = 0x93,
-  ARTNET_PC_STYLE_DELTA_0 = 0xa0,
-  ARTNET_PC_STYLE_DELTA_1 = 0xa1,
-  ARTNET_PC_STYLE_DELTA_2 = 0xa2,
-  ARTNET_PC_STYLE_DELTA_3 = 0xa3,
-  ARTNET_PC_STYLE_CONST_0 = 0xb0,
-  ARTNET_PC_STYLE_CONST_1 = 0xb1,
-  ARTNET_PC_STYLE_CONST_2 = 0xb2,
-  ARTNET_PC_STYLE_CONST_3 = 0xb3,
-  ARTNET_PC_RDM_ENABLED_0 = 0xc0,
-  ARTNET_PC_RDM_ENABLED_1 = 0xc1,
-  ARTNET_PC_RDM_ENABLED_2 = 0xc2,
-  ARTNET_PC_RDM_ENABLED_3 = 0xc3,
-  ARTNET_PC_RDM_DISABLED_0 = 0xd0,
-  ARTNET_PC_RDM_DISABLED_1 = 0xd1,
-  ARTNET_PC_RDM_DISABLED_2 = 0xd2,
-  ARTNET_PC_RDM_DISABLED_3 = 0xd3,
+  ARTNET_PC_NONE = 0x00,             /**< AcNone: no action */
+  ARTNET_PC_CANCEL = 0x01,           /**< AcCancelMerge: cancel merge on next ArtDmx */
+  ARTNET_PC_LED_NORMAL = 0x02,       /**< AcLedNormal: front panel indicators operate normally */
+  ARTNET_PC_LED_MUTE = 0x03,         /**< AcLedMute: front panel indicators switched off */
+  ARTNET_PC_LED_LOCATE = 0x04,       /**< AcLedLocate: rapid flash for outlet identification */
+  ARTNET_PC_RESET = 0x05,            /**< AcResetRx: reset node SIP flags */
+  ARTNET_PC_ANALYSIS_ON = 0x06,      /**< AcAnalysisOn: enable analysis/debug mode */
+  ARTNET_PC_ANALYSIS_OFF = 0x07,     /**< AcAnalysisOff: disable analysis/debug mode */
+  ARTNET_PC_FAIL_HOLD = 0x08,        /**< AcFailHold: hold last state on data loss */
+  ARTNET_PC_FAIL_ZERO = 0x09,        /**< AcFailZero: output zero on data loss */
+  ARTNET_PC_FAIL_FULL = 0x0a,        /**< AcFailFull: output full on data loss */
+  ARTNET_PC_FAIL_SCENE = 0x0b,       /**< AcFailScene: play failsafe scene on data loss */
+  ARTNET_PC_FAIL_RECORD = 0x0c,      /**< AcFailRecord: record current state as failsafe scene */
+  ARTNET_PC_MERGE_LTP_0 = 0x10,      /**< AcMergeLtp0: set port 0 to LTP merge */
+  ARTNET_PC_MERGE_LTP_1 = 0x11,      /**< AcMergeLtp1 (deprecated in Art-Net 4) */
+  ARTNET_PC_MERGE_LTP_2 = 0x12,      /**< AcMergeLtp2 (deprecated in Art-Net 4) */
+  ARTNET_PC_MERGE_LTP_3 = 0x13,      /**< AcMergeLtp3 (deprecated in Art-Net 4) */
+  ARTNET_PC_DIRECTION_TX_0 = 0x20,   /**< AcDirectionTx0: set port 0 direction to output */
+  ARTNET_PC_DIRECTION_TX_1 = 0x21,   /**< AcDirectionTx1 (deprecated in Art-Net 4) */
+  ARTNET_PC_DIRECTION_TX_2 = 0x22,   /**< AcDirectionTx2 (deprecated in Art-Net 4) */
+  ARTNET_PC_DIRECTION_TX_3 = 0x23,   /**< AcDirectionTx3 (deprecated in Art-Net 4) */
+  ARTNET_PC_DIRECTION_RX_0 = 0x30,   /**< AcDirectionRx0: set port 0 direction to input */
+  ARTNET_PC_DIRECTION_RX_1 = 0x31,   /**< AcDirectionRx1 (deprecated in Art-Net 4) */
+  ARTNET_PC_DIRECTION_RX_2 = 0x32,   /**< AcDirectionRx2 (deprecated in Art-Net 4) */
+  ARTNET_PC_DIRECTION_RX_3 = 0x33,   /**< AcDirectionRx3 (deprecated in Art-Net 4) */
+  ARTNET_PC_MERGE_HTP_0 = 0x50,      /**< AcMergeHtp0: set port 0 to HTP merge (default) */
+  ARTNET_PC_MERGE_HTP_1 = 0x51,      /**< AcMergeHtp1 (deprecated in Art-Net 4) */
+  ARTNET_PC_MERGE_HTP_2 = 0x52,      /**< AcMergeHtp2 (deprecated in Art-Net 4) */
+  ARTNET_PC_MERGE_HTP_3 = 0x53,      /**< AcMergeHtp3 (deprecated in Art-Net 4) */
+  ARTNET_PC_ARTNET_SEL_0 = 0x60,     /**< AcArtNetSel0: set port 0 to Art-Net (default) */
+  ARTNET_PC_ARTNET_SEL_1 = 0x61,     /**< AcArtNetSel1 (deprecated in Art-Net 4) */
+  ARTNET_PC_ARTNET_SEL_2 = 0x62,     /**< AcArtNetSel2 (deprecated in Art-Net 4) */
+  ARTNET_PC_ARTNET_SEL_3 = 0x63,     /**< AcArtNetSel3 (deprecated in Art-Net 4) */
+  ARTNET_PC_ACN_SEL_0 = 0x70,        /**< AcAcnSel0: set port 0 to sACN */
+  ARTNET_PC_ACN_SEL_1 = 0x71,        /**< AcAcnSel1 (deprecated in Art-Net 4) */
+  ARTNET_PC_ACN_SEL_2 = 0x72,        /**< AcAcnSel2 (deprecated in Art-Net 4) */
+  ARTNET_PC_ACN_SEL_3 = 0x73,        /**< AcAcnSel3 (deprecated in Art-Net 4) */
+  ARTNET_PC_CLR_0 = 0x90,            /**< AcClearOp0: clear DMX output buffer for port 0 */
+  ARTNET_PC_CLR_1 = 0x91,            /**< AcClearOp1 (deprecated in Art-Net 4) */
+  ARTNET_PC_CLR_2 = 0x92,            /**< AcClearOp2 (deprecated in Art-Net 4) */
+  ARTNET_PC_CLR_3 = 0x93,            /**< AcClearOp3 (deprecated in Art-Net 4) */
+  ARTNET_PC_STYLE_DELTA_0 = 0xa0,    /**< AcStyleDelta0: delta output mode for port 0 */
+  ARTNET_PC_STYLE_DELTA_1 = 0xa1,    /**< AcStyleDelta1 (deprecated in Art-Net 4) */
+  ARTNET_PC_STYLE_DELTA_2 = 0xa2,    /**< AcStyleDelta2 (deprecated in Art-Net 4) */
+  ARTNET_PC_STYLE_DELTA_3 = 0xa3,    /**< AcStyleDelta3 (deprecated in Art-Net 4) */
+  ARTNET_PC_STYLE_CONST_0 = 0xb0,    /**< AcStyleConst0: constant output mode for port 0 */
+  ARTNET_PC_STYLE_CONST_1 = 0xb1,    /**< AcStyleConst1 (deprecated in Art-Net 4) */
+  ARTNET_PC_STYLE_CONST_2 = 0xb2,    /**< AcStyleConst2 (deprecated in Art-Net 4) */
+  ARTNET_PC_STYLE_CONST_3 = 0xb3,    /**< AcStyleConst3 (deprecated in Art-Net 4) */
+  ARTNET_PC_RDM_ENABLED_0 = 0xc0,    /**< AcRdmEnable0: enable RDM for port 0 */
+  ARTNET_PC_RDM_ENABLED_1 = 0xc1,    /**< AcRdmEnable1 (deprecated in Art-Net 4) */
+  ARTNET_PC_RDM_ENABLED_2 = 0xc2,    /**< AcRdmEnable2 (deprecated in Art-Net 4) */
+  ARTNET_PC_RDM_ENABLED_3 = 0xc3,    /**< AcRdmEnable3 (deprecated in Art-Net 4) */
+  ARTNET_PC_RDM_DISABLED_0 = 0xd0,   /**< AcRdmDisable0: disable RDM for port 0 */
+  ARTNET_PC_RDM_DISABLED_1 = 0xd1,   /**< AcRdmDisable1 (deprecated in Art-Net 4) */
+  ARTNET_PC_RDM_DISABLED_2 = 0xd2,   /**< AcRdmDisable2 (deprecated in Art-Net 4) */
+  ARTNET_PC_RDM_DISABLED_3 = 0xd3,   /**< AcRdmDisable3 (deprecated in Art-Net 4) */
+  ARTNET_PC_BQP_NONE = 0xe0,         /**< AcBqp0: BackgroundQueuePolicy STATUS_NONE */
+  ARTNET_PC_BQP_ADVISORY = 0xe1,     /**< AcBqp1: BackgroundQueuePolicy STATUS_ADVISORY */
+  ARTNET_PC_BQP_WARNING = 0xe2,      /**< AcBqp2: BackgroundQueuePolicy STATUS_WARNING */
+  ARTNET_PC_BQP_ERROR = 0xe3,        /**< AcBqp3: BackgroundQueuePolicy STATUS_ERROR */
+  ARTNET_PC_BQP_DISABLED = 0xe4,     /**< AcBqp4: BackgroundQueuePolicy Disabled */
+  ARTNET_PC_BQP_USER5 = 0xe5,        /**< AcBqp5: BackgroundQueuePolicy user defined 5 */
+  ARTNET_PC_BQP_USER6 = 0xe6,        /**< AcBqp6: BackgroundQueuePolicy user defined 6 */
+  ARTNET_PC_BQP_USER7 = 0xe7,        /**< AcBqp7: BackgroundQueuePolicy user defined 7 */
+  ARTNET_PC_BQP_USER8 = 0xe8,        /**< AcBqp8: BackgroundQueuePolicy user defined 8 */
+  ARTNET_PC_BQP_USER9 = 0xe9,        /**< AcBqp9: BackgroundQueuePolicy user defined 9 */
+  ARTNET_PC_BQP_USER10 = 0xea,       /**< AcBqp10: BackgroundQueuePolicy user defined 10 */
+  ARTNET_PC_BQP_USER11 = 0xeb,       /**< AcBqp11: BackgroundQueuePolicy user defined 11 */
+  ARTNET_PC_BQP_USER12 = 0xec,       /**< AcBqp12: BackgroundQueuePolicy user defined 12 */
+  ARTNET_PC_BQP_USER13 = 0xed,       /**< AcBqp13: BackgroundQueuePolicy user defined 13 */
+  ARTNET_PC_BQP_USER14 = 0xee,       /**< AcBqp14: BackgroundQueuePolicy user defined 14 */
+  ARTNET_PC_BQP_USER15 = 0xef,       /**< AcBqp15: BackgroundQueuePolicy user defined 15 */
 } artnet_port_command_t;
 
 
@@ -146,6 +167,9 @@ typedef enum  {
 typedef enum  {
   ARTNET_TOD_FULL = 0x00,
   ARTNET_TOD_FLUSH = 0x01,
+  ARTNET_TOD_END = 0x02,
+  ARTNET_TOD_INC_ON = 0x03,
+  ARTNET_TOD_INC_OFF = 0x04,
 } artnet_tod_command_code;
 
 
@@ -300,7 +324,6 @@ typedef enum {
   ARTNET_RC_FIRMWARE_FAIL= 0x000e,  /**< RcFirmwareFail: last firmware upload failed */
   ARTNET_RC_USER_FAIL    = 0x000f,  /**< RcUserFail: user changed locked address switch */
   ARTNET_RC_FACTORY_RES  = 0x0010,  /**< RcFactoryRes: factory reset performed */
-  ARTNET_RC_IP_PROG_OK   = 0x0011,  /**< RcIpProgOk: IP address programming successful */
 } artnet_node_report_code;
 
 /*
@@ -326,6 +349,38 @@ typedef enum {
   ARTNET_LED_MUTE     = 0x02,  /**< 10: LED muted / disabled */
   ARTNET_LED_NORMAL   = 0x03,  /**< 11: LED normal operation */
 } artnet_led_state_t;
+
+/*
+ * ArtDataRequest codes (Art-Net 4, Table 4a)
+ * Used in ArtDataRequest and ArtDataReply packets.
+ */
+typedef enum {
+  ARTNET_DR_POLL          = 0x0000,  /**< DrPoll: poll for ArtDataRequest support */
+  ARTNET_DR_URL_PRODUCT   = 0x0001,  /**< DrUrlProduct: manufacturer product page URL */
+  ARTNET_DR_URL_USER_GUIDE= 0x0002,  /**< DrUrlUserGuide: manufacturer user guide URL */
+  ARTNET_DR_URL_SUPPORT   = 0x0003,  /**< DrUrlSupport: manufacturer support page URL */
+  ARTNET_DR_URL_PERS_UDR  = 0x0004,  /**< DrUrlPersUdr: manufacturer UDR personality URL */
+  ARTNET_DR_URL_PERS_GDTF = 0x0005,  /**< DrUrlPersGdtf: manufacturer GDTF personality URL */
+} artnet_data_request_code;
+
+/*
+ * ArtAddress BackgroundQueuePolicy values (Art-Net 4)
+ * Used in ArtPollReply and ArtAddress command 0xe0-0xef.
+ */
+typedef enum {
+  ARTNET_BQP_NONE     = 0x00,  /**< collect using STATUS_NONE */
+  ARTNET_BQP_ADVISORY = 0x01,  /**< collect using STATUS_ADVISORY */
+  ARTNET_BQP_WARNING  = 0x02,  /**< collect using STATUS_WARNING */
+  ARTNET_BQP_ERROR    = 0x03,  /**< collect using STATUS_ERROR */
+  ARTNET_BQP_DISABLED = 0x04,  /**< background discovery collection disabled */
+} artnet_bg_queue_policy_t;
+
+/*
+ * ArtCommand text commands (Art-Net 4, Table 6)
+ * Manufacturer-specific commands use EstaMan = 0xFFFF.
+ */
+#define ARTNET_CMD_SWOUT_TEXT "SwoutText="
+#define ARTNET_CMD_SWIN_TEXT  "SwinText="
 
 /**
  * Enums for the application defined handlers
@@ -358,6 +413,8 @@ typedef enum {
   ARTNET_FILE_FN_REPLY_HANDLER,   /**< Called on reciept of an ArtFileFnReply packet */
   ARTNET_MEDIAPATCH_HANDLER,      /**< Called on reciept of an ArtMediaPatch packet */
   ARTNET_MEDIACONTROL_HANDLER,    /**< Called on reciept of an ArtMediaControl packet */
+  ARTNET_DATAREQUEST_HANDLER,     /**< Called on reciept of an ArtDataRequest packet */
+  ARTNET_DATAREPLY_HANDLER,       /**< Called on reciept of an ArtDataReply packet */
 } artnet_handler_name_t;
 
 
@@ -525,13 +582,17 @@ EXTERN int artnet_send_nzs(artnet_node vn, int port_id, uint8_t start_code,
 
 // timecode functions
 EXTERN int artnet_send_timecode(artnet_node vn, uint8_t frames, uint8_t seconds,
-  uint8_t minutes, uint8_t hours, artnet_timecode_type_t type);
+  uint8_t minutes, uint8_t hours, artnet_timecode_type_t type, uint8_t stream_id);
 EXTERN int artnet_send_timesync(artnet_node vn, uint8_t tm_sec, uint8_t tm_min,
   uint8_t tm_hour, uint8_t tm_mday, uint8_t tm_mon, uint8_t tm_year);
 
 // trigger functions
 EXTERN int artnet_send_trigger(artnet_node vn, uint8_t oem_hi, uint8_t oem_lo,
   uint8_t key, uint8_t sub_key, const uint8_t *data, int16_t length);
+
+// data request/reply functions
+EXTERN int artnet_send_data_reply(artnet_node vn, const char *ip,
+  uint8_t request_code, const char *payload, int16_t length);
 
 // diagnostic functions
 EXTERN int artnet_send_diagnostic(artnet_node vn,
@@ -571,6 +632,7 @@ EXTERN int artnet_set_port_addr(artnet_node n,
 EXTERN int artnet_set_net_addr(artnet_node n, uint8_t net);
 EXTERN int artnet_set_subnet_addr(artnet_node n, uint8_t subnet);
 EXTERN int artnet_set_default_resp_uid(artnet_node n, const uint8_t uid[ARTNET_RDM_UID_WIDTH]);
+EXTERN int artnet_set_gateway(artnet_node n, const char *ip);
 EXTERN int artnet_get_universe_addr(artnet_node n,
                                     int id,
                                     artnet_port_dir_t dir);
