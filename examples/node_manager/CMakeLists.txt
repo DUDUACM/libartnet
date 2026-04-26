@@ -1,2 +1,5 @@
 add_executable(node_manager node_manager.c)
 target_link_libraries(node_manager PRIVATE artnet)
+if(WIN32)
+    target_link_libraries(node_manager PRIVATE ws2_32)
+endif()

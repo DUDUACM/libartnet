@@ -1,2 +1,5 @@
 add_executable(rdm_controller rdm_controller.c)
 target_link_libraries(rdm_controller PRIVATE artnet)
+if(WIN32)
+    target_link_libraries(rdm_controller PRIVATE ws2_32)
+endif()

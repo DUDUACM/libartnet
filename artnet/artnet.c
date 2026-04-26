@@ -1613,7 +1613,8 @@ int artnet_set_gateway(artnet_node vn, const char *ip) {
 
   check_nullnode(vn);
 
-  if (inet_pton(AF_INET, ip, &n->state.gateway) != 1) {
+  n->state.gateway.s_addr = inet_addr(ip);
+  if (n->state.gateway.s_addr == INADDR_NONE) {
     artnet_error("Invalid gateway address %s", ip);
     return ARTNET_EARG;
   }
