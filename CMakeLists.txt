@@ -6,7 +6,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # Set C standard
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
-set(CMAKE_C_EXTENSIONS OFF)
+set(CMAKE_C_EXTENSIONS ON)
 
 # Include GNUInstallDirs for standard installation directories
 include(GNUInstallDirs)
@@ -23,6 +23,7 @@ if(WIN32)
     add_definitions(-D_WIN32_WINNT=0x0600)
 else()
     set(USING_WIN32 FALSE)
+    add_definitions(-D_GNU_SOURCE)
 endif()
 
 # Check for headers

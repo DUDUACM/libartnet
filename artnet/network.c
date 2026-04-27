@@ -267,7 +267,7 @@ static int get_ifaces(iface_t **if_head) {
           memcpy(if_iter->hw_addr, sll->sll_addr, ARTNET_MAC_SIZE);
           break;
         }
-      } else
+      }
 #endif
 #ifdef AF_LINK
       if (ifa_iter->ifa_addr->sa_family == AF_LINK) {
@@ -563,7 +563,7 @@ int artnet_net_start(node n) {
 
     memset(&servAddr, 0x00, sizeof(servAddr));
     servAddr.sin_family = AF_INET;
-    servAddr.sin_port = htons((u_short)ARTNET_PORT);
+    servAddr.sin_port = htons((unsigned short)ARTNET_PORT);
     servAddr.sin_addr.s_addr = htonl(INADDR_ANY);
 
     if (n->state.verbose) {
@@ -729,7 +729,7 @@ int artnet_net_send(node n, artnet_packet p) {
   }
 
   addr.sin_family = AF_INET;
-  addr.sin_port = htons((u_short)ARTNET_PORT);
+  addr.sin_port = htons((unsigned short)ARTNET_PORT);
   addr.sin_addr = p->to;
   p->from = n->state.ip_addr;
 
