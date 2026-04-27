@@ -384,8 +384,8 @@ static void cmd_dmx_flood(artnet_node n) {
 }
 
 static void cmd_nzs(artnet_node n) {
-  int port = read_int("  Port (0-3, default 0): ", 0);
-  int sc = read_int("  Start code (1-255, default 0xCC): ", 0xCC);
+  int uni = read_int("  Universe (0-32767, default 0): ", 0);
+  int sc = read_int("  Start code (hex, e.g. 0x91): ", 0x91);
   int len = read_int("  Data length (1-512, default 10): ", 10);
   if (len < 1) len = 1;
   if (len > ARTNET_DMX_LENGTH) len = ARTNET_DMX_LENGTH;
@@ -393,9 +393,9 @@ static void cmd_nzs(artnet_node n) {
   uint8_t data[ARTNET_DMX_LENGTH];
   memset(data, 0xAA, len);
 
-  int ret = artnet_send_nzs(n, port, (uint8_t)sc, (int16_t)len, data);
-  printf("[Nzs] Port %d startCode=0x%02X: %s (%d bytes)\n",
-         port, sc, ret == ARTNET_EOK ? "OK" : artnet_strerror(), len);
+  int ret = artnet_send_nzs(n, (uint16_t)uni, (uint8_t)sc, (int16_t)len, data);
+  printf("[Nzs] Universe %d startCode=0x%02X: %s (%d bytes)\n",
+         uni, sc, ret == ARTNET_EOK ? "OK" : artnet_strerror(), len);
 }
 
 static void cmd_sync(artnet_node n) {
@@ -435,7 +435,7 @@ static void cmd_address(artnet_node n) {
                                 nochange, nochange,
                                 net >= 0 ? (uint8_t)net : 0x7F,
                                 sub >= 0 ? (uint8_t)sub : 0x7F,
-                                (artnet_port_command_t)cmd_val);
+                                (artnet_port_command_t)cmd_val, 0xFF);
   printf("[Address] %s\n", ret == ARTNET_EOK ? "OK" : artnet_strerror());
 }
 
@@ -681,7 +681,7 @@ static void cmd_short_name(artnet_node n) {
 
   uint8_t nc[ARTNET_MAX_PORTS];
   memset(nc, 0x7F, ARTNET_MAX_PORTS);
-  int ret = artnet_send_address(n, e, name, NULL, nc, nc, 0x7F, 0x7F, ARTNET_PC_NONE);
+  int ret = artnet_send_address(n, e, name, NULL, nc, nc, 0x7F, 0x7F, ARTNET_PC_NONE, 0xFF);
   printf("  %s\n", ret == ARTNET_EOK ? "OK" : artnet_strerror());
 }
 
@@ -698,7 +698,7 @@ static void cmd_long_name(artnet_node n) {
 
   uint8_t nc[ARTNET_MAX_PORTS];
   memset(nc, 0x7F, ARTNET_MAX_PORTS);
-  int ret = artnet_send_address(n, e, NULL, name, nc, nc, 0x7F, 0x7F, ARTNET_PC_NONE);
+  int ret = artnet_send_address(n, e, NULL, name, nc, nc, 0x7F, 0x7F, ARTNET_PC_NONE, 0xFF);
   printf("  %s\n", ret == ARTNET_EOK ? "OK" : artnet_strerror());
 }
 
@@ -708,7 +708,7 @@ static void cmd_led(artnet_node n, artnet_port_command_t cmd) {
 
   uint8_t nc[ARTNET_MAX_PORTS];
   memset(nc, 0x7F, ARTNET_MAX_PORTS);
-  int ret = artnet_send_address(n, e, NULL, NULL, nc, nc, 0x7F, 0x7F, cmd);
+  int ret = artnet_send_address(n, e, NULL, NULL, nc, nc, 0x7F, 0x7F, cmd, 0xFF);
   const char *name = cmd == ARTNET_PC_LED_LOCATE ? "Locate" :
                      cmd == ARTNET_PC_LED_MUTE   ? "Mute" : "Normal";
   printf("  LED %s: %s\n", name, ret == ARTNET_EOK ? "OK" : artnet_strerror());
@@ -720,7 +720,7 @@ static void cmd_failsafe(artnet_node n, artnet_port_command_t cmd) {
 
   uint8_t nc[ARTNET_MAX_PORTS];
   memset(nc, 0x7F, ARTNET_MAX_PORTS);
-  int ret = artnet_send_address(n, e, NULL, NULL, nc, nc, 0x7F, 0x7F, cmd);
+  int ret = artnet_send_address(n, e, NULL, NULL, nc, nc, 0x7F, 0x7F, cmd, 0xFF);
   const char *name = cmd == ARTNET_PC_FAIL_HOLD  ? "HOLD" :
                      cmd == ARTNET_PC_FAIL_ZERO  ? "ZERO" :
                      cmd == ARTNET_PC_FAIL_FULL  ? "FULL" : "SCENE";
@@ -736,7 +736,7 @@ static void cmd_merge_mode(artnet_node n) {
 
   uint8_t nc[ARTNET_MAX_PORTS];
   memset(nc, 0x7F, ARTNET_MAX_PORTS);
-  int ret = artnet_send_address(n, e, NULL, NULL, nc, nc, 0x7F, 0x7F, (artnet_port_command_t)val);
+  int ret = artnet_send_address(n, e, NULL, NULL, nc, nc, 0x7F, 0x7F, (artnet_port_command_t)val, 0xFF);
   printf("  Merge mode: %s\n", ret == ARTNET_EOK ? "OK" : artnet_strerror());
 }
 
@@ -749,7 +749,7 @@ static void cmd_net_addr(artnet_node n) {
 
   uint8_t nc[ARTNET_MAX_PORTS];
   memset(nc, 0x7F, ARTNET_MAX_PORTS);
-  int ret = artnet_send_address(n, e, NULL, NULL, nc, nc, (uint8_t)val, 0x7F, ARTNET_PC_NONE);
+  int ret = artnet_send_address(n, e, NULL, NULL, nc, nc, (uint8_t)val, 0x7F, ARTNET_PC_NONE, 0xFF);
   printf("  Net -> %d: %s\n", val, ret == ARTNET_EOK ? "OK" : artnet_strerror());
 }
 
@@ -762,7 +762,7 @@ static void cmd_subnet_addr(artnet_node n) {
 
   uint8_t nc[ARTNET_MAX_PORTS];
   memset(nc, 0x7F, ARTNET_MAX_PORTS);
-  int ret = artnet_send_address(n, e, NULL, NULL, nc, nc, 0x7F, (uint8_t)val, ARTNET_PC_NONE);
+  int ret = artnet_send_address(n, e, NULL, NULL, nc, nc, 0x7F, (uint8_t)val, ARTNET_PC_NONE, 0xFF);
   printf("  Subnet -> %d: %s\n", val, ret == ARTNET_EOK ? "OK" : artnet_strerror());
 }
 

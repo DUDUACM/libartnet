@@ -684,6 +684,22 @@ EXTERN int artnet_raw_send_dmx(artnet_node vn,
   uint16_t uni,
   int16_t length,
   const uint8_t *data);
+
+/**
+ * @brief Send an ArtNzs packet (non-zero start code DMX).
+ * @param vn          The artnet_node
+ * @param uni         The 15-bit universe address (0-32767)
+ * @param start_code  DMX512 start code (non-zero, not 0xCC/RDM)
+ * @param length      Length of data (1-512)
+ * @param data        Pointer to payload data
+ * @return ARTNET_EOK on success, or a negative error code
+ */
+EXTERN int artnet_send_nzs(artnet_node vn,
+  uint16_t uni,
+  uint8_t start_code,
+  int16_t length,
+  const uint8_t *data);
+
 /**
  * @brief Send an ArtAddress packet to remotely program a node.
  * @param n         The local artnet_node (sender)
@@ -694,7 +710,8 @@ EXTERN int artnet_raw_send_dmx(artnet_node vn,
  * @param outAddr   New output port addresses (NULL to keep)
  * @param netAddr   New net address (ARTNET_ADDRESS_NO_CHANGE to keep)
  * @param subAddr   New subnet address (ARTNET_ADDRESS_NO_CHANGE to keep)
- * @param cmd       ArtAddress command (ARTNET_PC_NONE for no command)
+ * @param cmd         ArtAddress command (ARTNET_PC_NONE for no command)
+ * @param acnPriority sACN priority (0-200, 0xFF for no change)
  * @return ARTNET_EOK on success, or a negative error code
  */
 EXTERN int artnet_send_address(artnet_node n,
@@ -705,7 +722,8 @@ EXTERN int artnet_send_address(artnet_node n,
   uint8_t outAddr[ARTNET_MAX_PORTS],
   uint8_t netAddr,
   uint8_t subAddr,
-  artnet_port_command_t cmd);
+  artnet_port_command_t cmd,
+  uint8_t acnPriority);
 
 /**
  * @brief Send an ArtInput packet to enable/disable ports on a remote node.

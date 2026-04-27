@@ -867,6 +867,54 @@ int artnet_raw_send_dmx(artnet_node vn,
 }
 
 
+int artnet_send_nzs(artnet_node vn,
+                    uint16_t uni,
+                    uint8_t start_code,
+                    int16_t length,
+                    const uint8_t *data) {
+  node n = (node) vn;
+  artnet_packet_t p = {0};
+
+  check_nullnode(vn);
+
+  if (n->state.mode != ARTNET_ON) {
+    return ARTNET_EACTION;
+  }
+
+  if (n->state.node_type != ARTNET_RAW) {
+    return ARTNET_ESTATE;
+  }
+
+  if (start_code == 0x00 || start_code == 0xCC) {
+    artnet_error("%s : Invalid start code (0x%02x)", __FUNCTION__, start_code);
+    return ARTNET_EARG;
+  }
+
+  if (length < 1 || length > ARTNET_DMX_LENGTH) {
+    artnet_error("%s : Length of data out of bounds (%i < 1 || %i > 512)", __FUNCTION__, length, length);
+    return ARTNET_EARG;
+  }
+
+  uni &= 0x7FFF;
+
+  p.to.s_addr = n->state.bcast_addr.s_addr;
+  p.length = sizeof(artnet_nzs_t) - (ARTNET_DMX_LENGTH - length);
+
+  memcpy(&p.data.nzs.id, ARTNET_STRING, ARTNET_STRING_SIZE);
+  p.data.nzs.opCode = htols(ARTNET_NZS);
+  p.data.nzs.verH = 0;
+  p.data.nzs.ver = ARTNET_VERSION;
+  p.data.nzs.sequence = 0;
+  p.data.nzs.startCode = start_code;
+  p.data.nzs.universe = htols(uni);
+  p.data.nzs.lengthHi = short_get_high_byte(length);
+  p.data.nzs.length = short_get_low_byte(length);
+  memcpy(&p.data.nzs.data, data, length);
+
+  return artnet_net_send(n, &p);
+}
+
+
 
 int artnet_send_address(artnet_node vn,
                         artnet_node_entry e,
@@ -875,7 +923,8 @@ int artnet_send_address(artnet_node vn,
                         uint8_t inAddr[ARTNET_MAX_PORTS],
                         uint8_t outAddr[ARTNET_MAX_PORTS],
                         uint8_t netAddr,
-                        uint8_t subAddr, artnet_port_command_t cmd) {
+                        uint8_t subAddr, artnet_port_command_t cmd,
+                        uint8_t acnPriority) {
   node n = (node) vn;
   artnet_packet_t p = {0};
   node_entry_private_t *ent = find_private_entry(n,e);
@@ -916,7 +965,7 @@ int artnet_send_address(artnet_node vn,
     memcpy(&p.data.addr.swOut, outAddr, ARTNET_MAX_PORTS);
 
     p.data.addr.subSwitch = (subAddr != PROGRAM_NO_CHANGE) ? ((subAddr & 0x0F) | PROGRAM_CHANGE_MASK) : subAddr;
-    p.data.addr.acnPriority = 0x00;
+    p.data.addr.acnPriority = acnPriority;
     p.data.addr.command = cmd;
 
     return artnet_net_send(n, &p);

@@ -122,7 +122,7 @@ static void cmd_short_name(artnet_node n) {
   memset(nochange, 0x7F, ARTNET_MAX_PORTS);
 
   int ret = artnet_send_address(n, e, name, NULL, nochange, nochange,
-                                0x7F, 0x7F, ARTNET_PC_NONE);
+                                0x7F, 0x7F, ARTNET_PC_NONE, 0xFF);
   printf("  Set short name: %s\n", ret == ARTNET_EOK ? "OK" : artnet_strerror());
 }
 
@@ -146,7 +146,7 @@ static void cmd_long_name(artnet_node n) {
   memset(nochange, 0x7F, ARTNET_MAX_PORTS);
 
   int ret = artnet_send_address(n, e, NULL, name, nochange, nochange,
-                                0x7F, 0x7F, ARTNET_PC_NONE);
+                                0x7F, 0x7F, ARTNET_PC_NONE, 0xFF);
   printf("  Set long name: %s\n", ret == ARTNET_EOK ? "OK" : artnet_strerror());
 }
 
@@ -170,7 +170,7 @@ static void cmd_net(artnet_node n) {
   memset(nochange, 0x7F, ARTNET_MAX_PORTS);
 
   int ret = artnet_send_address(n, e, NULL, NULL, nochange, nochange,
-                                (uint8_t)val, 0x7F, ARTNET_PC_NONE);
+                                (uint8_t)val, 0x7F, ARTNET_PC_NONE, 0xFF);
   printf("  Set net to %d: %s\n", val, ret == ARTNET_EOK ? "OK" : artnet_strerror());
 }
 
@@ -194,7 +194,7 @@ static void cmd_subnet(artnet_node n) {
   memset(nochange, 0x7F, ARTNET_MAX_PORTS);
 
   int ret = artnet_send_address(n, e, NULL, NULL, nochange, nochange,
-                                0x7F, (uint8_t)val, ARTNET_PC_NONE);
+                                0x7F, (uint8_t)val, ARTNET_PC_NONE, 0xFF);
   printf("  Set subnet to %d: %s\n", val, ret == ARTNET_EOK ? "OK" : artnet_strerror());
 }
 
@@ -239,7 +239,7 @@ static void cmd_universe(artnet_node n) {
   outAddr[port] = (uint8_t)(uni | 0x80);
 
   int ret = artnet_send_address(n, e, NULL, NULL, inAddr, outAddr,
-                                0x7F, 0x7F, ARTNET_PC_NONE);
+                                0x7F, 0x7F, ARTNET_PC_NONE, 0xFF);
   printf("  Set port %d universe to %d: %s\n", port, uni,
          ret == ARTNET_EOK ? "OK" : artnet_strerror());
 }
@@ -276,7 +276,7 @@ static void cmd_led(artnet_node n, artnet_port_command_t cmd) {
   memset(nochange, 0x7F, ARTNET_MAX_PORTS);
 
   int ret = artnet_send_address(n, e, NULL, NULL, nochange, nochange,
-                                0x7F, 0x7F, cmd);
+                                0x7F, 0x7F, cmd, 0xFF);
   const char *name = cmd == ARTNET_PC_LED_LOCATE ? "Locate" :
                      cmd == ARTNET_PC_LED_MUTE   ? "Mute" : "Normal";
   printf("  LED %s: %s\n", name, ret == ARTNET_EOK ? "OK" : artnet_strerror());
@@ -290,7 +290,7 @@ static void cmd_failsafe(artnet_node n, artnet_port_command_t cmd) {
   memset(nochange, 0x7F, ARTNET_MAX_PORTS);
 
   int ret = artnet_send_address(n, e, NULL, NULL, nochange, nochange,
-                                0x7F, 0x7F, cmd);
+                                0x7F, 0x7F, cmd, 0xFF);
   const char *name = cmd == ARTNET_PC_FAIL_HOLD  ? "HOLD" :
                      cmd == ARTNET_PC_FAIL_ZERO  ? "ZERO" :
                      cmd == ARTNET_PC_FAIL_FULL  ? "FULL" : "SCENE";
