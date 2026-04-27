@@ -1549,4 +1549,5 @@ void reset_firmware_upload(node n) {
   n->firmware.ubea = 0;
   n->firmware.last_time = 0;
   free(n->firmware.data);
+  n->firmware.data = NULL;
 }

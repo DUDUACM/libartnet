@@ -223,14 +223,27 @@ int artnet_destroy(artnet_node vn) {
   for (ent = n->node_list.first; ent != NULL; ent = tmp) {
     if (ent->firmware.data != NULL) {
       free(ent->firmware.data);
+      ent->firmware.data = NULL;
     }
     tmp = ent->next;
     free(ent);
+    ent = NULL;
+  }
+
+  // free node's own firmware transfer buffer if any
+  if (n->firmware.data != NULL) {
+    free(n->firmware.data);
+    n->firmware.data = NULL;
   }
 
   for (i =0; i < ARTNET_MAX_PORTS; i++) {
     flush_tod(&n->ports.in[i].port_tod);
     flush_tod(&n->ports.out[i].port_tod);
+  }
+
+  // close socket if node is still running
+  if (n->state.mode == ARTNET_ON) {
+    artnet_net_close(n->sd);
   }
 
   free(vn);
@@ -2239,7 +2252,12 @@ void check_timeouts(node n) {
       if (time(NULL) - (*pp)->last_seen > NODELIST_TIMEOUT_SECONDS) {
         node_entry_private_t *dead = *pp;
         *pp = dead->next;
+        if (dead->firmware.data != NULL) {
+          free(dead->firmware.data);
+          dead->firmware.data = NULL;
+        }
         free(dead);
+        dead = NULL;
         n->node_list.length--;
       } else {
         pp = &(*pp)->next;

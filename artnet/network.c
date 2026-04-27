@@ -146,6 +146,7 @@ static int get_ifaces(iface_t **if_head) {
     }
 
     free(pAdapterInfo);
+    pAdapterInfo = NULL;
     if (status != ERROR_BUFFER_OVERFLOW) {
       printf("GetAdaptersInfo failed with error: %d\n", (int) status);
       return ARTNET_ENET;
@@ -343,6 +344,7 @@ static int get_ifaces(iface_t **if_head) {
     }
     len += IFACE_COUNT_INC * sizeof(struct ifreq);
     free(buf);
+    buf = NULL;
   }
 
   // loop through each iface
