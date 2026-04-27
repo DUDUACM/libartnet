@@ -50,9 +50,8 @@ extern "C" {
 EXTERN int ARTNET_ADDRESS_NO_CHANGE;
 
 /**
- * An enum for setting the behaviour of a port.
- * Ports can either input data (DMX -> ArtNet) or
- * output (ArtNet -> DMX) data.
+ * Bitmasks for enabling input or output capability on a port.
+ * These values are combined with the port type when calling artnet_set_port_type().
  */
 typedef enum {
   ARTNET_ENABLE_INPUT = 0x40,  /**< Enables the input for this port */
@@ -142,44 +141,48 @@ typedef enum {
 } artnet_port_command_t;
 
 
-/*
+/**
  * An enum for the type of data transmitted on a port.
- * As far as I know, only DMX-512 is supported
+ * DMX-512 is the most commonly supported protocol.
  */
 typedef enum  {
   ARTNET_PORT_DMX = 0x00,    /**< Data is DMX-512 */
   ARTNET_PORT_MIDI = 0x01,  /**< Data is MIDI */
   ARTNET_PORT_AVAB = 0x02,  /**< Data is Avab */
   ARTNET_PORT_CMX = 0x03,    /**< Data is Colortran CMX */
-  ARTNET_PORT_ADB = 0x04,    /**< Data is ABD 62.5 */
+  ARTNET_PORT_ADB = 0x04,    /**< Data is ADB 62.5 */
   ARTNET_PORT_ARTNET = 0x05,  /**< Data is ArtNet */
   ARTNET_PORT_DALI = 0x06     /**< Data is DALI */
 } artnet_port_data_code;
 
 
-// defines the status of the firmware transfer
+/**
+ * Defines the status of the firmware transfer
+ */
 typedef enum  {
-  ARTNET_FIRMWARE_BLOCKGOOD = 0x00,
-  ARTNET_FIRMWARE_ALLGOOD = 0x01,
-  ARTNET_FIRMWARE_FAIL = 0xff,
+  ARTNET_FIRMWARE_BLOCKGOOD = 0x00, /**< Block received successfully */
+  ARTNET_FIRMWARE_ALLGOOD = 0x01,   /**< All blocks received, transfer complete */
+  ARTNET_FIRMWARE_FAIL = 0xff,      /**< Transfer failed */
 } artnet_firmware_status_code;
 
-// tod actions
+/**
+ * TOD (Table of Devices) action codes for ArtTodControl
+ */
 typedef enum  {
-  ARTNET_TOD_FULL = 0x00,
-  ARTNET_TOD_FLUSH = 0x01,
-  ARTNET_TOD_END = 0x02,
-  ARTNET_TOD_INC_ON = 0x03,
-  ARTNET_TOD_INC_OFF = 0x04,
+  ARTNET_TOD_FULL = 0x00,   /**< Send entire TOD */
+  ARTNET_TOD_FLUSH = 0x01,  /**< Flush TOD */
+  ARTNET_TOD_END = 0x02,    /**< End discovery */
+  ARTNET_TOD_INC_ON = 0x03, /**< Enable incremental TOD updates */
+  ARTNET_TOD_INC_OFF = 0x04, /**< Disable incremental TOD updates */
 } artnet_tod_command_code;
 
 
 /**
- * An enum for refering to a particular input or output port.
+ * An enum for referring to a particular input or output port direction.
  */
 typedef enum {
-  ARTNET_INPUT_PORT = 1,    /**< The input port */
-  ARTNET_OUTPUT_PORT,      /**< The output port */
+  ARTNET_INPUT_PORT = 1,    /**< Indicates an input port direction */
+  ARTNET_OUTPUT_PORT,       /**< Indicates an output port direction */
 } artnet_port_dir_t;
 
 
@@ -187,8 +190,8 @@ typedef enum {
  * Enum describing the type of node
  */
 typedef enum {
-  ARTNET_SRV,      /**< An ArtNet server (transmitts DMX data) */
-  ARTNET_NODE,    /**< An ArtNet node   (dmx reciever) */
+  ARTNET_SRV,      /**< An ArtNet server (transmits DMX data) */
+  ARTNET_NODE,     /**< An ArtNet node (DMX receiver) */
   ARTNET_MSRV,    /**< A Media Server */
   ARTNET_ROUTE,    /**< No Effect currently */
   ARTNET_BACKUP,    /**< No Effect currently */
@@ -197,17 +200,13 @@ typedef enum {
 
 
 /*
- * Enum for the talk-to-me value
- * These values can be &'ed togeather, so for example to set private replies
- * and auto replying use :
- *   (ARTNET_TTM_PRIVATE & ARTNET_TTM_AUTO)
- *
- * Art-Net 4: This is now mapped to the Flags field in ArtPoll.
+ * Enum for the legacy talk-to-me value.
+ * For Art-Net 4, use artnet_poll_flags_t instead.
  */
 typedef enum {
-  ARTNET_TTM_DEFAULT = 0xFF,  /**< default, ArtPollReplies are broadcast, and nodes won't send a ArtPollReply when conditions change */
+  ARTNET_TTM_DEFAULT = 0xFF,  /**< default: ArtPollReplies are broadcast, nodes won't send ArtPollReply on condition change */
   ARTNET_TTM_PRIVATE = 0xFE,  /**< ArtPollReplies aren't broadcast */
-  ARTNET_TTM_AUTO = 0xFD    /**< ArtPollReplies are send when node conditions chang */
+  ARTNET_TTM_AUTO = 0xFD      /**< ArtPollReplies are sent when node conditions change */
 } artnet_ttm_value_t;
 
 /*
@@ -293,14 +292,14 @@ typedef enum {
   ARTNET_TIMECODE_SMPTE = 0x03,  // 30 fps
 } artnet_timecode_type_t;
 
-/*
+/**
  * ArtTrigger key values (Art-Net 4)
  */
 typedef enum {
-  ARTNET_TRIGGER_KEY_ASCII = 0x00,
-  ARTNET_TRIGGER_KEY_MACRO = 0x01,
-  ARTNET_TRIGGER_KEY_SOFT  = 0x02,
-  ARTNET_TRIGGER_KEY_SHOW  = 0x03,
+  ARTNET_TRIGGER_KEY_ASCII = 0x00, /**< ASCII key trigger */
+  ARTNET_TRIGGER_KEY_MACRO = 0x01, /**< Macro key trigger */
+  ARTNET_TRIGGER_KEY_SOFT  = 0x02, /**< Soft key trigger */
+  ARTNET_TRIGGER_KEY_SHOW  = 0x03, /**< Show key trigger */
 } artnet_trigger_key_t;
 
 /*
@@ -387,37 +386,37 @@ typedef enum {
  * Enums for the application defined handlers
  */
 typedef enum {
-  ARTNET_RECV_HANDLER,    /**< Called on reciept of any ArtNet packet */
+  ARTNET_RECV_HANDLER,    /**< Called on receipt of any ArtNet packet */
   ARTNET_SEND_HANDLER,    /**< Called on transmission of any ArtNet packet */
-  ARTNET_POLL_HANDLER,    /**< Called on reciept of an ArtPoll packet */
-  ARTNET_REPLY_HANDLER,    /**< Called on reciept of an ArtPollReply packet */
-  ARTNET_DMX_HANDLER,      /**< Called on reciept of an ArtDMX packet */
-  ARTNET_ADDRESS_HANDLER,    /**< Called on reciept of an ArtAddress packet */
-  ARTNET_INPUT_HANDLER,    /**< Called on reciept of an ArtInput packet */
-  ARTNET_TOD_REQUEST_HANDLER,  /**< Called on reciept of an ArtTodRequest packet */
-  ARTNET_TOD_DATA_HANDLER,  /**< Called on reciept of an ArtTodData packet */
-  ARTNET_TOD_CONTROL_HANDLER,  /**< Called on reciept of an ArtTodControl packet */
-  ARTNET_RDM_HANDLER,      /**< Called on reciept of an ArtRdm packet */
-  ARTNET_IPPROG_HANDLER,    /**< Called on reciept of an ArtIPProg packet */
-  ARTNET_FIRMWARE_HANDLER,  /**< Called on reciept of an ArtFirmware packet */
-  ARTNET_FIRMWARE_REPLY_HANDLER,  /**< Called on reciept of an ArtFirmwareReply packet */
-  ARTNET_SYNC_HANDLER,            /**< Called on reciept of an ArtSync packet */
-  ARTNET_NZS_HANDLER,             /**< Called on reciept of an ArtNzs packet */
-  ARTNET_DIAGDATA_HANDLER,        /**< Called on reciept of an ArtDiagData packet */
-  ARTNET_COMMAND_HANDLER,         /**< Called on reciept of an ArtCommand packet */
-  ARTNET_TIMECODE_HANDLER,        /**< Called on reciept of an ArtTimeCode packet */
-  ARTNET_TIMESYNC_HANDLER,        /**< Called on reciept of an ArtTimeSync packet */
-  ARTNET_TRIGGER_HANDLER,         /**< Called on reciept of an ArtTrigger packet */
-  ARTNET_DIRECTORY_HANDLER,       /**< Called on reciept of an ArtDirectory packet */
-  ARTNET_DIRECTORY_REPLY_HANDLER, /**< Called on reciept of an ArtDirectoryReply packet */
-  ARTNET_FILE_TN_MASTER_HANDLER,  /**< Called on reciept of an ArtFileTnMaster packet */
-  ARTNET_FILE_FN_MASTER_HANDLER,  /**< Called on reciept of an ArtFileFnMaster packet */
-  ARTNET_FILE_FN_REPLY_HANDLER,   /**< Called on reciept of an ArtFileFnReply packet */
-  ARTNET_MEDIAPATCH_HANDLER,      /**< Called on reciept of an ArtMediaPatch packet */
-  ARTNET_MEDIA_HANDLER,           /**< Called on reciept of an ArtMedia packet */
-  ARTNET_MEDIACONTROL_HANDLER,    /**< Called on reciept of an ArtMediaControl packet */
-  ARTNET_DATAREQUEST_HANDLER,     /**< Called on reciept of an ArtDataRequest packet */
-  ARTNET_DATAREPLY_HANDLER,       /**< Called on reciept of an ArtDataReply packet */
+  ARTNET_POLL_HANDLER,    /**< Called on receipt of an ArtPoll packet */
+  ARTNET_REPLY_HANDLER,   /**< Called on receipt of an ArtPollReply packet */
+  ARTNET_DMX_HANDLER,     /**< Called on receipt of an ArtDMX packet */
+  ARTNET_ADDRESS_HANDLER,    /**< Called on receipt of an ArtAddress packet */
+  ARTNET_INPUT_HANDLER,      /**< Called on receipt of an ArtInput packet */
+  ARTNET_TOD_REQUEST_HANDLER,  /**< Called on receipt of an ArtTodRequest packet */
+  ARTNET_TOD_DATA_HANDLER,     /**< Called on receipt of an ArtTodData packet */
+  ARTNET_TOD_CONTROL_HANDLER,  /**< Called on receipt of an ArtTodControl packet */
+  ARTNET_RDM_HANDLER,          /**< Called on receipt of an ArtRdm packet */
+  ARTNET_IPPROG_HANDLER,       /**< Called on receipt of an ArtIPProg packet */
+  ARTNET_FIRMWARE_HANDLER,     /**< Called on receipt of an ArtFirmware packet */
+  ARTNET_FIRMWARE_REPLY_HANDLER, /**< Called on receipt of an ArtFirmwareReply packet */
+  ARTNET_SYNC_HANDLER,         /**< Called on receipt of an ArtSync packet */
+  ARTNET_NZS_HANDLER,          /**< Called on receipt of an ArtNzs packet */
+  ARTNET_DIAGDATA_HANDLER,     /**< Called on receipt of an ArtDiagData packet */
+  ARTNET_COMMAND_HANDLER,      /**< Called on receipt of an ArtCommand packet */
+  ARTNET_TIMECODE_HANDLER,     /**< Called on receipt of an ArtTimeCode packet */
+  ARTNET_TIMESYNC_HANDLER,     /**< Called on receipt of an ArtTimeSync packet */
+  ARTNET_TRIGGER_HANDLER,      /**< Called on receipt of an ArtTrigger packet */
+  ARTNET_DIRECTORY_HANDLER,    /**< Called on receipt of an ArtDirectory packet */
+  ARTNET_DIRECTORY_REPLY_HANDLER, /**< Called on receipt of an ArtDirectoryReply packet */
+  ARTNET_FILE_TN_MASTER_HANDLER,  /**< Called on receipt of an ArtFileTnMaster packet */
+  ARTNET_FILE_FN_MASTER_HANDLER,  /**< Called on receipt of an ArtFileFnMaster packet */
+  ARTNET_FILE_FN_REPLY_HANDLER,   /**< Called on receipt of an ArtFileFnReply packet */
+  ARTNET_MEDIAPATCH_HANDLER,      /**< Called on receipt of an ArtMediaPatch packet */
+  ARTNET_MEDIA_HANDLER,           /**< Called on receipt of an ArtMedia packet */
+  ARTNET_MEDIACONTROL_HANDLER,    /**< Called on receipt of an ArtMediaControl packet */
+  ARTNET_DATAREQUEST_HANDLER,     /**< Called on receipt of an ArtDataRequest packet */
+  ARTNET_DATAREPLY_HANDLER,       /**< Called on receipt of an ArtDataReply packet */
 } artnet_handler_name_t;
 
 
@@ -431,20 +430,20 @@ typedef struct artnet_node_entry_s {
   uint8_t subSwitch;    /**< The subnet address (bits 7-4 of 15-bit port address, stored in lower nibble per Art-Net 4) */
   int16_t oem;          /**< The OEM value */
   uint8_t ubea;          /**< The UBEA version */
-  uint8_t status;
+  uint8_t status;                           /**< Status1 register */
   uint8_t estaMan[ARTNET_ESTA_SIZE];       /**< The ESTA Manufacturer code */
   uint8_t shortName[ARTNET_SHORT_NAME_LENGTH];  /**< The short node name */
   uint8_t longName[ARTNET_LONG_NAME_LENGTH];  /**< The long node name */
   uint8_t nodeReport[ARTNET_REPORT_LENGTH];  /**< The node report */
   int16_t numbports;        /**< The number of ports */
   uint8_t portTypes[ARTNET_MAX_PORTS];    /**< The type of ports */
-  uint8_t goodInput[ARTNET_MAX_PORTS];
+  uint8_t goodInput[ARTNET_MAX_PORTS];   /**< GoodInput status per port */
   uint8_t goodOutputA[ARTNET_MAX_PORTS];   /**< GoodOutputA status (Art-Net 4) */
-  uint8_t swIn[ARTNET_MAX_PORTS];
-  uint8_t swOut[ARTNET_MAX_PORTS];
+  uint8_t swIn[ARTNET_MAX_PORTS];        /**< Input port addresses */
+  uint8_t swOut[ARTNET_MAX_PORTS];       /**< Output port addresses */
   uint8_t acnPriority;      /**< sACN priority value (Art-Net 4, was swvideo) */
-  uint8_t swMacro;
-  uint8_t swRemote;
+  uint8_t swMacro;          /**< Macro inputs */
+  uint8_t swRemote;         /**< Remote trigger inputs */
   uint8_t style;                        /**< Product style code (StNode, StController, etc.) */
   uint8_t mac[ARTNET_MAC_SIZE];        /**< The MAC address of the node */
   uint8_t bindIp[ARTNET_IP_SIZE];      /**< Bind IP address (Art-Net 4) */
@@ -462,13 +461,16 @@ typedef struct artnet_node_entry_s {
 /** A pointer to an artnet_node_entry_t */
 typedef artnet_node_entry_t *artnet_node_entry;
 
+/**
+ * Configuration for a local ArtNet node
+ */
 typedef struct {
-  char shortName[ARTNET_SHORT_NAME_LENGTH];
-  char longName[ARTNET_LONG_NAME_LENGTH];
-  uint8_t netSwitch;
-  uint8_t subSwitch;
-  uint8_t inPorts[ARTNET_MAX_PORTS];
-  uint8_t outPorts[ARTNET_MAX_PORTS];
+  char shortName[ARTNET_SHORT_NAME_LENGTH]; /**< Short node name */
+  char longName[ARTNET_LONG_NAME_LENGTH];   /**< Long node name */
+  uint8_t netSwitch;     /**< Net address (bits 14-8 of 15-bit port address) */
+  uint8_t subSwitch;     /**< Subnet address (bits 7-4 of 15-bit port address) */
+  uint8_t inPorts[ARTNET_MAX_PORTS];   /**< Input port addresses */
+  uint8_t outPorts[ARTNET_MAX_PORTS];  /**< Output port addresses */
 } artnet_node_config_t;
 
 
@@ -484,56 +486,217 @@ typedef int artnet_socket_t;
 typedef SOCKET artnet_socket_t;
 #endif
 
-// node control functions
+/**
+ * Sentinel value indicating "no change" for address fields in artnet_send_address().
+ */
+EXTERN int ARTNET_ADDRESS_NO_CHANGE;
+
+/**
+ * @brief Create a new ArtNet node.
+ * @param ip      Preferred IP address (pass NULL for auto-detection)
+ * @param verbose Non-zero to enable verbose debug output
+ * @return A new artnet_node handle, or NULL on failure
+ */
 EXTERN artnet_node artnet_new(const char *ip, int verbose);
+
+/**
+ * @brief Set the OEM code for this node.
+ * @param vn The artnet_node
+ * @param hi High byte of the OEM code
+ * @param lo Low byte of the OEM code
+ * @return ARTNET_EOK on success, or a negative error code
+ */
 EXTERN int artnet_setoem(artnet_node vn, uint8_t hi, uint8_t lo);
+
+/**
+ * @brief Set the ESTA manufacturer code.
+ * @param vn The artnet_node
+ * @param hi High byte of the ESTA code
+ * @param lo Low byte of the ESTA code
+ * @return ARTNET_EOK on success, or a negative error code
+ */
 EXTERN int artnet_setesta(artnet_node vn, char hi, char lo);
+
+/**
+ * @brief Set the broadcast limit for ArtPollReply transmissions.
+ * @param vn    The artnet_node
+ * @param limit Maximum number of ArtPollReply broadcasts per cycle
+ * @return ARTNET_EOK on success, or a negative error code
+ */
 EXTERN int artnet_set_bcast_limit(artnet_node vn, int limit);
+
+/**
+ * @brief Start the ArtNet node (begins network operations).
+ * @param n The artnet_node
+ * @return ARTNET_EOK on success, or a negative error code
+ */
 EXTERN int artnet_start(artnet_node n);
+
+/**
+ * @brief Read and process pending ArtNet packets.
+ * @param n       The artnet_node
+ * @param timeout Maximum seconds to block waiting for packets (0 for non-blocking)
+ * @return ARTNET_EOK on success, or a negative ARTNET_E* error code
+ */
 EXTERN int artnet_read(artnet_node n, int timeout);
+
+/**
+ * @brief Stop the ArtNet node.
+ * @param n The artnet_node
+ * @return ARTNET_EOK on success, or a negative error code
+ */
 EXTERN int artnet_stop(artnet_node n);
+
+/**
+ * @brief Destroy the ArtNet node and free all resources.
+ * @param n The artnet_node
+ * @return ARTNET_EOK on success, or a negative error code
+ */
 EXTERN int artnet_destroy(artnet_node n);
 
+/**
+ * @brief Join two nodes to share a single socket (peering).
+ * @param vn1 Primary node
+ * @param vn2 Secondary node to peer with vn1
+ * @return ARTNET_EOK on success, or a negative error code
+ */
 int artnet_join(artnet_node vn1, artnet_node vn2);
 
-// handler functions
-// these need to be cleaned up into a generic interface
+/**
+ * @brief Register a generic packet handler callback.
+ * @param vn      The artnet_node
+ * @param handler The handler type to register
+ * @param fh      The callback function (receives node, packet pointer, user data)
+ * @param data    User data passed to the callback
+ * @return ARTNET_EOK on success, or a negative error code
+ */
 EXTERN int artnet_set_handler(artnet_node vn,
   artnet_handler_name_t handler,
   int (*fh)(artnet_node n, void *pp, void *d),
   void* data);
+
+/**
+ * @brief Register a DMX receive handler.
+ * @param vn   The artnet_node
+ * @param fh   Callback invoked with (node, port_id, user_data)
+ * @param data User data passed to the callback
+ * @return ARTNET_EOK on success, or a negative error code
+ */
 EXTERN int artnet_set_dmx_handler(artnet_node vn,
   int (*fh)(artnet_node n, int port, void *d),
   void *data);
+
+/**
+ * @brief Register a program change handler (invoked on ArtAddress reprogramming).
+ * @param vn   The artnet_node
+ * @param fh   Callback invoked with (node, user_data)
+ * @param data User data passed to the callback
+ * @return ARTNET_EOK on success, or a negative error code
+ */
 EXTERN int artnet_set_program_handler(artnet_node vn,
   int (*fh)(artnet_node n, void *d),
   void *data);
+
+/**
+ * @brief Register a firmware transfer handler.
+ * @param vn   The artnet_node
+ * @param fh   Callback invoked with (node, ubea, data, length, user_data)
+ * @param data User data passed to the callback
+ * @return ARTNET_EOK on success, or a negative error code
+ */
 EXTERN int artnet_set_firmware_handler(artnet_node vn,
   int (*fh)(artnet_node n, int ubea, uint16_t *data, int length, void *d),
   void *data);
+
+/**
+ * @brief Register an RDM handler.
+ * @param vn   The artnet_node
+ * @param fh   Callback invoked with (node, address, rdm_data, length, user_data)
+ * @param data User data passed to the callback
+ * @return ARTNET_EOK on success, or a negative error code
+ */
 EXTERN int artnet_set_rdm_handler(artnet_node vn,
   int (*fh)(artnet_node n, int address, uint8_t *rdm, int length, void *d),
   void *data);
+
+/**
+ * @brief Register an RDM discovery initiation handler.
+ * @param vn   The artnet_node
+ * @param fh   Callback invoked with (node, port, user_data)
+ * @param data User data passed to the callback
+ * @return ARTNET_EOK on success, or a negative error code
+ */
 EXTERN int artnet_set_rdm_initiate_handler(artnet_node vn,
   int (*fh)(artnet_node n, int port, void *d),
   void *data);
+
+/**
+ * @brief Register an RDM TOD update handler.
+ * @param vn   The artnet_node
+ * @param fh   Callback invoked with (node, address, user_data)
+ * @param data User data passed to the callback
+ * @return ARTNET_EOK on success, or a negative error code
+ */
 EXTERN int artnet_set_rdm_tod_handler(artnet_node vn,
   int (*fh)(artnet_node n, int address, void *d),
   void *data);
 
-// send functions
+/**
+ * @brief Send an ArtPoll to discover nodes on the network.
+ * @param n           The artnet_node
+ * @param ip          Target IP (NULL for broadcast)
+ * @param talk_to_me  Legacy talk-to-me value (use ARTNET_TTM_DEFAULT for default)
+ * @return ARTNET_EOK on success, or a negative error code
+ */
 EXTERN int artnet_send_poll(artnet_node n,
   const char *ip,
   artnet_ttm_value_t talk_to_me);
+
+/**
+ * @brief Send an ArtPollReply for this node.
+ * @param n The artnet_node
+ * @return ARTNET_EOK on success, or a negative error code
+ */
 EXTERN int artnet_send_poll_reply(artnet_node n);
+
+/**
+ * @brief Send DMX data on a port.
+ * @param n       The artnet_node
+ * @param port_id The port index (0 to ARTNET_MAX_PORTS-1)
+ * @param length  Length of DMX data (2-512)
+ * @param data    Pointer to DMX data
+ * @return ARTNET_EOK on success, or a negative error code
+ */
 EXTERN int artnet_send_dmx(artnet_node n,
   int port_id,
   int16_t length,
   const uint8_t *data);
+
+/**
+ * @brief Send DMX data to a specific 15-bit universe address.
+ * @param vn     The artnet_node
+ * @param uni    The 15-bit universe address (0-32767)
+ * @param length Length of DMX data (2-512)
+ * @param data   Pointer to DMX data
+ * @return ARTNET_EOK on success, or a negative error code
+ */
 EXTERN int artnet_raw_send_dmx(artnet_node vn,
   uint16_t uni,
   int16_t length,
   const uint8_t *data);
+/**
+ * @brief Send an ArtAddress packet to remotely program a node.
+ * @param n         The local artnet_node (sender)
+ * @param e         The remote node entry (target)
+ * @param shortName New short name (NULL or ARTNET_ADDRESS_NO_CHANGE to keep)
+ * @param longName  New long name (NULL or ARTNET_ADDRESS_NO_CHANGE to keep)
+ * @param inAddr    New input port addresses (NULL to keep)
+ * @param outAddr   New output port addresses (NULL to keep)
+ * @param netAddr   New net address (ARTNET_ADDRESS_NO_CHANGE to keep)
+ * @param subAddr   New subnet address (ARTNET_ADDRESS_NO_CHANGE to keep)
+ * @param cmd       ArtAddress command (ARTNET_PC_NONE for no command)
+ * @return ARTNET_EOK on success, or a negative error code
+ */
 EXTERN int artnet_send_address(artnet_node n,
   artnet_node_entry e,
   const char *shortName,
@@ -543,9 +706,29 @@ EXTERN int artnet_send_address(artnet_node n,
   uint8_t netAddr,
   uint8_t subAddr,
   artnet_port_command_t cmd);
+
+/**
+ * @brief Send an ArtInput packet to enable/disable ports on a remote node.
+ * @param n        The local artnet_node (sender)
+ * @param e        The remote node entry (target)
+ * @param settings Per-port settings bitmask (ARTNET_ENABLE_INPUT / ARTNET_ENABLE_OUTPUT)
+ * @return ARTNET_EOK on success, or a negative error code
+ */
 EXTERN int artnet_send_input(artnet_node n,
   artnet_node_entry e,
   uint8_t settings[ARTNET_MAX_PORTS]);
+
+/**
+ * @brief Upload firmware to a remote node.
+ * @param vn        The artnet_node
+ * @param e         The remote node entry (target)
+ * @param ubea      Non-zero if uploading to UBEA
+ * @param data      Firmware data as 16-bit words
+ * @param length    Length of data in 16-bit words
+ * @param fh        Progress callback (may be NULL)
+ * @param user_data User data passed to the callback
+ * @return ARTNET_EOK on success, or a negative error code
+ */
 EXTERN int artnet_send_firmware(artnet_node vn,
   artnet_node_entry e,
   int ubea,
@@ -553,20 +736,69 @@ EXTERN int artnet_send_firmware(artnet_node vn,
   int length,
   int (*fh)(artnet_node n, artnet_firmware_status_code code, void *d),
   void *user_data);
+
+/**
+ * @brief Send an ArtFirmwareReply to acknowledge a firmware block.
+ * @param vn   The artnet_node
+ * @param e    The remote node entry (target)
+ * @param code Firmware status code
+ * @return ARTNET_EOK on success, or a negative error code
+ */
 EXTERN int artnet_send_firmware_reply(artnet_node vn,
   artnet_node_entry e,
   artnet_firmware_status_code code);
 
-// rdm functions
+/**
+ * @brief Send an ArtTodRequest to discover RDM devices.
+ * @param vn The artnet_node
+ * @return ARTNET_EOK on success, or a negative error code
+ */
 EXTERN int artnet_send_tod_request(artnet_node vn);
+
+/**
+ * @brief Send an ArtTodControl to manage TOD behavior on a node.
+ * @param vn      The artnet_node
+ * @param address The universe address to control
+ * @param action  The TOD action (ARTNET_TOD_FULL, ARTNET_TOD_FLUSH, etc.)
+ * @return ARTNET_EOK on success, or a negative error code
+ */
 EXTERN int artnet_send_tod_control(artnet_node vn,
   uint16_t address,
   artnet_tod_command_code action);
+
+/**
+ * @brief Send an ArtTodData for a specific port.
+ * @param vn  The artnet_node
+ * @param port The port index
+ * @return ARTNET_EOK on success, or a negative error code
+ */
 EXTERN int artnet_send_tod_data(artnet_node vn, int port);
+
+/**
+ * @brief Send an ArtRdm packet.
+ * @param vn      The artnet_node
+ * @param address The universe address
+ * @param data    RDM data payload
+ * @param length  Length of RDM data
+ * @return ARTNET_EOK on success, or a negative error code
+ */
 EXTERN int artnet_send_rdm(artnet_node vn,
   uint16_t address,
   uint8_t *data,
   int length);
+
+/**
+ * @brief Send an ArtRdmSub packet (RDM sub-device).
+ * @param vn            The artnet_node
+ * @param uid           RDM UID of the target device
+ * @param command_class RDM command class
+ * @param param_id      RDM parameter ID
+ * @param sub_device    Sub-device address
+ * @param sub_count     Sub-device count
+ * @param data          RDM data payload
+ * @param length        Length of RDM data
+ * @return ARTNET_EOK on success, or a negative error code
+ */
 EXTERN int artnet_send_rdmsub(artnet_node vn,
   uint8_t uid[ARTNET_RDM_UID_WIDTH],
   uint8_t command_class,
@@ -576,98 +808,372 @@ EXTERN int artnet_send_rdmsub(artnet_node vn,
   uint8_t *data,
   int length);
 
-// sync functions
+/**
+ * @brief Send an ArtSync to synchronize DMX outputs.
+ * @param vn The artnet_node
+ * @return ARTNET_EOK on success, or a negative error code
+ */
 EXTERN int artnet_send_sync(artnet_node vn);
 
-// non-zero start code DMX
+/**
+ * @brief Send non-zero start code DMX (ArtNzs).
+ * @param vn          The artnet_node
+ * @param port_id     The port index (0 to ARTNET_MAX_PORTS-1)
+ * @param start_code  The DMX start code (non-zero)
+ * @param length      Length of data (2-512)
+ * @param data        Pointer to the data
+ * @return ARTNET_EOK on success, or a negative error code
+ */
 EXTERN int artnet_send_nzs(artnet_node vn, int port_id, uint8_t start_code,
   int16_t length, const uint8_t *data);
 
-// timecode functions
+/**
+ * @brief Send an ArtTimeCode packet.
+ * @param vn       The artnet_node
+ * @param frames   Frames (0-29 depending on type)
+ * @param seconds  Seconds (0-59)
+ * @param minutes  Minutes (0-59)
+ * @param hours    Hours (0-23)
+ * @param type     Timecode type (film/EBU/DF/SMPTE)
+ * @param stream_id Stream identifier
+ * @return ARTNET_EOK on success, or a negative error code
+ */
 EXTERN int artnet_send_timecode(artnet_node vn, uint8_t frames, uint8_t seconds,
   uint8_t minutes, uint8_t hours, artnet_timecode_type_t type, uint8_t stream_id);
+
+/**
+ * @brief Send an ArtTimeSync with date/time fields.
+ * @param vn      The artnet_node
+ * @param tm_sec  Seconds (0-59)
+ * @param tm_min  Minutes (0-59)
+ * @param tm_hour Hours (0-23)
+ * @param tm_mday Day of month (1-31)
+ * @param tm_mon  Month (1-12)
+ * @param tm_year Year (years since 1900)
+ * @return ARTNET_EOK on success, or a negative error code
+ */
 EXTERN int artnet_send_timesync(artnet_node vn, uint8_t tm_sec, uint8_t tm_min,
   uint8_t tm_hour, uint8_t tm_mday, uint8_t tm_mon, uint8_t tm_year);
 
-// trigger functions
+/**
+ * @brief Send an ArtTrigger packet.
+ * @param vn      The artnet_node
+ * @param oem_hi  OEM code high byte
+ * @param oem_lo  OEM code low byte
+ * @param key     Trigger key (ARTNET_TRIGGER_KEY_*)
+ * @param sub_key Sub-key value
+ * @param data    Payload data (may be NULL)
+ * @param length  Length of payload
+ * @return ARTNET_EOK on success, or a negative error code
+ */
 EXTERN int artnet_send_trigger(artnet_node vn, uint8_t oem_hi, uint8_t oem_lo,
   uint8_t key, uint8_t sub_key, const uint8_t *data, int16_t length);
 
-// data request/reply functions
+/**
+ * @brief Send an ArtDataReply.
+ * @param vn           The artnet_node
+ * @param ip           Target IP address
+ * @param request_code The request code being answered
+ * @param payload      Reply payload string
+ * @param length       Length of payload
+ * @return ARTNET_EOK on success, or a negative error code
+ */
 EXTERN int artnet_send_data_reply(artnet_node vn, const char *ip,
   uint16_t request_code, const char *payload, int16_t length);
 
-// directory functions
+/**
+ * @brief Broadcast an ArtDirectory request.
+ * @param vn The artnet_node
+ * @return ARTNET_EOK on success, or a negative error code
+ */
 EXTERN int artnet_send_directory(artnet_node vn);
+
+/**
+ * @brief Send an ArtDirectoryReply with file entries.
+ * @param vn          The artnet_node
+ * @param entries     File entry data
+ * @param entry_count Number of entries in this packet
+ * @param entry_total Total entries across all packets
+ * @return ARTNET_EOK on success, or a negative error code
+ */
 EXTERN int artnet_send_directory_reply(artnet_node vn,
   const uint8_t *entries, int entry_count, int entry_total);
 
-// file transfer functions
+/**
+ * @brief Send an ArtFileTnMaster (upload file block to node).
+ * @param vn          The artnet_node
+ * @param e           The remote node entry (target)
+ * @param type        File type
+ * @param blockId     Block identifier
+ * @param totalLength Total file length in bytes
+ * @param data        File data as 16-bit words
+ * @param dataLen     Length of data in 16-bit words
+ * @return ARTNET_EOK on success, or a negative error code
+ */
 EXTERN int artnet_send_file_tn_master(artnet_node vn,
   artnet_node_entry e, uint8_t type, uint8_t blockId,
   uint32_t totalLength, const uint16_t *data, int dataLen);
+
+/**
+ * @brief Send an ArtFileFnMaster (request file download from node).
+ * @param vn       The artnet_node
+ * @param e        The remote node entry (target)
+ * @param filename Name of the file to request
+ * @return ARTNET_EOK on success, or a negative error code
+ */
 EXTERN int artnet_send_file_fn_master(artnet_node vn,
   artnet_node_entry e, const char *filename);
+
+/**
+ * @brief Send an ArtFileFnReply (respond with file data block).
+ * @param vn          The artnet_node
+ * @param blockId     Block identifier
+ * @param totalLength Total file length
+ * @param data        File data
+ * @param dataLen     Length of data
+ * @return ARTNET_EOK on success, or a negative error code
+ */
 EXTERN int artnet_send_file_fn_reply(artnet_node vn,
   uint8_t blockId, uint16_t totalLength, uint8_t *data, int dataLen);
 
-// diagnostic functions
+/**
+ * @brief Send an ArtDiagData diagnostic message.
+ * @param vn        The artnet_node
+ * @param priority  Diagnostic priority level
+ * @param port      Port number (or 0 for global)
+ * @param text      Diagnostic text message
+ * @return ARTNET_EOK on success, or a negative error code
+ */
 EXTERN int artnet_send_diagnostic(artnet_node vn,
   artnet_diag_priority_t priority,
   uint8_t port,
   const char *text);
+
+/**
+ * @brief Add a single RDM device to the TOD for a port.
+ * @param vn   The artnet_node
+ * @param port The port index
+ * @param uid  The RDM UID of the device (ARTNET_RDM_UID_WIDTH bytes)
+ * @return ARTNET_EOK on success, or a negative error code
+ */
 EXTERN int artnet_add_rdm_device(artnet_node vn,
   int port,
   uint8_t uid[ARTNET_RDM_UID_WIDTH]);
+
+/**
+ * @brief Add multiple RDM devices to the TOD for a port.
+ * @param vn    The artnet_node
+ * @param port  The port index
+ * @param uid   Flat array of RDM UIDs (count * ARTNET_RDM_UID_WIDTH bytes)
+ * @param count Number of UIDs to add
+ * @return ARTNET_EOK on success, or a negative error code
+ */
 EXTERN int artnet_add_rdm_devices(artnet_node vn,
   int port,
   uint8_t *uid,
   int count);
+
+/**
+ * @brief Remove an RDM device from the TOD for a port.
+ * @param vn   The artnet_node
+ * @param port The port index
+ * @param uid  The RDM UID of the device to remove
+ * @return ARTNET_EOK on success, or a negative error code
+ */
 EXTERN int artnet_remove_rdm_device(artnet_node vn,
   int port,
   uint8_t uid[ARTNET_RDM_UID_WIDTH]);
 
-// recv functions
+/**
+ * @brief Read the latest DMX data received on a port.
+ * @param n       The artnet_node
+ * @param port_id The port index (0 to ARTNET_MAX_PORTS-1)
+ * @param length  Output: receives the length of the DMX data
+ * @return Pointer to the DMX data (owned by the library, do not free), or NULL on error
+ */
 EXTERN uint8_t *artnet_read_dmx(artnet_node n, int port_id, int *length);
 
-// state changing functions
+/**
+ * @brief Set the node type (server, node, media server, etc.).
+ * @param n    The artnet_node
+ * @param type The node type
+ * @return ARTNET_EOK on success, or a negative error code
+ */
 EXTERN int artnet_set_node_type(artnet_node n, artnet_node_type type);
+
+/**
+ * @brief Set the product style code (StNode, StController, etc.).
+ * @param vn    The artnet_node
+ * @param style The style code
+ * @return ARTNET_EOK on success, or a negative error code
+ */
 EXTERN int artnet_set_style_code(artnet_node vn, artnet_style_code_t style);
+
+/**
+ * @brief Set the Status2 register bits for ArtPollReply.
+ * @param vn      The artnet_node
+ * @param status2 Bitmask of ARTNET_STATUS2_* values
+ * @return ARTNET_EOK on success, or a negative error code
+ */
 EXTERN int artnet_set_status2(artnet_node vn, uint8_t status2);
+
+/**
+ * @brief Set the short name for this node.
+ * @param vn   The artnet_node
+ * @param name The short name (max ARTNET_SHORT_NAME_LENGTH-1 chars)
+ * @return ARTNET_EOK on success, or a negative error code
+ */
 EXTERN int artnet_set_short_name(artnet_node vn, const char *name);
+
+/**
+ * @brief Set the long name for this node.
+ * @param n    The artnet_node
+ * @param name The long name (max ARTNET_LONG_NAME_LENGTH-1 chars)
+ * @return ARTNET_EOK on success, or a negative error code
+ */
 EXTERN int artnet_set_long_name(artnet_node n, const char *name);
 
-//port manipulation functions
+/**
+ * @brief Set the type and direction of a port.
+ * @param n        The artnet_node
+ * @param id       The physical port number (0 to ARTNET_MAX_PORTS-1)
+ * @param settings Port settings bitmask (ARTNET_ENABLE_INPUT / ARTNET_ENABLE_OUTPUT)
+ * @param data     The data protocol type (ARTNET_PORT_DMX, etc.)
+ * @return ARTNET_EOK on success, or a negative error code
+ */
 EXTERN int artnet_set_port_type(artnet_node n,
                                 int id,
                                 artnet_port_settings_t settings,
                                 artnet_port_data_code data);
+
+/**
+ * @brief Set the port address of a port.
+ * @param n    The artnet_node
+ * @param id   The physical port number (0 to ARTNET_MAX_PORTS-1)
+ * @param dir  Port direction (ARTNET_INPUT_PORT or ARTNET_OUTPUT_PORT)
+ * @param addr The new port address
+ * @return ARTNET_EOK on success, or a negative error code
+ */
 EXTERN int artnet_set_port_addr(artnet_node n,
                                 int id,
                                 artnet_port_dir_t dir,
                                 uint8_t addr);
+
+/**
+ * @brief Set the net address (bits 14-8 of 15-bit port address).
+ * @param n   The artnet_node
+ * @param net The net address (0-127)
+ * @return ARTNET_EOK on success, or a negative error code
+ */
 EXTERN int artnet_set_net_addr(artnet_node n, uint8_t net);
+
+/**
+ * @brief Set the subnet address (bits 7-4 of 15-bit port address).
+ * @param n      The artnet_node
+ * @param subnet The subnet address (0-15)
+ * @return ARTNET_EOK on success, or a negative error code
+ */
 EXTERN int artnet_set_subnet_addr(artnet_node n, uint8_t subnet);
+
+/**
+ * @brief Set the default RDM responder UID.
+ * @param n   The artnet_node
+ * @param uid The RDM UID (ARTNET_RDM_UID_WIDTH bytes)
+ * @return ARTNET_EOK on success, or a negative error code
+ */
 EXTERN int artnet_set_default_resp_uid(artnet_node n, const uint8_t uid[ARTNET_RDM_UID_WIDTH]);
+
+/**
+ * @brief Set the gateway IP address for ArtPollReply.
+ * @param n  The artnet_node
+ * @param ip Gateway IP as a dotted string (e.g. "192.168.1.1")
+ * @return ARTNET_EOK on success, or a negative error code
+ */
 EXTERN int artnet_set_gateway(artnet_node n, const char *ip);
+
+/**
+ * @brief Get the current universe address of a port.
+ * @param n   The artnet_node
+ * @param id  The port number (0 to ARTNET_MAX_PORTS-1)
+ * @param dir Port direction (ARTNET_INPUT_PORT or ARTNET_OUTPUT_PORT)
+ * @return The 15-bit universe address, or a negative error code
+ */
 EXTERN int artnet_get_universe_addr(artnet_node n,
                                     int id,
                                     artnet_port_dir_t dir);
 
-//node list functions
+/**
+ * @brief Get the node list handle for discovered nodes.
+ * @param n The artnet_node
+ * @return The node list handle
+ */
 EXTERN artnet_node_list artnet_get_nl(artnet_node n);
+
+/**
+ * @brief Get the first entry in the node list.
+ * @param nl The node list handle
+ * @return The first node entry, or NULL if empty
+ */
 EXTERN artnet_node_entry artnet_nl_first(artnet_node_list nl);
+
+/**
+ * @brief Get the next entry in the node list.
+ * @param nl The node list handle
+ * @return The next node entry, or NULL if no more entries
+ */
 EXTERN artnet_node_entry artnet_nl_next(artnet_node_list nl);
+
+/**
+ * @brief Get the number of entries in the node list.
+ * @param nl The node list handle
+ * @return Number of entries
+ */
 EXTERN int artnet_nl_get_length(artnet_node_list nl);
+
+/**
+ * @brief Iterate over all node list entries with a callback.
+ * @param n    The artnet_node
+ * @param cb   Callback invoked for each entry; return non-zero to stop iteration
+ * @param data User data passed to the callback
+ * @return ARTNET_EOK on success, or the callback's non-zero return value
+ */
 EXTERN int artnet_nl_foreach(artnet_node n,
   int (*cb)(artnet_node_entry entry, void *data), void *data);
 
-// misc
+/**
+ * @brief Print the node configuration to stdout.
+ * @param n The artnet_node
+ * @return ARTNET_EOK on success, or a negative error code
+ */
 EXTERN int artnet_dump_config(artnet_node n);
+
+/**
+ * @brief Export the current node configuration.
+ * @param n      The artnet_node
+ * @param config Output: receives the node configuration
+ * @return ARTNET_EOK on success, or a negative error code
+ */
 EXTERN int artnet_get_config(artnet_node n, artnet_node_config_t *config);
+
+/**
+ * @brief Get the socket descriptor for this node.
+ * @param n The artnet_node
+ * @return The socket descriptor, or a negative value on error
+ */
 EXTERN artnet_socket_t artnet_get_sd(artnet_node n);
+
+/**
+ * @brief Add the node's socket to an fd_set for use with select().
+ * @param vn    The artnet_node
+ * @param fdset Pointer to the fd_set to modify
+ * @return ARTNET_EOK on success, or a negative error code
+ */
 EXTERN int artnet_set_fdset(artnet_node vn, fd_set *fdset);
 
+/**
+ * @brief Get a text description of the last error.
+ * @return A static string describing the last error (do not free)
+ */
 EXTERN char *artnet_strerror();
 
 #ifdef __cplusplus

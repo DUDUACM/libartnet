@@ -303,7 +303,7 @@ int artnet_set_bcast_limit(artnet_node vn, int limit) {
  *
  * @param vn the artnet_node
  * @param timeout the number of seconds to block for if nothing is pending
- * @return 0 on success, -1 on failure
+ * @return ARTNET_EOK on success, or a negative ARTNET_E* error code on failure
  */
 int artnet_read(artnet_node vn, int timeout) {
   node n = (node) vn;
@@ -525,12 +525,12 @@ int artnet_set_handler(artnet_node vn,
 
 
 /*
- * This is a special callback which is invoked when dmx data is received.
+ * Register a DMX receive handler callback.
  *
- * @param vn The artnet_node
- * @param fh The callback to invoke (parameters passwd are the artnet_node, the port_id
- *           that received the dmx, and some user data
- * @param data    Data to be passed to the handler when its called
+ * @param vn   The artnet_node
+ * @param fh   The callback to invoke (parameters passed are the artnet_node, the port_id
+ *             that received the dmx, and user data)
+ * @param data Data to be passed to the handler when it's called
  */
 int artnet_set_dmx_handler(artnet_node vn,
                            int (*fh)(artnet_node n, int port, void *d),
@@ -545,12 +545,12 @@ int artnet_set_dmx_handler(artnet_node vn,
 
 
 /*
- * This is a special callback which is invoked when a firmware upload is received.
+ * Register a firmware upload handler callback.
  *
- * @param vn     The artnet_node
- * @param fh    The callback to invoke (parameters passwd are the artnet_node, a value which
- *           is true if this was a ubea upload, and some user data
- * @param data    Data to be passed to the handler when its called
+ * @param vn   The artnet_node
+ * @param fh   The callback to invoke (parameters passed are the artnet_node, a value which
+ *             is true if this was a ubea upload, and user data)
+ * @param data Data to be passed to the handler when it's called
  */
 int artnet_set_firmware_handler(
     artnet_node vn,
@@ -565,10 +565,11 @@ int artnet_set_firmware_handler(
 
 
 /*
- * @param vn     The artnet_node
- * @param fh    The callback to invoke (parameters passwd are the artnet_node, a value which
- *           is true if this was a ubea upload, and some user data
- * @param data    Data to be passed to the handler when its called
+ * Register a program change handler (invoked on ArtAddress reprogramming).
+ *
+ * @param vn   The artnet_node
+ * @param fh   The callback to invoke (parameters passed are the artnet_node and user data)
+ * @param data Data to be passed to the handler when it's called
  */
 int artnet_set_program_handler(artnet_node vn,
                                int (*fh)(artnet_node n, void *d),
@@ -1395,10 +1396,10 @@ int artnet_add_rdm_devices(artnet_node vn, int port, uint8_t *uid, int count) {
 
 
 /*
- * remove a rdm device to our tod.
+ * Remove an rdm device from our tod.
  *
  * @param port the port the device was connected to
- * @param the uid of the device
+ * @param uid  the uid of the device
  */
 int artnet_remove_rdm_device(artnet_node vn,
                              int port,
@@ -1694,7 +1695,7 @@ int artnet_set_port_type(artnet_node vn,
  * As the port address is between 0 and 15, only the lower 4 bits of the addr argument
  * will be used.
  *
- * The operation may have no affect if the port is under network control.
+ * The operation may have no effect if the port is under network control.
  *
  * @param vn the artnet_node
  * @param id the phyiscal port number (from 0 to ARTNET_MAX_PORTS-1 )
@@ -1835,12 +1836,10 @@ int artnet_dump_config(artnet_node vn) {
 
 /*
  * Returns the socket descriptor associated with this artnet_node.
- * libartnet currently uses two descriptors per node, one bound
- * to the network address and one bound to the subnet broadcast address
+ * Peered (joined) nodes share the same socket descriptor.
  *
  * @param vn the artnet_node
- * @param socket the index of the socket descriptor to fetch (0 or 1)
- * @return the socket descriptor
+ * @return the socket descriptor, or a negative value on error
  */
 artnet_socket_t artnet_get_sd(artnet_node vn) {
   node n = (node) vn;
@@ -1860,9 +1859,9 @@ artnet_socket_t artnet_get_sd(artnet_node vn) {
 /**
  * Sets the file descriptors in the fdset that we are interested in.
  *
- * @param vn the artnet_node
+ * @param vn    the artnet_node
  * @param fdset pointer to the fdset to change
- * @return the maxfd+1
+ * @return ARTNET_EOK on success, or a negative error code on failure
  */
 int artnet_set_fdset(artnet_node vn, fd_set *fdset) {
   node n = (node) vn;

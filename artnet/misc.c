@@ -46,7 +46,7 @@ int32_t artnet_misc_nbytes_to_32(uint8_t bytes[4]) {
 }
 
 /*
- * Converts an int to an arrany of 4 bytes in big endian format
+ * Converts an int to an array of 4 bytes in big endian format
  */
 void artnet_misc_int_to_bytes(int data, uint8_t *bytes) {
     bytes[3] = (data & 0x000000FF);

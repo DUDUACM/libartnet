@@ -288,15 +288,13 @@ void handle_dmx(node n, artnet_packet p) {
 
       }
       else if (ipA == p->from.s_addr && ipB == p->from.s_addr) {
-//        err_warn("In handle_dmx, source matches both buffers, this shouldn't be happening!\n");
-
+        // source matches both buffers
       }
       else if (ipA != p->from.s_addr && ipB != p->from.s_addr) {
-//        err_warn("In handle_dmx, more than two sources, discarding data\n");
-
+        // more than two sources, discarding data
       }
       else {
-//        err_warn("In handle_dmx, no cases matched, this shouldn't happen!\n");
+        // no cases matched
 
       }
 

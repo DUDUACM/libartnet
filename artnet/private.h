@@ -221,7 +221,7 @@ typedef struct {
 } address_callback_t;
 
 /*
- * firmware callback is triggered when a firmware recieve has been completed sucessfully
+ * firmware callback is triggered when a firmware receive has been completed successfully
  */
 typedef struct {
   int (*fh)(artnet_node n, int ubea, uint16_t *data, int length, void *d);
@@ -334,7 +334,7 @@ typedef enum {
  * struct to represent an output port
  *
  * output ports can merge data from two sources in either HTP
- * (highest takes precedence) or LPT (lowest takes precedence) mode
+ * (highest takes precedence) or LTP (lowest takes precedence) mode
  *
  * we need to store:
  *   o The data from each source
@@ -506,7 +506,7 @@ typedef struct {
  * The main node structure
  */
 typedef struct artnet_node_s{
-  artnet_socket_t sd;      // the two sockets
+  artnet_socket_t sd;      // the socket descriptor
   node_state_t state;      // the state struct
   node_callbacks_t callbacks;  // the callbacks struct
   struct ports_s {

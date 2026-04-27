@@ -72,9 +72,8 @@ int artnet_tx_poll(node n, const char *ip, artnet_ttm_value_t ttm) {
 
 /*
  * Send an ArtPollReply
- * @param n the node
- * @param response true if this reply is in response to a network packet
- *            false if this reply is due to the node changing it's conditions
+ * @param n        the node
+ * @param response non-zero if this reply is in response to a network packet
  */
 int artnet_tx_poll_reply(node n, int response) {
   artnet_packet_t reply = {0};
@@ -259,8 +258,9 @@ int artnet_tx_tod_data(node n, int id) {
 
 
 /*
- * Send a tod data for port number id
- * @param id the number of the port to send data for
+ * Send a TOD control datagram
+ * @param address the universe address to control
+ * @param action  the control action (e.g. ARTNET_TOD_FULL, ARTNET_TOD_FLUSH)
  */
 int artnet_tx_tod_control(node n,
                           uint16_t address,
@@ -287,10 +287,11 @@ int artnet_tx_tod_control(node n,
 
 
 /*
- * Send a RDM message
- * @param address the universe to address this datagram to
- * @param action the action to perform. Either ARTNET_TOD_FULL or
- *   ARTNET_TOD_FLUSH
+ * Send an RDM message
+ * @param n       the node
+ * @param address the universe address to send to
+ * @param data    pointer to the RDM data payload
+ * @param length  length of the RDM data
  */
 int artnet_tx_rdm(node n, uint16_t address, uint8_t *data, int length) {
   artnet_packet_t rdm = {0};
@@ -854,9 +855,6 @@ int artnet_tx_ipprog_reply(node n) {
 }
 
 
-/*
- * Send an ArtFileFnReply packet
- */
 /*
  * Send an ArtFileTnMaster packet (upload file block to node). Unicast.
  */

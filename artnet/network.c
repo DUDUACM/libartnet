@@ -96,7 +96,7 @@ static void free_ifaces(iface_t *head) {
  * Add a new interface to an interface list
  * @param head pointer to the head of the list
  * @param tail pointer to the end of the list
- * @return a new iface_t or void
+ * @return a pointer to the new iface_t, or NULL on allocation failure
  */
 static iface_t *new_iface(iface_t **head, iface_t **tail) {
   iface_t *iface = (iface_t*) calloc(1, sizeof(iface_t));
@@ -574,7 +574,7 @@ int artnet_net_start(node n) {
                    SO_BROADCAST,
                    (char*) &true_flag, // char* for win32
                    sizeof(int)) == -1) {
-      artnet_error("Failed to bind to socket %s", artnet_net_last_error());
+      artnet_error("Failed to set SO_BROADCAST on socket %s", artnet_net_last_error());
       artnet_net_close(sock);
       return ARTNET_ENET;
     }
@@ -626,7 +626,7 @@ int artnet_net_start(node n) {
                    SO_REUSEPORT,
                    (char*) &true_flag, // char* for win32
                    sizeof(int)) == -1) {
-      artnet_error("Failed to bind to socket %s", artnet_net_last_error());
+      artnet_error("Failed to set SO_REUSEPORT on socket %s", artnet_net_last_error());
       artnet_net_close(sock);
       return ARTNET_ENET;
     }
@@ -877,7 +877,6 @@ int artnet_net_close(artnet_socket_t sock) {
 #ifdef WIN32
   shutdown(sock, SD_BOTH);
   closesocket(sock);
-  //WSACancelBlockingCall();
   WSACleanup();
 #ifdef LPFN_WSASENDMSG
   pWSASendMsg = NULL;
@@ -911,7 +910,7 @@ int artnet_net_inet_aton(const char *ip_address, struct in_addr *address) {
 
 
 /*
- *
+ * Return a string describing the last network error
  */
 const char *artnet_net_last_error() {
 #ifdef WIN32
