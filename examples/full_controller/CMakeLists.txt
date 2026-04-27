@@ -1,0 +1,5 @@
+add_executable(full_controller full_controller.c)
+target_link_libraries(full_controller PRIVATE artnet)
+if(WIN32)
+    target_link_libraries(full_controller PRIVATE ws2_32)
+endif()

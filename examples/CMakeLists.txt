@@ -1,3 +1,7 @@
+if(MSVC)
+    add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
+endif()
+
 add_subdirectory(dmx_tx)
 add_subdirectory(dmx_rx)
 add_subdirectory(timecode_tx)
@@ -9,3 +13,5 @@ add_subdirectory(timesync_tx)
 add_subdirectory(diag_monitor)
 add_subdirectory(file_transfer)
 add_subdirectory(directory_query)
+add_subdirectory(full_node)
+add_subdirectory(full_controller)

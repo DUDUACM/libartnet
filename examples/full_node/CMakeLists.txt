@@ -1,0 +1,5 @@
+add_executable(full_node full_node.c)
+target_link_libraries(full_node PRIVATE artnet)
+if(WIN32)
+    target_link_libraries(full_node PRIVATE ws2_32)
+endif()
