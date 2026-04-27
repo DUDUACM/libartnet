@@ -70,7 +70,7 @@ uint16_t HIGH_BYTE = 0xFF00;
 void copy_apr_to_node_entry(artnet_node_entry e, artnet_reply_t *reply);
 int find_nodes_from_uni(node n, node_list_t *nl, uint16_t uni, SI *ips, int size);
 
-/*
+/**
  * Creates a new ArtNet node.
  * Takes a string containing the ip address to bind to, if the string is NULL
  * it uses the first non loopback address
@@ -145,7 +145,7 @@ artnet_node artnet_new(const char *ip, int verbose) {
 }
 
 
-/*
+/**
  * Starts the ArtNet node.
  * Binds the network socket and sends an ArtPoll
  * @param vn the artnet_node
@@ -192,7 +192,7 @@ int artnet_start(artnet_node vn) {
 }
 
 
-/*
+/**
  * Stops the ArtNet node. This closes the network sockets held by the node
  * @param vn the artnet_node
  * @return 0 on success, non-0 on failure
@@ -211,7 +211,7 @@ int artnet_stop(artnet_node vn) {
 }
 
 
-/*
+/**
  * Free the memory associated with this node
  */
 int artnet_destroy(artnet_node vn) {
@@ -253,7 +253,7 @@ int artnet_destroy(artnet_node vn) {
 }
 
 
-/*
+/**
  * Set the OEM code
  * This can only be done in the standby state
  */
@@ -271,7 +271,7 @@ int artnet_setoem(artnet_node vn, uint8_t hi, uint8_t lo) {
 }
 
 
-/*
+/**
  * Set the ESTA code
  * This can only be done in the standby state
  */
@@ -289,7 +289,7 @@ int artnet_setesta(artnet_node vn, char hi, char lo) {
 }
 
 
-/*
+/**
  * Set the number of nodes above which we start to bcast data
  * @param vn the artnet_node
  * @param limit 0 to always broadcast
@@ -307,7 +307,7 @@ int artnet_set_bcast_limit(artnet_node vn, int limit) {
   return ARTNET_EOK;
 }
 
-/*
+/**
  * Handle any received packets.
  * This function is the workhorse of libartnet. You have a couple of options:
  *   - use artnet_get_sd() to retrieve the socket descriptors and select to
@@ -367,7 +367,7 @@ int artnet_read(artnet_node vn, int timeout) {
 }
 
 
-/*
+/**
  * To get around the 4 universes per node limitation , we can start more than
  * one node on different ip addresses - you'll need to add aliases to your
  * network interface something like:
@@ -413,7 +413,7 @@ int artnet_join(artnet_node vn1, artnet_node vn2) {
 }
 
 
-/*
+/**
  * This is used to set handlers for sent/received artnet packets.
  * If you're using a stock standard node you more than likely don't want
  * to set these. See the artnet_set_dmx_callback and artnet_set_firmware_callback.
@@ -539,7 +539,7 @@ int artnet_set_handler(artnet_node vn,
 }
 
 
-/*
+/**
  * Register a DMX receive handler callback.
  *
  * @param vn   The artnet_node
@@ -559,7 +559,7 @@ int artnet_set_dmx_handler(artnet_node vn,
 }
 
 
-/*
+/**
  * Register a firmware upload handler callback.
  *
  * @param vn   The artnet_node
@@ -579,7 +579,7 @@ int artnet_set_firmware_handler(
 }
 
 
-/*
+/**
  * Register a program change handler (invoked on ArtAddress reprogramming).
  *
  * @param vn   The artnet_node
@@ -597,7 +597,7 @@ int artnet_set_program_handler(artnet_node vn,
 }
 
 
-/*
+/**
  *
  * @param vn     The artnet_node
  * @param fh    The callback to invoke (parameters passed are the artnet_node, pointer to the
@@ -615,8 +615,13 @@ int artnet_set_rdm_handler(
   n->callbacks.rdm_c.data = data;
   return ARTNET_EOK;
 }
-
-
+/**
+ * Register an RDM initiate handler callback.
+ *
+ * @param vn   The artnet_node
+ * @param fh   The callback to invoke (parameters passed are the artnet_node, the port id, and user data)
+ * @param data Data to be passed to the handler when it's called
+ */
 int artnet_set_rdm_initiate_handler(
     artnet_node vn,
     int (*fh)(artnet_node n, int port, void *d),
@@ -628,8 +633,13 @@ int artnet_set_rdm_initiate_handler(
   n->callbacks.rdm_init_c.data = data;
   return ARTNET_EOK;
 }
-
-
+/**
+ * Register an RDM TOD (Table of Devices) handler callback.
+ *
+ * @param vn   The artnet_node
+ * @param fh   The callback to invoke (parameters passed are the artnet_node, the universe address, and user data)
+ * @param data Data to be passed to the handler when it's called
+ */
 int artnet_set_rdm_tod_handler(
     artnet_node vn,
     int (*fh)(artnet_node n, int address, void *d),
@@ -672,7 +682,7 @@ int artnet_send_poll(artnet_node vn,
 }
 
 
-/*
+/**
  * Sends an artpoll reply
  *
  * @param vn the artnet_node
@@ -689,7 +699,7 @@ int artnet_send_poll_reply(artnet_node vn) {
 }
 
 
-/*
+/**
  * Send a diagnostic message
  *
  * @param vn the artnet_node
@@ -707,7 +717,7 @@ int artnet_send_diagnostic(artnet_node vn,
   return artnet_tx_diagdata(n, (uint8_t) priority, port, text);
 }
 
-/*
+/**
  * Sends some dmx data
  *
  * @param vn the artnet_node
@@ -815,7 +825,7 @@ int artnet_send_dmx(artnet_node vn,
 }
 
 
-/*
+/**
  * Use for performance testing.
  * This allows data to be sent on any universe, not just the ones that have
  * ports configured.
@@ -865,8 +875,16 @@ int artnet_raw_send_dmx(artnet_node vn,
 
   return artnet_net_send(n, &p);
 }
-
-
+/**
+ * Send an ArtNZs (ArtNet Zero Start) packet with a custom start code.
+ * Only available when node type is ARTNET_RAW.
+ *
+ * @param vn          the artnet_node
+ * @param uni         the 15-bit universe address
+ * @param start_code  the DMX start code (must not be 0x00 or 0xCC)
+ * @param length      the length of the data (1-512)
+ * @param data        the data to send
+ */
 int artnet_send_nzs(artnet_node vn,
                     uint16_t uni,
                     uint8_t start_code,
@@ -913,9 +931,20 @@ int artnet_send_nzs(artnet_node vn,
 
   return artnet_net_send(n, &p);
 }
-
-
-
+/**
+ * Send an ArtAddress packet to reprogram a remote node.
+ *
+ * @param vn         the artnet_node
+ * @param e          the node entry to address
+ * @param shortName  the new short name
+ * @param longName   the new long name
+ * @param inAddr     array of input port addresses
+ * @param outAddr    array of output port addresses
+ * @param netAddr    the net address
+ * @param subAddr    the subnet address
+ * @param cmd        the port command
+ * @param acnPriority the sACN priority value
+ */
 int artnet_send_address(artnet_node vn,
                         artnet_node_entry e,
                         const char *shortName,
@@ -974,7 +1003,7 @@ int artnet_send_address(artnet_node vn,
 }
 
 
-/*
+/**
  * Sends an ArtInput packet to the specified node, this packet is used to
  * enable/disable the input ports on the remote node.
  *
@@ -1025,7 +1054,7 @@ int artnet_send_input(artnet_node vn,
 }
 
 
-/*
+/**
  *
  * Sends a series of ArtFirmwareMaster packets to the specified node, these are used to
  * upload firmware to the remote node.
@@ -1126,7 +1155,7 @@ int artnet_send_firmware_reply(artnet_node vn,
 }
 
 
-/*
+/**
  * Sends a tod request
  *
  * @param vn the artnet node
@@ -1140,7 +1169,7 @@ int artnet_send_tod_request(artnet_node vn) {
 }
 
 
-/*
+/**
  * Sends a tod control datagram
  *
  * @param vn the artnet node
@@ -1157,7 +1186,7 @@ int artnet_send_tod_control(artnet_node vn,
 }
 
 
-/*
+/**
  * Send a tod data datagram
  * Note you should not use this, a TodData message should only be sent in response
  * to a request, or when a RDM device is added. Use artnet_add_rdm_device() or artnet_add_rdm_devices() instead
@@ -1178,7 +1207,7 @@ int artnet_send_tod_data(artnet_node vn, int port) {
 }
 
 
-/*
+/**
  * Send an ArtSync packet
  */
 int artnet_send_sync(artnet_node vn) {
@@ -1189,7 +1218,7 @@ int artnet_send_sync(artnet_node vn) {
 }
 
 
-/*
+/**
  * Send an ArtTimeCode packet
  */
 int artnet_send_timecode(artnet_node vn, uint8_t frames, uint8_t seconds,
@@ -1202,7 +1231,7 @@ int artnet_send_timecode(artnet_node vn, uint8_t frames, uint8_t seconds,
 }
 
 
-/*
+/**
  * Send an ArtTimeSync packet
  */
 int artnet_send_timesync(artnet_node vn, uint8_t tm_sec, uint8_t tm_min,
@@ -1215,7 +1244,7 @@ int artnet_send_timesync(artnet_node vn, uint8_t tm_sec, uint8_t tm_min,
 }
 
 
-/*
+/**
  * Send an ArtTrigger packet
  */
 int artnet_send_trigger(artnet_node vn, uint8_t oem_hi, uint8_t oem_lo,
@@ -1228,7 +1257,7 @@ int artnet_send_trigger(artnet_node vn, uint8_t oem_hi, uint8_t oem_lo,
 }
 
 
-/*
+/**
  * Send an ArtDataReply packet (Art-Net 4)
  */
 int artnet_send_data_reply(artnet_node vn, const char *ip,
@@ -1241,7 +1270,7 @@ int artnet_send_data_reply(artnet_node vn, const char *ip,
 }
 
 
-/*
+/**
  * Send an ArtDirectory request (broadcast) to discover node file lists.
  */
 int artnet_send_directory(artnet_node vn) {
@@ -1252,7 +1281,7 @@ int artnet_send_directory(artnet_node vn) {
 }
 
 
-/*
+/**
  * Send an ArtDirectoryReply with directory entries.
  */
 int artnet_send_directory_reply(artnet_node vn,
@@ -1295,7 +1324,7 @@ int artnet_send_directory_reply(artnet_node vn,
 }
 
 
-/*
+/**
  * Upload a file block to a node via ArtFileTnMaster.
  */
 int artnet_send_file_tn_master(artnet_node vn,
@@ -1319,7 +1348,7 @@ int artnet_send_file_tn_master(artnet_node vn,
 }
 
 
-/*
+/**
  * Request a file download from a node via ArtFileFnMaster.
  */
 int artnet_send_file_fn_master(artnet_node vn,
@@ -1338,7 +1367,7 @@ int artnet_send_file_fn_master(artnet_node vn,
 }
 
 
-/*
+/**
  * Send an ArtFileFnReply (file data block in response to ArtFileFnMaster).
  */
 int artnet_send_file_fn_reply(artnet_node vn,
@@ -1353,7 +1382,7 @@ int artnet_send_file_fn_reply(artnet_node vn,
 }
 
 
-/*
+/**
  * Send a rdm datagram
  * @param address the universe address to send to
  * @param data the rdm data to send
@@ -1371,7 +1400,7 @@ int artnet_send_rdm(artnet_node vn,
 }
 
 
-/*
+/**
  * Send a RDM sub packet
  */
 int artnet_send_rdmsub(artnet_node vn,
@@ -1390,7 +1419,7 @@ int artnet_send_rdmsub(artnet_node vn,
 }
 
 
-/*
+/**
  * Add a rdm device to our tod.
  * @param port the port the device is connected to
  * @param the uid of the device
@@ -1414,7 +1443,7 @@ int artnet_add_rdm_device(artnet_node vn,
 }
 
 
-/*
+/**
  * add a list of rdm devices to our tod, use this for full discovery
  *
  * @param port the port the device is connected to
@@ -1447,7 +1476,7 @@ int artnet_add_rdm_devices(artnet_node vn, int port, uint8_t *uid, int count) {
 }
 
 
-/*
+/**
  * Remove an rdm device from our tod.
  *
  * @param port the port the device was connected to
@@ -1472,7 +1501,7 @@ int artnet_remove_rdm_device(artnet_node vn,
 }
 
 
-/*
+/**
  * Reads the latest dmx data
  * @param vn the artnet node
  * @param port_id the port to read data from
@@ -1500,7 +1529,12 @@ uint8_t *artnet_read_dmx(artnet_node vn, int port_id, int *length) {
 //--------------------------------------
 // Functions to change the node state (setters)
 
-// type : server, node, mserver, raw
+/**
+ * Set the node type (server, node, mserver, raw).
+ *
+ * @param vn   the artnet_node
+ * @param type the node type
+ */
 int artnet_set_node_type(artnet_node vn, artnet_node_type type) {
   node n = (node) vn;
   check_nullnode(vn);
@@ -1510,7 +1544,7 @@ int artnet_set_node_type(artnet_node vn, artnet_node_type type) {
 }
 
 
-/*
+/**
  * Set the style code for the node.
  * The style code describes the product type and is sent in ArtPollReply Status1 bits 3-0.
  * Can only be set in STANDBY mode.
@@ -1529,8 +1563,12 @@ int artnet_set_style_code(artnet_node vn, artnet_style_code_t style) {
   n->state.style_code = (uint8_t) style;
   return ARTNET_EOK;
 }
-
-
+/**
+ * Set the Status2 field for the node (ArtPollReply Status2).
+ *
+ * @param vn      the artnet_node
+ * @param status2 the Status2 byte value
+ */
 int artnet_set_status2(artnet_node vn, uint8_t status2) {
   node n = (node) vn;
   check_nullnode(vn);
@@ -1597,8 +1635,21 @@ int artnet_set_net_addr(artnet_node vn, uint8_t net) {
 
   return ARTNET_EOK;
 }
-
-
+/**
+ * Sets the artnet subnet address for this node.
+ * The subnet address has nothing to do with IP addresses. An ArtNet subnet is a grouping of 16 DMX universes
+ * (ie. ports).
+ *
+ * The subnet address is between 0 and 15. If the supplied address is larger than 15, the
+ * lower 4 bits will be used in setting the address.
+ *
+ * It will have no effect if the node is under network control.
+ *
+ * Note that changing the subnet address will cause the universe addresses of all ports to change.
+ *
+ * @param vn     the artnet_node
+ * @param subnet new subnet address
+ */
 int artnet_set_subnet_addr(artnet_node vn, uint8_t subnet) {
   node n = (node) vn;
   int i = 0, ret = 0;
@@ -1659,8 +1710,12 @@ int artnet_set_default_resp_uid(artnet_node vn, const uint8_t uid[ARTNET_RDM_UID
 
   return ARTNET_EOK;
 }
-
-
+/**
+ * Set the gateway IP address for the node.
+ *
+ * @param vn the artnet_node
+ * @param ip the gateway IP address as a dotted string
+ */
 int artnet_set_gateway(artnet_node vn, const char *ip) {
   node n = (node) vn;
 
@@ -1693,7 +1748,7 @@ int artnet_set_short_name(artnet_node vn, const char *name) {
 }
 
 
-/*
+/**
  * Sets the long name of the node.
  * The string should be null terminated and a maximium of 64 characters will be used
  *
@@ -1710,7 +1765,7 @@ int artnet_set_long_name(artnet_node vn, const char *name) {
 }
 
 
-/*
+/**
  * Sets the direction and type of port
  * @param vn the artnet_node
  * @param id
@@ -1734,7 +1789,7 @@ int artnet_set_port_type(artnet_node vn,
 }
 
 
-/*
+/**
  * Sets the port address of the port.
  *
  * The full 15-bit port address is composed of three parts:
@@ -1816,7 +1871,7 @@ int artnet_set_port_addr(artnet_node vn,
 }
 
 
-/*
+/**
  * Returns the universe address of this port
  *
  * @param vn the artnet_node
@@ -1842,8 +1897,13 @@ int artnet_get_universe_addr(artnet_node vn, int id, artnet_port_dir_t dir) {
     artnet_error("%s : Invalid port direction\n", __FUNCTION__);
     return ARTNET_EARG;
   }
-}
-
+}/**
+ * Retrieve the current node configuration.
+ *
+ * @param vn     the artnet_node
+ * @param config pointer to an artnet_node_config_t to populate
+ * @return ARTNET_EOK on success
+ */
 int artnet_get_config(artnet_node vn, artnet_node_config_t *config) {
   int i = 0;
   node n = (node) vn;
@@ -1863,7 +1923,7 @@ int artnet_get_config(artnet_node vn, artnet_node_config_t *config) {
 }
 
 
-/*
+/**
  * Dumps the node config to stdout.
  *
  * @param vn the artnet_node
@@ -1886,7 +1946,7 @@ int artnet_dump_config(artnet_node vn) {
 }
 
 
-/*
+/**
  * Returns the socket descriptor associated with this artnet_node.
  * Peered (joined) nodes share the same socket descriptor.
  *
@@ -1989,7 +2049,7 @@ artnet_node_entry artnet_nl_next(artnet_node_list vnl) {
 }
 
 
-/*
+/**
  * Returns the length of the artnet_node_list
  * NOTE: this function is not THREAD SAFE
  *
@@ -2045,7 +2105,7 @@ int artnet_nl_foreach(artnet_node vn,
 }
 
 
-/*
+/**
  * Return a pointer to the staticly allocated error string
  */
 char *artnet_strerror() {
@@ -2111,7 +2171,7 @@ int artnet_nl_update(node n, node_list_t *nl, artnet_packet reply) {
 }
 
 
-/*
+/**
  * check if this packet is in list
  */
 node_entry_private_t *find_entry_from_ip(node_list_t *nl, SI ip) {
@@ -2126,7 +2186,7 @@ node_entry_private_t *find_entry_from_ip(node_list_t *nl, SI ip) {
 }
 
 
-/*
+/**
  * Find all nodes with a port bound to a particular universe
  * @param nl the node list
  * @param uni the universe to search for
@@ -2164,7 +2224,7 @@ int find_nodes_from_uni(node n, node_list_t *nl, uint16_t uni, SI *ips, int size
 }
 
 
-/*
+/**
  * Add a node to the node list from an ArtPollReply msg
  */
 void copy_apr_to_node_entry(artnet_node_entry e, artnet_reply_t *reply) {
@@ -2204,7 +2264,7 @@ void copy_apr_to_node_entry(artnet_node_entry e, artnet_reply_t *reply) {
   e->bgQueuePolicy = reply->bgQueuePolicy;
 }
 
-/*
+/**
  * find a node_entry in the node list
  */
 node_entry_private_t *find_private_entry(node n, artnet_node_entry e) {

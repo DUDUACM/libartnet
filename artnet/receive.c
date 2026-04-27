@@ -23,7 +23,7 @@
 void check_merge_timeouts(node n, int port);
 void merge(node n, int port, int length, uint8_t *latest);
 
-/*
+/**
  * Checks if the callback is defined, if so call it passing the packet and
  * the user supplied data.
  * If the callbacks return a non-zero result, further processing is canceled.
@@ -37,7 +37,7 @@ int check_callback(node n, artnet_packet p, callback_t callback) {
 }
 
 
-/*
+/**
  * Handle an artpoll packet
  */
 int handle_poll(node n, artnet_packet p) {
@@ -130,7 +130,7 @@ int handle_poll(node n, artnet_packet p) {
   return ARTNET_EOK;
 }
 
-/*
+/**
  * handle an art poll reply
  */
 void handle_reply(node n, artnet_packet p) {
@@ -144,7 +144,7 @@ void handle_reply(node n, artnet_packet p) {
 }
 
 
-/*
+/**
  * handle a art dmx packet
  */
 void handle_dmx(node n, artnet_packet p) {
@@ -621,7 +621,7 @@ int handle_address(node n, artnet_packet p) {
 }
 
 
-/*
+/**
  * handle art input.
  * ArtInput packets can disable input ports.
  */
@@ -654,6 +654,7 @@ int _artnet_handle_input(node n, artnet_packet p) {
 
   return artnet_tx_poll_reply(n, TRUE);
 }
+/** @brief Handle an incoming ArtTodRequest packet. */
 int handle_tod_request(node n, artnet_packet p) {
   int i = 0, j = 0, limit = 0;
   int ret = ARTNET_EOK;
@@ -711,6 +712,7 @@ void handle_tod_data(node n, artnet_packet p) {
 
 
 
+/** @brief Handle an incoming ArtTodControl packet. */
 int handle_tod_control(node n, artnet_packet p) {
   int i = 0;
   int ret = ARTNET_EOK;
@@ -967,7 +969,7 @@ void handle_media_control(node n, artnet_packet p) {
   }
 }
 
-/*
+/**
  * handle ArtRdmSub (compressed RDM sub-device data)
  */
 void handle_rdm_sub(node n, artnet_packet p) {
@@ -975,35 +977,35 @@ void handle_rdm_sub(node n, artnet_packet p) {
   check_callback(n, p, n->callbacks.rdm);
 }
 
-/*
+/**
  * handle ArtDiagData
  */
 void handle_diagdata(node n, artnet_packet p) {
   check_callback(n, p, n->callbacks.diagdata);
 }
 
-/*
+/**
  * handle ArtDataRequest
  */
 void handle_data_request(node n, artnet_packet p) {
   check_callback(n, p, n->callbacks.datareq);
 }
 
-/*
+/**
  * handle ArtDataReply
  */
 void handle_data_reply(node n, artnet_packet p) {
   check_callback(n, p, n->callbacks.datarep);
 }
 
-/*
+/**
  * handle ArtMedia
  */
 void handle_media(node n, artnet_packet p) {
   check_callback(n, p, n->callbacks.media);
 }
 
-/*
+/**
  * handle ArtMediaControlReply
  */
 void handle_media_control_reply(node n, artnet_packet p) {
@@ -1241,7 +1243,7 @@ int handle_firmware_reply(node n, artnet_packet p) {
 }
 
 
-/*
+/**
  * have to sort this one out.
  */
 void handle_ipprog(node n, artnet_packet p) {
@@ -1341,7 +1343,7 @@ void handle_ipprog(node n, artnet_packet p) {
 }
 
 
-/*
+/**
  * The main handler for an artnet packet. calls
  * the appropriate handler function
  */
@@ -1490,7 +1492,7 @@ int16_t get_type(artnet_packet p) {
   }
 }
 
-/*
+/**
  *
  */
 void check_merge_timeouts(node n, int port_id) {
@@ -1524,7 +1526,7 @@ void check_merge_timeouts(node n, int port_id) {
 }
 
 
-/*
+/**
  * merge the data from two sources
  */
 void merge(node n, int port_id, int length, uint8_t *latest) {
@@ -1542,6 +1544,7 @@ void merge(node n, int port_id, int length, uint8_t *latest) {
 }
 
 
+/** @brief Reset the firmware upload state machine. */
 void reset_firmware_upload(node n) {
   n->firmware.bytes_current = 0;
   n->firmware.bytes_total = 0;

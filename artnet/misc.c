@@ -25,7 +25,7 @@
 // static buffer for the error strings
 char artnet_errstr[256];
 
-/*
+/**
  * Libartnet error function
  * This writes the error string to artnet_errstr, which can be accessed
  * using artnet_strerror();
@@ -38,14 +38,14 @@ void artnet_error(const char *fmt, ...) {
 }
 
 
-/*
+/**
  * Converts 4 bytes in big endian order to a 32 bit int
  */
 int32_t artnet_misc_nbytes_to_32(uint8_t bytes[4]) {
   return (bytes[0] << 24) | (bytes[1] << 16) | (bytes[2] << 8) | bytes[3];
 }
 
-/*
+/**
  * Converts an int to an array of 4 bytes in big endian format
  */
 void artnet_misc_int_to_bytes(int data, uint8_t *bytes) {

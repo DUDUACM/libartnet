@@ -23,7 +23,7 @@
 #include "tod.h"
 #include "misc.h"
 
-/*
+/**
  * adds a uid to the table of devices
  */
 int add_tod_uid(tod_t *tod, uint8_t uid[ARTNET_RDM_UID_WIDTH]) {
@@ -69,7 +69,7 @@ int add_tod_uid(tod_t *tod, uint8_t uid[ARTNET_RDM_UID_WIDTH]) {
   return 0;
 }
 
-/*
+/**
  * remove a uid from the table of devices
  *
  */
@@ -106,7 +106,7 @@ int remove_tod_uid(tod_t *tod, uint8_t uid[ARTNET_RDM_UID_WIDTH]) {
   }
 }
 
-/*
+/**
  * clear the table of devices
  */
 int flush_tod(tod_t *tod) {
@@ -123,6 +123,7 @@ int flush_tod(tod_t *tod) {
 }
 
 
+/** @brief Reset the TOD to initial empty state. */
 int reset_tod(tod_t *tod) {
   if (tod == NULL) {
     return -1;

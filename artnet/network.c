@@ -454,7 +454,7 @@ e_return:
 #endif // not WIN32
 
 
-/*
+/**
  * Scan for interfaces, and work out which one the user wanted to use.
  */
 int artnet_net_init(node n, const char *preferred_ip) {
@@ -529,7 +529,7 @@ e_return :
 }
 
 
-/*
+/**
  * Start listening on the socket
  */
 int artnet_net_start(node n) {
@@ -656,7 +656,7 @@ int artnet_net_start(node n) {
 }
 
 
-/*
+/**
  * Receive a packet.
  */
 int artnet_net_recv(node n, artnet_packet p, int delay) {
@@ -717,7 +717,7 @@ int artnet_net_recv(node n, artnet_packet p, int delay) {
 }
 
 
-/*
+/**
  * Send a packet.
  */
 int artnet_net_send(node n, artnet_packet p) {
@@ -866,13 +866,14 @@ int artnet_net_reprogram(node n) {
 }*/
 
 
+/** @brief Add the node's socket to an fd_set. */
 int artnet_net_set_fdset(node n, fd_set *fdset) {
   FD_SET((unsigned int) n->sd, fdset);
   return ARTNET_EOK;
 }
 
 
-/*
+/**
  * Close a socket
  */
 int artnet_net_close(artnet_socket_t sock) {
@@ -893,7 +894,7 @@ int artnet_net_close(artnet_socket_t sock) {
 }
 
 
-/*
+/**
  * Convert a string to an in_addr
  */
 int artnet_net_inet_aton(const char *ip_address, struct in_addr *address) {
@@ -911,7 +912,7 @@ int artnet_net_inet_aton(const char *ip_address, struct in_addr *address) {
 }
 
 
-/*
+/**
  * Return a string describing the last network error
  */
 const char *artnet_net_last_error() {

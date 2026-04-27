@@ -531,71 +531,112 @@ typedef artnet_node_t *node;
  */
 
 // exported from artnet.c
+/** @brief Find a node entry in the private list by matching against a public entry. */
 node_entry_private_t *find_private_entry( node n, artnet_node_entry e);
+/** @brief Check and handle merge timeouts for output ports. */
 void check_timeouts(node n);
+/** @brief Find a node entry by its IP address. */
 node_entry_private_t *find_entry_from_ip(node_list_t *nl, SI ip);
+/** @brief Update the node list from an ArtPollReply packet. */
 int artnet_nl_update(node n, node_list_t *nl, artnet_packet reply);
+/** @brief Find all nodes subscribed to a universe address. */
 int find_nodes_from_uni(node n, node_list_t *nl, uint16_t uni, SI *ips, int size);
 
 
 
 // exported from receive.c
+/** @brief Dispatch an incoming Art-Net packet to the appropriate handler. */
 int handle(node n, artnet_packet p);
+/** @brief Extract the OpCode from a raw packet. */
 int16_t get_type(artnet_packet p);
+/** @brief Reset firmware upload state machine. */
 void reset_firmware_upload(node n);
 
 
 // exported from transmit.c
+/** @brief Build and send an ArtPoll packet. */
 int artnet_tx_poll(node n, const char *ip,  artnet_ttm_value_t ttm);
+/** @brief Build and send an ArtPollReply packet. */
 int artnet_tx_poll_reply(node n, int reply);
+/** @brief Build and send an ArtTodData packet. */
 int artnet_tx_tod_data(node n, int id);
+/** @brief Build and send an ArtFirmwareReply packet. */
 int artnet_tx_firmware_reply(node n, in_addr_t ip, artnet_firmware_status_code code);
+/** @brief Send the next firmware data block. */
 int artnet_tx_firmware_packet(node n, firmware_transfer_t *firm );
+/** @brief Build and send an ArtTodRequest packet. */
 int artnet_tx_tod_request(node n);
+/** @brief Build and send an ArtTodControl packet. */
 int artnet_tx_tod_control(node n, uint16_t address, artnet_tod_command_code action);
+/** @brief Build and send an ArtRdm packet. */
 int artnet_tx_rdm(node n, uint16_t address, uint8_t *data, int length);
+/** @brief Build and send an ArtRdmSub packet. */
 int artnet_tx_rdmsub(node n,
                      uint8_t uid[ARTNET_RDM_UID_WIDTH],
                      uint8_t command_class, uint16_t param_id,
                      uint16_t sub_device, uint16_t sub_count,
                      uint8_t *data, int length);
+/** @brief Build and send an ArtDiagData packet. */
 int artnet_tx_diagdata(node n, uint8_t priority, uint8_t logical_port, const char *text);
+/** @brief Build the ArtPollReply packet (without sending). */
 int artnet_tx_build_art_poll_reply(node n);
+/** @brief Build and send an ArtNzs packet (non-zero start code DMX). */
 int artnet_tx_nzs(node n, int port_id, uint8_t start_code,
                   int16_t length, const uint8_t *data);
+/** @brief Build and send an ArtTimeCode packet. */
 int artnet_tx_timecode(node n, uint8_t frames, uint8_t seconds,
                        uint8_t minutes, uint8_t hours,
                        artnet_timecode_type_t type, uint8_t stream_id);
+/** @brief Build and send an ArtTimeSync packet. */
 int artnet_tx_timesync(node n, uint8_t tm_sec, uint8_t tm_min,
                        uint8_t tm_hour, uint8_t tm_mday,
                        uint8_t tm_mon, uint8_t tm_year);
+/** @brief Build and send an ArtTrigger packet. */
 int artnet_tx_trigger(node n, uint8_t oem_hi, uint8_t oem_lo,
                       uint8_t key, uint8_t sub_key,
                       const uint8_t *data, int16_t length);
+/** @brief Build and send an ArtDataReply packet. */
 int artnet_tx_data_reply(node n, const char *ip, uint16_t request_code,
                          const char *payload, int16_t length);
+/** @brief Build and send an ArtIpProgReply packet. */
 int artnet_tx_ipprog_reply(node n);
+/** @brief Build and send an ArtSync packet. */
 int artnet_tx_sync(node n);
+/** @brief Build and send an ArtDirectory packet. */
 int artnet_tx_directory(node n);
+/** @brief Build and send an ArtDirectoryReply packet. */
 int artnet_tx_directory_reply(node n);
+/** @brief Build and send an ArtFileTnMaster packet. */
 int artnet_tx_file_tn_master(node n, in_addr_t ip, uint8_t type,
                              uint8_t blockId, uint32_t totalLength,
                              const uint16_t *data, int dataLen);
+/** @brief Build and send an ArtFileFnMaster packet. */
 int artnet_tx_file_fn_master(node n, in_addr_t ip, const char *filename);
+/** @brief Build and send an ArtFileFnReply packet. */
 int artnet_tx_file_fn_reply(node n, uint8_t blockId, uint16_t totalLength,
                             uint8_t *data, int dataLen);
 
 
 // exported from network.c
+/** @brief Receive an Art-Net packet from the network. */
 int artnet_net_recv(node n, artnet_packet p, int block);
+/** @brief Send an Art-Net packet on the network. */
 int artnet_net_send(node n, artnet_packet p);
+/** @brief Set the socket to non-blocking mode. */
 int artnet_net_set_non_block(node n);
+/** @brief Initialize the network subsystem. */
 int artnet_net_init(node n, const char *ip);
+/** @brief Start the network (bind and join multicast). */
 int artnet_net_start(node n);
+/** @brief Close a network socket. */
 int artnet_net_close(artnet_socket_t sock);
+/** @brief Join two nodes to share the same socket. */
 int artnet_net_join(node n1, node n2);
+/** @brief Add the node's socket to an fd_set. */
 int artnet_net_set_fdset(node n, fd_set *fdset);
+/** @brief Convert an IP string to a network address. */
 int artnet_net_inet_aton(const char *ip_address, struct in_addr *address);
+/** @brief Return a string describing the last network error. */
 const char *artnet_net_last_error();
 
 #endif

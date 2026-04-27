@@ -59,7 +59,7 @@ typedef enum {
 } artnet_port_settings_t;
 
 
-/*
+/**
  * ArtAddress Command field values (spec ArtAddress Command table).
  * Port-indexed commands with suffix _1/_2/_3 are deprecated in Art-Net 4
  * (Art-Net 4 uses BindIndex instead of port-1/2/3 within a single packet).
@@ -186,8 +186,8 @@ typedef enum {
 } artnet_port_dir_t;
 
 
-/*
- * Enum describing the type of node
+/**
+ * Enum describing the type of node.
  */
 typedef enum {
   ARTNET_SRV,      /**< An ArtNet server (transmits DMX data) */
@@ -199,7 +199,7 @@ typedef enum {
 } artnet_node_type;
 
 
-/*
+/**
  * Enum for the legacy talk-to-me value.
  * For Art-Net 4, use artnet_poll_flags_t instead.
  */
@@ -209,8 +209,8 @@ typedef enum {
   ARTNET_TTM_AUTO = 0xFD      /**< ArtPollReplies are sent when node conditions change */
 } artnet_ttm_value_t;
 
-/*
- * ArtPoll Flags bit masks (Art-Net 4)
+/**
+ * ArtPoll Flags bit masks (Art-Net 4).
  * Bit numbering follows the spec (1-indexed): bit 1 = 0x02, bit 2 = 0x04, etc.
  */
 typedef enum {
@@ -222,8 +222,8 @@ typedef enum {
   ARTNET_POLL_FLAG_TARGET_MODE       = 0x20,  /**< bit 5: enable target mode filtering */
 } artnet_poll_flags_t;
 
-/*
- * DiagPriority codes (Art-Net 4, Table 5)
+/**
+ * DiagPriority codes (Art-Net 4, Table 5).
  */
 typedef enum {
   ARTNET_DIAG_LOW      = 0x10,  /**< low priority diagnostic message */
@@ -233,8 +233,8 @@ typedef enum {
   ARTNET_DIAG_VOLATILE = 0xf0,  /**< volatile diagnostic message */
 } artnet_diag_priority_t;
 
-/*
- * ArtPollReply Status2 bit masks (Art-Net 4)
+/**
+ * ArtPollReply Status2 bit masks (Art-Net 4).
  */
 typedef enum {
   ARTNET_STATUS2_WEB_CONFIG       = 0x01,  /**< bit 0: supports web browser configuration */
@@ -247,8 +247,8 @@ typedef enum {
   ARTNET_STATUS2_RDM_CONTROL      = 0x80,  /**< bit 7: supports RDM control via ArtAddress */
 } artnet_status2_t;
 
-/*
- * ArtPollReply Status3 bit masks (Art-Net 4)
+/**
+ * ArtPollReply Status3 bit masks (Art-Net 4).
  */
 typedef enum {
   ARTNET_STATUS3_FAILSAFE_SHIFT = 6,
@@ -261,8 +261,8 @@ typedef enum {
   ARTNET_STATUS3_BG_DISCOVERY_CTRL = 0x01, /**< bit 0: background discovery can be disabled by ArtAddress */
 } artnet_status3_t;
 
-/*
- * ArtPollReply Status3 fail-safe mode values
+/**
+ * ArtPollReply Status3 fail-safe mode values.
  */
 typedef enum {
   ARTNET_FAILSAFE_HOLD  = 0x00,  /**< hold last state on data loss */
@@ -271,8 +271,8 @@ typedef enum {
   ARTNET_FAILSAFE_SCENE = 0xC0,  /**< play fail-safe scene on data loss */
 } artnet_failsafe_mode_t;
 
-/*
- * ArtPollReply GoodOutputB bit masks (Art-Net 4)
+/**
+ * ArtPollReply GoodOutputB bit masks (Art-Net 4).
  */
 typedef enum {
   ARTNET_GOODB_RDM_DISABLED    = 0x80,  /**< bit 7: RDM is disabled */
@@ -282,8 +282,8 @@ typedef enum {
   ARTNET_GOODB_BG_DISCOVERY_DISABLED = 0x10, /**< bit 4: background discovery is disabled */
 } artnet_good_output_b_t;
 
-/*
- * ArtTimeCode type (Art-Net 4)
+/**
+ * ArtTimeCode type (Art-Net 4).
  */
 typedef enum {
   ARTNET_TIMECODE_FILM  = 0x00,  // 24 fps
@@ -302,8 +302,8 @@ typedef enum {
   ARTNET_TRIGGER_KEY_SHOW  = 0x03, /**< Show key trigger */
 } artnet_trigger_key_t;
 
-/*
- * NodeReport codes (Art-Net 4, Table 3)
+/**
+ * NodeReport codes (Art-Net 4, Table 3).
  * Returned in ArtPollReply NodeReport field.
  */
 typedef enum {
@@ -326,8 +326,8 @@ typedef enum {
   ARTNET_RC_FACTORY_RES  = 0x0010,  /**< RcFactoryRes: factory reset performed */
 } artnet_node_report_code;
 
-/*
- * Style codes (Art-Net 4, Table 4)
+/**
+ * Style codes (Art-Net 4, Table 4).
  * Defines the type of Art-Net product. Returned in ArtPollReply.
  */
 typedef enum {
@@ -340,8 +340,8 @@ typedef enum {
   ARTNET_ST_VISUAL     = 0x06,  /**< StVisual: visualizer */
 } artnet_style_code_t;
 
-/*
- * ArtPollReply Status1 LED state values (Art-Net 4)
+/**
+ * ArtPollReply Status1 LED state values (Art-Net 4).
  */
 typedef enum {
   ARTNET_LED_UNKNOWN  = 0x00,  /**< 00: LED state unknown */
@@ -350,8 +350,8 @@ typedef enum {
   ARTNET_LED_NORMAL   = 0x03,  /**< 11: LED normal operation */
 } artnet_led_state_t;
 
-/*
- * ArtDataRequest codes (Art-Net 4, Table 4a)
+/**
+ * ArtDataRequest codes (Art-Net 4, Table 4a).
  * Used in ArtDataRequest and ArtDataReply packets.
  */
 typedef enum {
@@ -363,8 +363,8 @@ typedef enum {
   ARTNET_DR_URL_PERS_GDTF = 0x0005,  /**< DrUrlPersGdtf: manufacturer GDTF personality URL */
 } artnet_data_request_code;
 
-/*
- * ArtAddress BackgroundQueuePolicy values (Art-Net 4)
+/**
+ * ArtAddress BackgroundQueuePolicy values (Art-Net 4).
  * Used in ArtPollReply and ArtAddress command 0xe0-0xef.
  */
 typedef enum {
@@ -375,8 +375,8 @@ typedef enum {
   ARTNET_BQP_DISABLED = 0x04,  /**< background discovery collection disabled */
 } artnet_bg_queue_policy_t;
 
-/*
- * ArtCommand text commands (Art-Net 4, Table 6)
+/**
+ * ArtCommand text commands (Art-Net 4, Table 6).
  * Manufacturer-specific commands use EstaMan = 0xFFFF.
  */
 #define ARTNET_CMD_SWOUT_TEXT "SwoutText="
@@ -420,8 +420,8 @@ typedef enum {
 } artnet_handler_name_t;
 
 
-/*
- * Describes a remote ArtNet node that has been discovered
+/**
+ * Describes a remote ArtNet node that has been discovered.
  */
 typedef struct artnet_node_entry_s {
   uint8_t ip[ARTNET_IP_SIZE];  /**< The IP address, Network byte ordered*/

@@ -20,7 +20,7 @@
 
 #include "private.h"
 
-/*
+/**
  * Send an art poll
  *
  * @param ip the ip address to send to
@@ -70,7 +70,7 @@ int artnet_tx_poll(node n, const char *ip, artnet_ttm_value_t ttm) {
   }
 }
 
-/*
+/**
  * Send an ArtPollReply
  * @param n        the node
  * @param response non-zero if this reply is in response to a network packet
@@ -132,7 +132,7 @@ int artnet_tx_poll_reply(node n, int response) {
 }
 
 
-/*
+/**
  * Send a tod request.
  * Ports may span multiple nets (e.g. when using artnet_join), so we group
  * enabled ports by net and send a separate ArtTodRequest per net group.
@@ -197,7 +197,7 @@ int artnet_tx_tod_request(node n) {
 }
 
 
-/*
+/**
  * Send a tod data for port number id
  * @param id the number of the port to send data for
  */
@@ -257,7 +257,7 @@ int artnet_tx_tod_data(node n, int id) {
 }
 
 
-/*
+/**
  * Send a TOD control datagram
  * @param address the universe address to control
  * @param action  the control action (e.g. ARTNET_TOD_FULL, ARTNET_TOD_FLUSH)
@@ -286,7 +286,7 @@ int artnet_tx_tod_control(node n,
 }
 
 
-/*
+/**
  * Send an RDM message
  * @param n       the node
  * @param address the universe address to send to
@@ -324,7 +324,7 @@ int artnet_tx_rdm(node n, uint16_t address, uint8_t *data, int length) {
 }
 
 
-/*
+/**
  * Send a RDM sub packet
  */
 int artnet_tx_rdmsub(node n,
@@ -363,7 +363,7 @@ int artnet_tx_rdmsub(node n,
 }
 
 
-/*
+/**
  * Send a diagnostic data packet
  */
 int artnet_tx_diagdata(node n, uint8_t priority, uint8_t logical_port,
@@ -416,7 +416,7 @@ int artnet_tx_diagdata(node n, uint8_t priority, uint8_t logical_port,
 }
 
 
-/*
+/**
  * Send a firmware reply
  * @param ip the ip address to send to
  * @param code the response code
@@ -441,7 +441,7 @@ int artnet_tx_firmware_reply(node n, in_addr_t ip,
 }
 
 
-/*
+/**
  * Send an firmware data datagram
  *
  * @param firm a pointer to the firmware structure for this transfer
@@ -529,7 +529,7 @@ int artnet_tx_firmware_packet(node n, firmware_transfer_t *firm) {
 }
 
 
-/*
+/**
  * Send an ArtSync packet
  */
 int artnet_tx_sync(node n) {
@@ -553,7 +553,7 @@ int artnet_tx_sync(node n) {
 }
 
 
-/*
+/**
  * Send an ArtNzs packet (non-zero start code DMX)
  */
 int artnet_tx_nzs(node n, int port_id, uint8_t start_code,
@@ -620,7 +620,7 @@ int artnet_tx_nzs(node n, int port_id, uint8_t start_code,
 }
 
 
-/*
+/**
  * Send an ArtDataReply packet (Art-Net 4)
  */
 int artnet_tx_data_reply(node n, const char *ip, uint16_t request_code,
@@ -663,7 +663,7 @@ int artnet_tx_data_reply(node n, const char *ip, uint16_t request_code,
 }
 
 
-/*
+/**
  * Send an ArtTimeCode packet
  */
 int artnet_tx_timecode(node n, uint8_t frames, uint8_t seconds,
@@ -695,7 +695,7 @@ int artnet_tx_timecode(node n, uint8_t frames, uint8_t seconds,
 }
 
 
-/*
+/**
  * Send an ArtTimeSync packet
  */
 int artnet_tx_timesync(node n, uint8_t tm_sec, uint8_t tm_min,
@@ -727,7 +727,7 @@ int artnet_tx_timesync(node n, uint8_t tm_sec, uint8_t tm_min,
 }
 
 
-/*
+/**
  * Send an ArtTrigger packet
  */
 int artnet_tx_trigger(node n, uint8_t oem_hi, uint8_t oem_lo,
@@ -765,7 +765,7 @@ int artnet_tx_trigger(node n, uint8_t oem_hi, uint8_t oem_lo,
 }
 
 
-/*
+/**
  * Send an ArtDirectory request packet (broadcast)
  */
 int artnet_tx_directory(node n) {
@@ -789,7 +789,7 @@ int artnet_tx_directory(node n) {
 }
 
 
-/*
+/**
  * Send an ArtDirectoryReply packet (empty directory)
  */
 int artnet_tx_directory_reply(node n) {
@@ -809,7 +809,7 @@ int artnet_tx_directory_reply(node n) {
 }
 
 
-/*
+/**
  * Send an ArtIpProgReply packet
  */
 int artnet_tx_ipprog_reply(node n) {
@@ -855,7 +855,7 @@ int artnet_tx_ipprog_reply(node n) {
 }
 
 
-/*
+/**
  * Send an ArtFileTnMaster packet (upload file block to node). Unicast.
  */
 int artnet_tx_file_tn_master(node n, in_addr_t ip, uint8_t type,
@@ -898,7 +898,7 @@ int artnet_tx_file_tn_master(node n, in_addr_t ip, uint8_t type,
 }
 
 
-/*
+/**
  * Send an ArtFileFnMaster packet (request file download from node). Unicast.
  */
 int artnet_tx_file_fn_master(node n, in_addr_t ip, const char *filename) {
@@ -936,6 +936,7 @@ int artnet_tx_file_fn_master(node n, in_addr_t ip, const char *filename) {
 }
 
 
+/** @brief Build and send an ArtFileFnReply packet. */
 int artnet_tx_file_fn_reply(node n, uint8_t blockId, uint16_t totalLength,
                             uint8_t *data, int dataLen) {
   artnet_packet_t p = {0};
@@ -962,8 +963,10 @@ int artnet_tx_file_fn_reply(node n, uint8_t blockId, uint16_t totalLength,
 }
 
 
-// this is called when the node's state changes to rebuild the
-// artpollreply packet
+/**
+ * Called when the node's state changes to rebuild the
+ * artpollreply packet
+ */
 int artnet_tx_build_art_poll_reply(node n) {
   int i = 0;
 
