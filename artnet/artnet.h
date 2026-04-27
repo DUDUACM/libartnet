@@ -687,6 +687,11 @@ EXTERN int artnet_raw_send_dmx(artnet_node vn,
 
 /**
  * @brief Send an ArtNzs packet (non-zero start code DMX).
+ *
+ * For ARTNET_SRV nodes, sends through the input port bound to the given
+ * universe (unicast to subscribers). For ARTNET_RAW nodes, sends directly
+ * to the broadcast address.
+ *
  * @param vn          The artnet_node
  * @param uni         The 15-bit universe address (0-32767)
  * @param start_code  DMX512 start code (non-zero, not 0xCC/RDM)
@@ -1000,6 +1005,19 @@ EXTERN int artnet_remove_rdm_device(artnet_node vn,
 EXTERN uint8_t *artnet_read_dmx(artnet_node n, int port_id, int *length);
 
 /**
+ * @brief Get the last received NZS start code for a port.
+ *
+ * ArtNzs packets carry DMX512 data with a non-zero start code (excl. RDM).
+ * This function returns the start code of the most recent ArtNzs packet
+ * received on this output port, or 0 if only regular ArtDmx has been received.
+ *
+ * @param n       The artnet_node
+ * @param port_id The port index (0 to ARTNET_MAX_PORTS-1)
+ * @return The last NZS start code (0-255), 0 if none received, or -1 on error
+ */
+EXTERN int artnet_get_nzs_start_code(artnet_node n, int port_id);
+
+/**
  * @brief Set the node type (server, node, media server, etc.).
  * @param n    The artnet_node
  * @param type The node type
@@ -1022,6 +1040,19 @@ EXTERN int artnet_set_style_code(artnet_node vn, artnet_style_code_t style);
  * @return ARTNET_EOK on success, or a negative error code
  */
 EXTERN int artnet_set_status2(artnet_node vn, uint8_t status2);
+
+/**
+ * @brief Set the Status3 register bits for ArtPollReply (Art-Net 4).
+ *
+ * The Status3 field includes fail-safe configuration, LLRP support,
+ * RDMnet support, BackgroundQueue support, and port direction switching.
+ * Failsafe mode bits (7-6) are set separately via ArtAddress commands.
+ *
+ * @param vn      The artnet_node
+ * @param status3 Bitmask of ARTNET_STATUS3_* values
+ * @return ARTNET_EOK on success, or a negative error code
+ */
+EXTERN int artnet_set_status3(artnet_node vn, uint8_t status3);
 
 /**
  * @brief Set the short name for this node.

@@ -152,7 +152,7 @@ static int get_ifaces(iface_t **if_head) {
     free(pAdapterInfo);
     pAdapterInfo = NULL;
     if (status != ERROR_BUFFER_OVERFLOW) {
-      printf("GetAdaptersInfo failed with error: %d\n", (int) status);
+      artnet_error("GetAdaptersInfo failed with error: %d", (int) status);
       return ARTNET_ENET;
     }
   }

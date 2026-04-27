@@ -59,10 +59,8 @@ extern uint8_t HIGH_NIBBLE;
 extern uint8_t LOW_NIBBLE;
 extern uint8_t STATUS_PROG_AUTH_MASK;
 extern uint8_t PORT_STATUS_LPT_MODE;
-extern uint8_t PORT_STATUS_SHORT;
-extern uint8_t PORT_STATUS_ERROR;
-extern uint8_t PORT_STATUS_DISABLED_MASK;
 extern uint8_t PORT_STATUS_MERGE;
+extern uint8_t PORT_STATUS_INPUT_DISABLED;
 extern uint8_t PORT_STATUS_DMX_TEXT;
 extern uint8_t PORT_STATUS_DMX_SIP;
 extern uint8_t PORT_STATUS_DMX_TEST;
@@ -364,6 +362,7 @@ typedef struct {
   int failsafe_triggered;   // whether fail-safe has been triggered (avoid repeated action)
   uint8_t failsafe_data[ARTNET_DMX_LENGTH]; // recorded fail-safe scene data
   int failsafe_length;      // length of failsafe_data
+  uint8_t nzs_start_code;  // last received ArtNzs start code (0 = none / ArtDmx)
   SI ipA;
   SI ipB;
 } output_port_t;
@@ -479,6 +478,7 @@ typedef struct {
   uint8_t led_state;     // LED indicator state (Status1 bits 7-6)
   uint8_t style_code;    // product style code (Status1 bits 3-0)
   uint8_t status2;       // Status2 register flags
+  uint8_t status3;       // Status3 register flags (Art-Net 4)
   uint8_t failsafe_mode; // fail-safe mode (artnet_failsafe_mode_t value)
   SI rdm_reply_addr;     // last RDM requester IP for unicast replies (Art-Net 4)
   SI tod_reply_addr;     // last TOD requester IP for unicast replies (Art-Net 4)
@@ -494,8 +494,8 @@ typedef struct {
   time_t last_sync_time;   // ArtSync: last ArtSync received time
   SI last_dmx_source;      // ArtSync: last ArtDmx source IP for sync validation
   volatile uint32_t nl_seq; // seqlock version for node list thread safety
-  time_t apr_pending_time;  // ArtPollReply: scheduled send time (random delay)
-  int apr_pending;          // ArtPollReply: whether a reply is pending
+  clock_t apr_pending_time;  // ArtPollReply: scheduled send time via clock() (ms resolution)
+  int apr_pending;           // ArtPollReply: whether a reply is pending
 } node_state_t;
 
 
@@ -557,7 +557,7 @@ void reset_firmware_upload(node n);
 /** @brief Build and send an ArtPoll packet. */
 int artnet_tx_poll(node n, const char *ip,  artnet_ttm_value_t ttm);
 /** @brief Build and send an ArtPollReply packet. */
-int artnet_tx_poll_reply(node n, int reply);
+int artnet_tx_poll_reply(node n);
 /** @brief Build and send an ArtTodData packet. */
 int artnet_tx_tod_data(node n, int id);
 /** @brief Build and send an ArtFirmwareReply packet. */

@@ -131,9 +131,9 @@ int handle_poll(node n, artnet_packet p) {
       }
     }
 
-    // Art-Net 4: schedule ArtPollReply with random delay (0-1000ms)
+    // Art-Net 4: schedule ArtPollReply with random delay (0-999ms) via clock()
     n->state.apr_pending = TRUE;
-    n->state.apr_pending_time = time(NULL) + (rand() % 1001) / 1000;
+    n->state.apr_pending_time = clock() + (clock_t)((rand() % 1000) * CLOCKS_PER_SEC / 1000);
     return ARTNET_EOK;
 
   }
@@ -192,6 +192,7 @@ void handle_dmx(node n, artnet_packet p) {
 
       // ok packet matches this port
       n->ports.out[i].port_status = n->ports.out[i].port_status | PORT_STATUS_ACT_MASK;
+      n->ports.out[i].nzs_start_code = 0;  // ArtDmx has zero start code
 
       /**
        * 9 cases for merging depending on what the stored ips are.
@@ -262,7 +263,7 @@ void handle_dmx(node n, artnet_packet p) {
         // notify controller: merge started
         port->port_status |= PORT_STATUS_MERGE;
         if (n->state.send_apr_on_change) {
-          artnet_tx_poll_reply(n, TRUE);
+          artnet_tx_poll_reply(n);
         }
 
       }
@@ -279,7 +280,7 @@ void handle_dmx(node n, artnet_packet p) {
         // notify controller: merge started
         port->port_status |= PORT_STATUS_MERGE;
         if (n->state.send_apr_on_change) {
-          artnet_tx_poll_reply(n, TRUE);
+          artnet_tx_poll_reply(n);
         }
 
       }
@@ -636,7 +637,7 @@ int handle_address(node n, artnet_packet p) {
     return ret;
   }
 
-  return artnet_tx_poll_reply(n, TRUE);
+  return artnet_tx_poll_reply(n);
 }
 
 
@@ -664,10 +665,10 @@ int _artnet_handle_input(node n, artnet_packet p) {
   for (i =0; i < ports; i++) {
     if (p->data.ainput.input[i] & PORT_DISABLE_MASK) {
       // disable
-      n->ports.in[i].port_status = n->ports.in[i].port_status | PORT_STATUS_DISABLED_MASK;
+      n->ports.in[i].port_status = n->ports.in[i].port_status | PORT_STATUS_INPUT_DISABLED;
     } else {
       // enable
-      n->ports.in[i].port_status = n->ports.in[i].port_status & ~PORT_STATUS_DISABLED_MASK;
+      n->ports.in[i].port_status = n->ports.in[i].port_status & ~PORT_STATUS_INPUT_DISABLED;
     }
   }
 
@@ -675,7 +676,7 @@ int _artnet_handle_input(node n, artnet_packet p) {
     return ret;
   }
 
-  return artnet_tx_poll_reply(n, TRUE);
+  return artnet_tx_poll_reply(n);
 }
 /**
  * @brief Handle an incoming ArtTodRequest packet.
@@ -860,15 +861,27 @@ void handle_sync(node n, artnet_packet p) {
  * @param p The received Art-Net packet.
  */
 void handle_nzs(node n, artnet_packet p) {
-  int i = 0;
+  int i = 0, data_length = 0;
 
   if (check_callback(n, p, n->callbacks.nzs)) {
     return;
   }
 
+  data_length = (int) bytes_to_short(p->data.nzs.lengthHi,
+                                     p->data.nzs.length);
+  data_length = min(data_length, ARTNET_DMX_LENGTH);
+
   for (i = 0; i < ARTNET_MAX_PORTS; i++) {
     if (n->ports.out[i].port_enabled &&
         p->data.nzs.universe == htols(n->ports.out[i].port_addr)) {
+
+      // store NZS data and start code on the output port
+      memcpy(n->ports.out[i].data, p->data.nzs.data, data_length);
+      n->ports.out[i].length = data_length;
+      n->ports.out[i].nzs_start_code = p->data.nzs.startCode;
+      n->ports.out[i].port_status |= PORT_STATUS_ACT_MASK;
+      n->ports.out[i].last_dmx_time = clock();
+
       if (n->callbacks.dmx_c.fh != NULL) {
         n->callbacks.dmx_c.fh(n, i, n->callbacks.dmx_c.data);
       }
@@ -1191,7 +1204,9 @@ int handle_firmware(node n, artnet_packet p) {
 
     } else {
       // already in a transfer
-      printf("First, but already for a packet\n");
+      if (n->state.verbose) {
+        printf("First, but already for a packet\n");
+      }
 
       // send a failure
       response_code = ARTNET_FIRMWARE_FAIL;
@@ -1225,7 +1240,9 @@ int handle_firmware(node n, artnet_packet p) {
 
       response_code = ARTNET_FIRMWARE_BLOCKGOOD;
     } else {
-      printf("cont, ips don't match or length has changed or out of range block num\n" );
+      if (n->state.verbose) {
+        printf("cont, ips don't match or length has changed or out of range block num\n");
+      }
 
       // in a transfer not from this ip
       response_code = ARTNET_FIRMWARE_FAIL;
@@ -1270,19 +1287,27 @@ int handle_firmware(node n, artnet_packet p) {
       reset_firmware_upload(n);
 
       response_code = ARTNET_FIRMWARE_ALLGOOD;
-      printf("Firmware upload complete\n");
+      if (n->state.verbose) {
+        printf("Firmware upload complete\n");
+      }
 
     } else if (n->firmware.peer.s_addr != p->from.s_addr) {
       // in a transfer not from this ip
-      printf("last, ips don't match\n" );
+      if (n->state.verbose) {
+        printf("last, ips don't match\n");
+      }
       response_code = ARTNET_FIRMWARE_FAIL;
     } else if (length != n->firmware.bytes_total) {
       // they changed the length mid way thru a transfer
-      printf("last, lengths have changed %d %d\n", length, n->firmware.bytes_total);
+      if (n->state.verbose) {
+        printf("last, lengths have changed %d %d\n", length, n->firmware.bytes_total);
+      }
       response_code = ARTNET_FIRMWARE_FAIL;
     } else if (block_id != total_blocks -1) {
       // the blocks don't match up
-      printf("This is the last block, but not according to the lengths %d %d\n", block_id, total_blocks -1);
+      if (n->state.verbose) {
+        printf("This is the last block, but not according to the lengths %d %d\n", block_id, total_blocks -1);
+      }
       response_code = ARTNET_FIRMWARE_FAIL;
     }
   }
@@ -1327,7 +1352,9 @@ int handle_firmware_reply(node n, artnet_packet p) {
 
     } else {
       // random ALLGOOD received, don't let this abort the transfer
-      printf("FIRMWARE_ALLGOOD received before transfer completed\n");
+      if (n->state.verbose) {
+        printf("FIRMWARE_ALLGOOD received before transfer completed\n");
+      }
     }
 
   } else if (p->data.firmwarer.type == ARTNET_FIRMWARE_FAIL) {
@@ -1446,7 +1473,7 @@ void handle_ipprog(node n, artnet_packet p) {
 
   // Rebuild and send ArtPollReply with updated report
   artnet_tx_build_art_poll_reply(n);
-  artnet_tx_poll_reply(n, TRUE);
+  artnet_tx_poll_reply(n);
 
   // Send ArtIpProgReply
   artnet_tx_ipprog_reply(n);
@@ -1553,19 +1580,29 @@ int handle(node n, artnet_packet p) {
       handle_media_control_reply(n, p);
       break;
     case ARTNET_VIDEOSETUP:
-      printf("vid setup\n");
+      if (n->state.verbose) {
+        printf("vid setup\n");
+      }
       break;
     case ARTNET_VIDEOPALETTE:
-      printf("video palette\n");
+      if (n->state.verbose) {
+        printf("video palette\n");
+      }
       break;
     case ARTNET_VIDEODATA:
-      printf("video data\n");
+      if (n->state.verbose) {
+        printf("video data\n");
+      }
       break;
     case ARTNET_MACMASTER:
-      printf("mac master\n");
+      if (n->state.verbose) {
+        printf("mac master\n");
+      }
       break;
     case ARTNET_MACSLAVE:
-      printf("mac slave\n");
+      if (n->state.verbose) {
+        printf("mac slave\n");
+      }
       break;
     case ARTNET_FIRMWAREMASTER:
       handle_firmware(n, p);
@@ -1581,7 +1618,7 @@ int handle(node n, artnet_packet p) {
       break;
     default:
       n->state.report_code = ARTNET_RC_PARSE_FAIL;
-      printf("artnet but not yet implemented!, op was %x\n", (int) p->type);
+      artnet_error("Unknown Art-Net opcode 0x%04x", (int) p->type);
   }
   return 0;
 }
@@ -1640,7 +1677,7 @@ void check_merge_timeouts(node n, int port_id) {
   if (was_merging && !(port->ipA.s_addr && port->ipB.s_addr)) {
     port->port_status &= ~PORT_STATUS_MERGE;
     if (n->state.send_apr_on_change) {
-      artnet_tx_poll_reply(n, TRUE);
+      artnet_tx_poll_reply(n);
     }
   }
 }

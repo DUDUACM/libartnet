@@ -74,44 +74,47 @@ int artnet_tx_poll(node n, const char *ip, artnet_ttm_value_t ttm) {
 
 /**
  * Send an ArtPollReply
- * @param n        the node
- * @param response non-zero if this reply is in response to a network packet
+ * @param n the node
  * @return ARTNET_EOK on success, or a negative error code
  */
-int artnet_tx_poll_reply(node n, int response) {
+int artnet_tx_poll_reply(node n) {
   artnet_packet_t reply = {0};
   int i = 0;
 
   n->state.ar_count++;
   n->state.ar_count %= 10000;
 
-  if (!response && n->state.mode == ARTNET_ON) {
+  // Art-Net 4: ArtPollReply broadcast not allowed; must have a unicast target
+  if (n->state.reply_addr.s_addr == 0) {
+    return ARTNET_EACTION;
   }
 
-  printf("[ArtPollReply] to=%s, ip=%s, shortName=%s, status=0x%02X, status2=0x%02X, "
-         "net=%d, sub=%d, mac=%02X:%02X:%02X:%02X:%02X:%02X",
-         inet_ntoa(n->state.reply_addr),
-         inet_ntoa(n->state.ip_addr),
-         n->state.shortName,
-         (n->state.led_state << 6) | 0x20 | 0x02,
-         n->state.status2,
-         n->state.netSwitch,
-         n->state.subSwitch,
-         n->state.hw_addr[0], n->state.hw_addr[1], n->state.hw_addr[2],
-         n->state.hw_addr[3], n->state.hw_addr[4], n->state.hw_addr[5]);
-  for (i = 0; i < ARTNET_MAX_PORTS; i++) {
-    if (n->ports.in[i].port_enabled) {
-      uint16_t addr = n->ports.in[i].port_addr;
-      printf(", in%d=0x%04X", i, addr);
+  if (n->state.verbose) {
+    printf("[ArtPollReply] to=%s, ip=%s, shortName=%s, status=0x%02X, status2=0x%02X, "
+           "net=%d, sub=%d, mac=%02X:%02X:%02X:%02X:%02X:%02X",
+           inet_ntoa(n->state.reply_addr),
+           inet_ntoa(n->state.ip_addr),
+           n->state.shortName,
+           (n->state.led_state << 6) | 0x20 | 0x02,
+           n->state.status2,
+           n->state.netSwitch,
+           n->state.subSwitch,
+           n->state.hw_addr[0], n->state.hw_addr[1], n->state.hw_addr[2],
+           n->state.hw_addr[3], n->state.hw_addr[4], n->state.hw_addr[5]);
+    for (i = 0; i < ARTNET_MAX_PORTS; i++) {
+      if (n->ports.in[i].port_enabled) {
+        uint16_t addr = n->ports.in[i].port_addr;
+        printf(", in%d=0x%04X", i, addr);
+      }
     }
-  }
-  for (i = 0; i < ARTNET_MAX_PORTS; i++) {
-    if (n->ports.out[i].port_enabled) {
-      uint16_t addr = n->ports.out[i].port_addr;
-      printf(", out%d=0x%04X", i, addr);
+    for (i = 0; i < ARTNET_MAX_PORTS; i++) {
+      if (n->ports.out[i].port_enabled) {
+        uint16_t addr = n->ports.out[i].port_addr;
+        printf(", out%d=0x%04X", i, addr);
+      }
     }
+    printf("\n");
   }
-  printf("\n");
 
   reply.to = n->state.reply_addr;
   reply.type = ARTNET_REPLY;
@@ -615,7 +618,7 @@ int artnet_tx_nzs(node n, int port_id, uint8_t start_code,
     return ARTNET_EARG;
   }
 
-  if (port->port_status & PORT_STATUS_DISABLED_MASK) {
+  if (port->port_status & PORT_STATUS_INPUT_DISABLED) {
     return ARTNET_EARG;
   }
 
@@ -1148,8 +1151,8 @@ int artnet_tx_build_art_poll_reply(node n) {
   // Status1: LED state in bits 7-6, bits 5-4 = port address programming (0b10 = network), bit 2 = ROM boot, bit 1 = RDM support, bit 0 = UBEA
   ar->status = (n->state.led_state << 6) | 0x20 | 0x02;
 
-  // Status3: fail-safe mode in bits 7-6, bit 5 = programmable failsafe support, bit 3 = port direction switching
-  ar->status3 = n->state.failsafe_mode | 0x28;
+  // Status3: fail-safe mode in bits 7-6, remaining bits from configurable status3 field
+  ar->status3 = n->state.failsafe_mode | n->state.status3;
 
   // Status2: default includes 15-bit port addressing support
   ar->status2 = n->state.status2;
