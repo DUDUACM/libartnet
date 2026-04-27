@@ -27,6 +27,12 @@ void merge(node n, int port, int length, uint8_t *latest);
  * Checks if the callback is defined, if so call it passing the packet and
  * the user supplied data.
  * If the callbacks return a non-zero result, further processing is canceled.
+ *
+ * @param n        The Art-Net node instance.
+ * @param p        The received Art-Net packet.
+ * @param callback The callback structure to invoke.
+ * @return 0 if no callback is defined or the callback returns 0,
+ *         non-zero if the callback returns non-zero.
  */
 int check_callback(node n, artnet_packet p, callback_t callback) {
   if (callback.fh != NULL) {
@@ -39,6 +45,10 @@ int check_callback(node n, artnet_packet p, callback_t callback) {
 
 /**
  * Handle an artpoll packet
+ *
+ * @param n The Art-Net node instance.
+ * @param p The received Art-Net packet.
+ * @return ARTNET_EOK on success.
  */
 int handle_poll(node n, artnet_packet p) {
   // run callback if defined
@@ -132,6 +142,9 @@ int handle_poll(node n, artnet_packet p) {
 
 /**
  * handle an art poll reply
+ *
+ * @param n The Art-Net node instance.
+ * @param p The received Art-Net packet.
  */
 void handle_reply(node n, artnet_packet p) {
   // update the node list
@@ -146,6 +159,9 @@ void handle_reply(node n, artnet_packet p) {
 
 /**
  * handle a art dmx packet
+ *
+ * @param n The Art-Net node instance.
+ * @param p The received Art-Net packet.
  */
 void handle_dmx(node n, artnet_packet p) {
   int i = 0, data_length = 0;
@@ -317,6 +333,9 @@ void handle_dmx(node n, artnet_packet p) {
  * This can reprogram certain nodes settings such as short/long name, port
  * addresses, subnet address etc.
  *
+ * @param n The Art-Net node instance.
+ * @param p The received Art-Net packet.
+ * @return ARTNET_EOK on success, or an error code from the transmit functions.
  */
 int handle_address(node n, artnet_packet p) {
   int i = 0, old_subnet = 0;
@@ -624,6 +643,10 @@ int handle_address(node n, artnet_packet p) {
 /**
  * handle art input.
  * ArtInput packets can disable input ports.
+ *
+ * @param n The Art-Net node instance.
+ * @param p The received Art-Net packet.
+ * @return ARTNET_EOK on success, or an error code from the transmit functions.
  */
 int _artnet_handle_input(node n, artnet_packet p) {
   int i = 0, ports = 0, ret = 0;
@@ -654,7 +677,13 @@ int _artnet_handle_input(node n, artnet_packet p) {
 
   return artnet_tx_poll_reply(n, TRUE);
 }
-/** @brief Handle an incoming ArtTodRequest packet. */
+/**
+ * @brief Handle an incoming ArtTodRequest packet.
+ *
+ * @param n The Art-Net node instance.
+ * @param p The received Art-Net packet.
+ * @return ARTNET_EOK on success, or an error code from artnet_tx_tod_data.
+ */
 int handle_tod_request(node n, artnet_packet p) {
   int i = 0, j = 0, limit = 0;
   int ret = ARTNET_EOK;
@@ -696,6 +725,9 @@ int handle_tod_request(node n, artnet_packet p) {
  *
  * we don't maintain a tod of whats out on the network,
  * the calling app can deal with this.
+ *
+ * @param n The Art-Net node instance.
+ * @param p The received Art-Net packet.
  */
 void handle_tod_data(node n, artnet_packet p) {
 
@@ -712,7 +744,13 @@ void handle_tod_data(node n, artnet_packet p) {
 
 
 
-/** @brief Handle an incoming ArtTodControl packet. */
+/**
+ * @brief Handle an incoming ArtTodControl packet.
+ *
+ * @param n The Art-Net node instance.
+ * @param p The received Art-Net packet.
+ * @return ARTNET_EOK on success, or an error code from artnet_tx_tod_data.
+ */
 int handle_tod_control(node n, artnet_packet p) {
   int i = 0;
   int ret = ARTNET_EOK;
@@ -765,6 +803,8 @@ int handle_tod_control(node n, artnet_packet p) {
 /**
  * handle rdm packet
  *
+ * @param n The Art-Net node instance.
+ * @param p The received Art-Net packet.
  */
 void handle_rdm(node n, artnet_packet p) {
 
@@ -793,6 +833,9 @@ void handle_rdm(node n, artnet_packet p) {
  * Flushes all buffered ArtDmx data to output simultaneously.
  * Enters sync mode; reverts to non-sync after 4s timeout (handled in check_timeouts).
  * Art-Net 4: ignores ArtSync if source IP doesn't match last ArtDmx source.
+ *
+ * @param n The Art-Net node instance.
+ * @param p The received Art-Net packet.
  */
 void handle_sync(node n, artnet_packet p) {
   if (check_callback(n, p, n->callbacks.sync)) {
@@ -812,6 +855,9 @@ void handle_sync(node n, artnet_packet p) {
 /**
  * handle ArtNzs packet
  * Non-zero start code DMX data, similar to ArtDmx but with a start code field.
+ *
+ * @param n The Art-Net node instance.
+ * @param p The received Art-Net packet.
  */
 void handle_nzs(node n, artnet_packet p) {
   int i = 0;
@@ -834,6 +880,9 @@ void handle_nzs(node n, artnet_packet p) {
 /**
  * handle ArtCommand packet
  * Text-based command. Only processes if OEM matches or is 0xFFFF.
+ *
+ * @param n The Art-Net node instance.
+ * @param p The received Art-Net packet.
  */
 void handle_command(node n, artnet_packet p) {
   uint16_t oem = 0;
@@ -851,6 +900,9 @@ void handle_command(node n, artnet_packet p) {
 
 /**
  * handle ArtTimeCode packet
+ *
+ * @param n The Art-Net node instance.
+ * @param p The received Art-Net packet.
  */
 void handle_timecode(node n, artnet_packet p) {
   if (check_callback(n, p, n->callbacks.timecode)) {
@@ -860,6 +912,9 @@ void handle_timecode(node n, artnet_packet p) {
 
 /**
  * handle ArtTimeSync packet
+ *
+ * @param n The Art-Net node instance.
+ * @param p The received Art-Net packet.
  */
 void handle_timesync(node n, artnet_packet p) {
   if (check_callback(n, p, n->callbacks.timesync)) {
@@ -870,6 +925,9 @@ void handle_timesync(node n, artnet_packet p) {
 /**
  * handle ArtTrigger packet
  * Only processes if OEM matches or is 0xFFFF.
+ *
+ * @param n The Art-Net node instance.
+ * @param p The received Art-Net packet.
  */
 void handle_trigger(node n, artnet_packet p) {
   uint16_t oem = 0;
@@ -888,6 +946,9 @@ void handle_trigger(node n, artnet_packet p) {
 /**
  * handle ArtDirectory packet
  * Reply with ArtDirectoryReply containing node's file list.
+ *
+ * @param n The Art-Net node instance.
+ * @param p The received Art-Net packet.
  */
 void handle_directory(node n, artnet_packet p) {
   if (check_callback(n, p, n->callbacks.directory)) {
@@ -899,6 +960,9 @@ void handle_directory(node n, artnet_packet p) {
 
 /**
  * handle ArtDirectoryReply packet
+ *
+ * @param n The Art-Net node instance.
+ * @param p The received Art-Net packet.
  */
 void handle_directory_reply(node n, artnet_packet p) {
   if (check_callback(n, p, n->callbacks.directory_reply)) {
@@ -909,6 +973,10 @@ void handle_directory_reply(node n, artnet_packet p) {
 /**
  * handle ArtFileTnMaster packet
  * File upload to node. Reply with ArtFirmwareReply to acknowledge.
+ *
+ * @param n The Art-Net node instance.
+ * @param p The received Art-Net packet.
+ * @return ARTNET_EOK on success, or an error code from artnet_tx_firmware_reply.
  */
 int handle_file_tn_master(node n, artnet_packet p) {
   artnet_firmware_status_code code = ARTNET_FIRMWARE_FAIL;
@@ -934,6 +1002,9 @@ int handle_file_tn_master(node n, artnet_packet p) {
 /**
  * handle ArtFileFnMaster packet
  * File download request. Notify application to send ArtFileFnReply.
+ *
+ * @param n The Art-Net node instance.
+ * @param p The received Art-Net packet.
  */
 void handle_file_fn_master(node n, artnet_packet p) {
   if (check_callback(n, p, n->callbacks.file_fn_master)) {
@@ -944,6 +1015,9 @@ void handle_file_fn_master(node n, artnet_packet p) {
 /**
  * handle ArtFileFnReply packet
  * File data received from node.
+ *
+ * @param n The Art-Net node instance.
+ * @param p The received Art-Net packet.
  */
 void handle_file_fn_reply(node n, artnet_packet p) {
   if (check_callback(n, p, n->callbacks.file_fn_reply)) {
@@ -953,6 +1027,9 @@ void handle_file_fn_reply(node n, artnet_packet p) {
 
 /**
  * handle ArtMediaPatch packet
+ *
+ * @param n The Art-Net node instance.
+ * @param p The received Art-Net packet.
  */
 void handle_media_patch(node n, artnet_packet p) {
   if (check_callback(n, p, n->callbacks.mediapatch)) {
@@ -962,6 +1039,9 @@ void handle_media_patch(node n, artnet_packet p) {
 
 /**
  * handle ArtMediaControl packet
+ *
+ * @param n The Art-Net node instance.
+ * @param p The received Art-Net packet.
  */
 void handle_media_control(node n, artnet_packet p) {
   if (check_callback(n, p, n->callbacks.mediacontrol)) {
@@ -971,6 +1051,9 @@ void handle_media_control(node n, artnet_packet p) {
 
 /**
  * handle ArtRdmSub (compressed RDM sub-device data)
+ *
+ * @param n The Art-Net node instance.
+ * @param p The received Art-Net packet.
  */
 void handle_rdm_sub(node n, artnet_packet p) {
   n->state.rdm_reply_addr = p->from;
@@ -979,6 +1062,9 @@ void handle_rdm_sub(node n, artnet_packet p) {
 
 /**
  * handle ArtDiagData
+ *
+ * @param n The Art-Net node instance.
+ * @param p The received Art-Net packet.
  */
 void handle_diagdata(node n, artnet_packet p) {
   check_callback(n, p, n->callbacks.diagdata);
@@ -986,6 +1072,9 @@ void handle_diagdata(node n, artnet_packet p) {
 
 /**
  * handle ArtDataRequest
+ *
+ * @param n The Art-Net node instance.
+ * @param p The received Art-Net packet.
  */
 void handle_data_request(node n, artnet_packet p) {
   check_callback(n, p, n->callbacks.datareq);
@@ -993,6 +1082,9 @@ void handle_data_request(node n, artnet_packet p) {
 
 /**
  * handle ArtDataReply
+ *
+ * @param n The Art-Net node instance.
+ * @param p The received Art-Net packet.
  */
 void handle_data_reply(node n, artnet_packet p) {
   check_callback(n, p, n->callbacks.datarep);
@@ -1000,6 +1092,9 @@ void handle_data_reply(node n, artnet_packet p) {
 
 /**
  * handle ArtMedia
+ *
+ * @param n The Art-Net node instance.
+ * @param p The received Art-Net packet.
  */
 void handle_media(node n, artnet_packet p) {
   check_callback(n, p, n->callbacks.media);
@@ -1007,6 +1102,9 @@ void handle_media(node n, artnet_packet p) {
 
 /**
  * handle ArtMediaControlReply
+ *
+ * @param n The Art-Net node instance.
+ * @param p The received Art-Net packet.
  */
 void handle_media_control_reply(node n, artnet_packet p) {
   check_callback(n, p, n->callbacks.mediacontrol);
@@ -1014,6 +1112,11 @@ void handle_media_control_reply(node n, artnet_packet p) {
 
 /**
  * handle a firmware master
+ *
+ * @param n The Art-Net node instance.
+ * @param p The received Art-Net packet.
+ * @return ARTNET_EOK on success, ARTNET_EMEM on memory allocation failure,
+ *         or an error code from artnet_tx_firmware_reply.
  */
 
 // THIS NEEDS TO BE CHECKED FOR BUFFER OVERFLOWS
@@ -1189,6 +1292,10 @@ int handle_firmware(node n, artnet_packet p) {
 
 /**
  * handle an firmware reply
+ *
+ * @param n The Art-Net node instance.
+ * @param p The received Art-Net packet.
+ * @return ARTNET_EOK on success, or an error code from artnet_tx_firmware_packet.
  */
 int handle_firmware_reply(node n, artnet_packet p) {
   node_entry_private_t *ent = NULL;
@@ -1245,6 +1352,9 @@ int handle_firmware_reply(node n, artnet_packet p) {
 
 /**
  * have to sort this one out.
+ *
+ * @param n The Art-Net node instance.
+ * @param p The received Art-Net packet.
  */
 void handle_ipprog(node n, artnet_packet p) {
   uint8_t cmd = p->data.aip.Command;
@@ -1346,6 +1456,10 @@ void handle_ipprog(node n, artnet_packet p) {
 /**
  * The main handler for an artnet packet. calls
  * the appropriate handler function
+ *
+ * @param n The Art-Net node instance.
+ * @param p The received Art-Net packet.
+ * @return 0 always.
  */
 int handle(node n, artnet_packet p) {
 
@@ -1474,6 +1588,9 @@ int handle(node n, artnet_packet p) {
 
 /**
  * this gets the opcode from a packet
+ *
+ * @param p The Art-Net packet to inspect.
+ * @return The opcode extracted from the packet, or 0 if not a valid Art-Net packet.
  */
 int16_t get_type(artnet_packet p) {
   uint8_t *data;
@@ -1493,7 +1610,10 @@ int16_t get_type(artnet_packet p) {
 }
 
 /**
+ * Check for merge timeouts on a port.
  *
+ * @param n       The Art-Net node instance.
+ * @param port_id The output port index to check.
  */
 void check_merge_timeouts(node n, int port_id) {
   output_port_t *port = NULL;
@@ -1528,6 +1648,11 @@ void check_merge_timeouts(node n, int port_id) {
 
 /**
  * merge the data from two sources
+ *
+ * @param n       The Art-Net node instance.
+ * @param port_id The output port index to merge on.
+ * @param length  The number of bytes of DMX data to merge.
+ * @param latest  Pointer to the most recently received DMX data buffer (used for LTP merge).
  */
 void merge(node n, int port_id, int length, uint8_t *latest) {
   int i = 0;
@@ -1544,7 +1669,11 @@ void merge(node n, int port_id, int length, uint8_t *latest) {
 }
 
 
-/** @brief Reset the firmware upload state machine. */
+/**
+ * @brief Reset the firmware upload state machine.
+ *
+ * @param n The Art-Net node instance.
+ */
 void reset_firmware_upload(node n) {
   n->firmware.bytes_current = 0;
   n->firmware.bytes_total = 0;

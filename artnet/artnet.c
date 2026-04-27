@@ -212,7 +212,10 @@ int artnet_stop(artnet_node vn) {
 
 
 /**
- * Free the memory associated with this node
+ * Free the memory associated with this node.
+ *
+ * @param vn The artnet_node
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_destroy(artnet_node vn) {
   node n = (node) vn;
@@ -254,8 +257,13 @@ int artnet_destroy(artnet_node vn) {
 
 
 /**
- * Set the OEM code
- * This can only be done in the standby state
+ * Set the OEM code.
+ * This can only be done in the standby state.
+ *
+ * @param vn The artnet_node
+ * @param hi High byte of the OEM code
+ * @param lo Low byte of the OEM code
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_setoem(artnet_node vn, uint8_t hi, uint8_t lo) {
   node n = (node) vn;
@@ -272,8 +280,13 @@ int artnet_setoem(artnet_node vn, uint8_t hi, uint8_t lo) {
 
 
 /**
- * Set the ESTA code
- * This can only be done in the standby state
+ * Set the ESTA code.
+ * This can only be done in the standby state.
+ *
+ * @param vn The artnet_node
+ * @param hi High byte of the ESTA code
+ * @param lo Low byte of the ESTA code
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_setesta(artnet_node vn, char hi, char lo) {
   node n = (node) vn;
@@ -290,9 +303,11 @@ int artnet_setesta(artnet_node vn, char hi, char lo) {
 
 
 /**
- * Set the number of nodes above which we start to bcast data
+ * Set the number of nodes above which we start to bcast data.
+ *
  * @param vn the artnet_node
  * @param limit 0 to always broadcast
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_set_bcast_limit(artnet_node vn, int limit) {
   node n = (node) vn;
@@ -546,6 +561,7 @@ int artnet_set_handler(artnet_node vn,
  * @param fh   The callback to invoke (parameters passed are the artnet_node, the port_id
  *             that received the dmx, and user data)
  * @param data Data to be passed to the handler when it's called
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_set_dmx_handler(artnet_node vn,
                            int (*fh)(artnet_node n, int port, void *d),
@@ -566,6 +582,7 @@ int artnet_set_dmx_handler(artnet_node vn,
  * @param fh   The callback to invoke (parameters passed are the artnet_node, a value which
  *             is true if this was a ubea upload, and user data)
  * @param data Data to be passed to the handler when it's called
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_set_firmware_handler(
     artnet_node vn,
@@ -585,6 +602,7 @@ int artnet_set_firmware_handler(
  * @param vn   The artnet_node
  * @param fh   The callback to invoke (parameters passed are the artnet_node and user data)
  * @param data Data to be passed to the handler when it's called
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_set_program_handler(artnet_node vn,
                                int (*fh)(artnet_node n, void *d),
@@ -598,12 +616,13 @@ int artnet_set_program_handler(artnet_node vn,
 
 
 /**
+ * Register an RDM handler.
  *
  * @param vn     The artnet_node
  * @param fh    The callback to invoke (parameters passed are the artnet_node, pointer to the
- *             rdm data, the length of the data and the user data
+ *             rdm data, the length of the data and the user data)
  * @param data    Data to be passed to the handler when its called
- *
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_set_rdm_handler(
     artnet_node vn,
@@ -621,6 +640,7 @@ int artnet_set_rdm_handler(
  * @param vn   The artnet_node
  * @param fh   The callback to invoke (parameters passed are the artnet_node, the port id, and user data)
  * @param data Data to be passed to the handler when it's called
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_set_rdm_initiate_handler(
     artnet_node vn,
@@ -639,6 +659,7 @@ int artnet_set_rdm_initiate_handler(
  * @param vn   The artnet_node
  * @param fh   The callback to invoke (parameters passed are the artnet_node, the universe address, and user data)
  * @param data Data to be passed to the handler when it's called
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_set_rdm_tod_handler(
     artnet_node vn,
@@ -658,10 +679,12 @@ int artnet_set_rdm_tod_handler(
 // stale nodes are cleaned up in check_timeouts() after NODELIST_TIMEOUT_MS
 
 /**
+ * Send an ArtPoll to the specified ip, or if null, will broadcast.
  *
  * @param vn the artnet_node
  * @param ip the ip address to send to, NULL will broadcast the ArtPoll
  * @param talk_to_me the value for the talk to me
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_send_poll(artnet_node vn,
                      const char *ip,
@@ -683,9 +706,10 @@ int artnet_send_poll(artnet_node vn,
 
 
 /**
- * Sends an artpoll reply
+ * Sends an artpoll reply.
  *
  * @param vn the artnet_node
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_send_poll_reply(artnet_node vn) {
   node n = (node) vn;
@@ -700,12 +724,13 @@ int artnet_send_poll_reply(artnet_node vn) {
 
 
 /**
- * Send a diagnostic message
+ * Send a diagnostic message.
  *
  * @param vn the artnet_node
  * @param priority the diagnostic priority level
  * @param port the logical port (0 for general messages)
  * @param text the diagnostic text message (null-terminated)
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_send_diagnostic(artnet_node vn,
                            artnet_diag_priority_t priority,
@@ -718,9 +743,13 @@ int artnet_send_diagnostic(artnet_node vn,
 }
 
 /**
- * Sends some dmx data
+ * Sends some dmx data.
  *
  * @param vn the artnet_node
+ * @param port_id the port index (0 to ARTNET_MAX_PORTS-1)
+ * @param length length of DMX data (2-512)
+ * @param data pointer to DMX data
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_send_dmx(artnet_node vn,
                     int port_id,
@@ -829,6 +858,12 @@ int artnet_send_dmx(artnet_node vn,
  * Use for performance testing.
  * This allows data to be sent on any universe, not just the ones that have
  * ports configured.
+ *
+ * @param vn the artnet_node
+ * @param uni the 15-bit universe address (0-32767)
+ * @param length length of DMX data (2-512)
+ * @param data pointer to DMX data
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_raw_send_dmx(artnet_node vn,
                         uint16_t uni,
@@ -884,6 +919,7 @@ int artnet_raw_send_dmx(artnet_node vn,
  * @param start_code  the DMX start code (must not be 0x00 or 0xCC)
  * @param length      the length of the data (1-512)
  * @param data        the data to send
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_send_nzs(artnet_node vn,
                     uint16_t uni,
@@ -944,6 +980,7 @@ int artnet_send_nzs(artnet_node vn,
  * @param subAddr    the subnet address
  * @param cmd        the port command
  * @param acnPriority the sACN priority value
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_send_address(artnet_node vn,
                         artnet_node_entry e,
@@ -1012,6 +1049,10 @@ int artnet_send_address(artnet_node vn,
  *
  * NOTE: should have enums here instead of uint8_t for settings
  *
+ * @param vn       the artnet_node
+ * @param e        the node entry to address
+ * @param settings per-port settings bitmask
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_send_input(artnet_node vn,
                       artnet_node_entry e,
@@ -1055,7 +1096,6 @@ int artnet_send_input(artnet_node vn,
 
 
 /**
- *
  * Sends a series of ArtFirmwareMaster packets to the specified node, these are used to
  * upload firmware to the remote node.
  *
@@ -1069,6 +1109,7 @@ int artnet_send_input(artnet_node vn,
  * @param length the number of 16bit words of the firmware (length * 2 = size in bytes)
  * @param fh the callback that is invoked when the transfer is complete
  * @param user_data data to be passed to the callback
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_send_firmware(
     artnet_node vn,
@@ -1124,7 +1165,6 @@ int artnet_send_firmware(
 
 
 /**
- *
  * Sends an ArtFirmwareReply packet to the specified node,
  * this packet is used to acknowledge firmware master packets.
  *
@@ -1134,6 +1174,7 @@ int artnet_send_firmware(
  * @param vn the artnet_node
  * @param e the node entry to send firmware to
  * @param code the status code to send
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_send_firmware_reply(artnet_node vn,
                                artnet_node_entry e,
@@ -1156,10 +1197,10 @@ int artnet_send_firmware_reply(artnet_node vn,
 
 
 /**
- * Sends a tod request
+ * Sends a tod request.
  *
  * @param vn the artnet node
- *
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_send_tod_request(artnet_node vn) {
   node n = (node) vn;
@@ -1170,12 +1211,12 @@ int artnet_send_tod_request(artnet_node vn) {
 
 
 /**
- * Sends a tod control datagram
+ * Sends a tod control datagram.
  *
  * @param vn the artnet node
  * @param address the universe address to control
  * @param action the action to take
- *
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_send_tod_control(artnet_node vn,
                             uint16_t address,
@@ -1187,11 +1228,13 @@ int artnet_send_tod_control(artnet_node vn,
 
 
 /**
- * Send a tod data datagram
+ * Send a tod data datagram.
  * Note you should not use this, a TodData message should only be sent in response
- * to a request, or when a RDM device is added. Use artnet_add_rdm_device() or artnet_add_rdm_devices() instead
+ * to a request, or when a RDM device is added. Use artnet_add_rdm_device() or artnet_add_rdm_devices() instead.
  *
- * @param
+ * @param vn the artnet node
+ * @param port the port index
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_send_tod_data(artnet_node vn, int port) {
   node n = (node) vn;
@@ -1208,7 +1251,10 @@ int artnet_send_tod_data(artnet_node vn, int port) {
 
 
 /**
- * Send an ArtSync packet
+ * Send an ArtSync packet.
+ *
+ * @param vn the artnet_node
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_send_sync(artnet_node vn) {
   node n = (node) vn;
@@ -1219,7 +1265,16 @@ int artnet_send_sync(artnet_node vn) {
 
 
 /**
- * Send an ArtTimeCode packet
+ * Send an ArtTimeCode packet.
+ *
+ * @param vn       the artnet_node
+ * @param frames   frames (0-29 depending on type)
+ * @param seconds  seconds (0-59)
+ * @param minutes  minutes (0-59)
+ * @param hours    hours (0-23)
+ * @param type     timecode type (film/EBU/DF/SMPTE)
+ * @param stream_id stream identifier
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_send_timecode(artnet_node vn, uint8_t frames, uint8_t seconds,
                          uint8_t minutes, uint8_t hours,
@@ -1232,7 +1287,16 @@ int artnet_send_timecode(artnet_node vn, uint8_t frames, uint8_t seconds,
 
 
 /**
- * Send an ArtTimeSync packet
+ * Send an ArtTimeSync packet.
+ *
+ * @param vn      the artnet_node
+ * @param tm_sec  seconds (0-59)
+ * @param tm_min  minutes (0-59)
+ * @param tm_hour hours (0-23)
+ * @param tm_mday day of month (1-31)
+ * @param tm_mon  month (1-12)
+ * @param tm_year year (years since 1900)
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_send_timesync(artnet_node vn, uint8_t tm_sec, uint8_t tm_min,
                          uint8_t tm_hour, uint8_t tm_mday,
@@ -1245,7 +1309,16 @@ int artnet_send_timesync(artnet_node vn, uint8_t tm_sec, uint8_t tm_min,
 
 
 /**
- * Send an ArtTrigger packet
+ * Send an ArtTrigger packet.
+ *
+ * @param vn      the artnet_node
+ * @param oem_hi  OEM code high byte
+ * @param oem_lo  OEM code low byte
+ * @param key     trigger key
+ * @param sub_key sub-key value
+ * @param data    payload data (may be NULL)
+ * @param length  length of payload
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_send_trigger(artnet_node vn, uint8_t oem_hi, uint8_t oem_lo,
                         uint8_t key, uint8_t sub_key,
@@ -1258,7 +1331,14 @@ int artnet_send_trigger(artnet_node vn, uint8_t oem_hi, uint8_t oem_lo,
 
 
 /**
- * Send an ArtDataReply packet (Art-Net 4)
+ * Send an ArtDataReply packet (Art-Net 4).
+ *
+ * @param vn           the artnet_node
+ * @param ip           target IP address
+ * @param request_code the request code being answered
+ * @param payload      reply payload string
+ * @param length       length of payload
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_send_data_reply(artnet_node vn, const char *ip,
                            uint16_t request_code, const char *payload,
@@ -1272,6 +1352,9 @@ int artnet_send_data_reply(artnet_node vn, const char *ip,
 
 /**
  * Send an ArtDirectory request (broadcast) to discover node file lists.
+ *
+ * @param vn the artnet_node
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_send_directory(artnet_node vn) {
   node n = (node) vn;
@@ -1283,6 +1366,12 @@ int artnet_send_directory(artnet_node vn) {
 
 /**
  * Send an ArtDirectoryReply with directory entries.
+ *
+ * @param vn          the artnet_node
+ * @param entries     file entry data
+ * @param entry_count number of entries in this packet
+ * @param entry_total total entries across all packets
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_send_directory_reply(artnet_node vn,
                                 const uint8_t *entries,
@@ -1326,6 +1415,15 @@ int artnet_send_directory_reply(artnet_node vn,
 
 /**
  * Upload a file block to a node via ArtFileTnMaster.
+ *
+ * @param vn          the artnet_node
+ * @param e           the remote node entry (target)
+ * @param type        file type
+ * @param blockId     block identifier
+ * @param totalLength total file length in bytes
+ * @param data        file data as 16-bit words
+ * @param dataLen     length of data in 16-bit words
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_send_file_tn_master(artnet_node vn,
                                 artnet_node_entry e,
@@ -1350,6 +1448,11 @@ int artnet_send_file_tn_master(artnet_node vn,
 
 /**
  * Request a file download from a node via ArtFileFnMaster.
+ *
+ * @param vn       the artnet_node
+ * @param e        the remote node entry (target)
+ * @param filename name of the file to request
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_send_file_fn_master(artnet_node vn,
                                 artnet_node_entry e,
@@ -1369,6 +1472,13 @@ int artnet_send_file_fn_master(artnet_node vn,
 
 /**
  * Send an ArtFileFnReply (file data block in response to ArtFileFnMaster).
+ *
+ * @param vn          the artnet_node
+ * @param blockId     block identifier
+ * @param totalLength total file length
+ * @param data        file data
+ * @param dataLen     length of data
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_send_file_fn_reply(artnet_node vn,
                                uint8_t blockId,
@@ -1383,10 +1493,13 @@ int artnet_send_file_fn_reply(artnet_node vn,
 
 
 /**
- * Send a rdm datagram
+ * Send a rdm datagram.
+ *
+ * @param vn      the artnet_node
  * @param address the universe address to send to
- * @param data the rdm data to send
- * @param length the length of the rdm data
+ * @param data    the rdm data to send
+ * @param length  the length of the rdm data
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_send_rdm(artnet_node vn,
                     uint16_t address,
@@ -1401,7 +1514,17 @@ int artnet_send_rdm(artnet_node vn,
 
 
 /**
- * Send a RDM sub packet
+ * Send a RDM sub packet.
+ *
+ * @param vn            the artnet_node
+ * @param uid           RDM UID of the target device
+ * @param command_class RDM command class
+ * @param param_id      RDM parameter ID
+ * @param sub_device    sub-device address
+ * @param sub_count     sub-device count
+ * @param data          RDM data payload
+ * @param length        length of RDM data
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_send_rdmsub(artnet_node vn,
                        uint8_t uid[ARTNET_RDM_UID_WIDTH],
@@ -1421,8 +1544,11 @@ int artnet_send_rdmsub(artnet_node vn,
 
 /**
  * Add a rdm device to our tod.
+ *
+ * @param vn   the artnet_node
  * @param port the port the device is connected to
- * @param the uid of the device
+ * @param uid  the uid of the device
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_add_rdm_device(artnet_node vn,
                           int port,
@@ -1444,11 +1570,13 @@ int artnet_add_rdm_device(artnet_node vn,
 
 
 /**
- * add a list of rdm devices to our tod, use this for full discovery
+ * Add a list of rdm devices to our tod, use this for full discovery.
  *
- * @param port the port the device is connected to
- * @param uid pointer to the uids
+ * @param vn    the artnet_node
+ * @param port  the port the device is connected to
+ * @param uid   pointer to the uids
  * @param count number of uids
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_add_rdm_devices(artnet_node vn, int port, uint8_t *uid, int count) {
   node n = (node) vn;
@@ -1479,8 +1607,10 @@ int artnet_add_rdm_devices(artnet_node vn, int port, uint8_t *uid, int count) {
 /**
  * Remove an rdm device from our tod.
  *
+ * @param vn   the artnet_node
  * @param port the port the device was connected to
  * @param uid  the uid of the device
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_remove_rdm_device(artnet_node vn,
                              int port,
@@ -1534,6 +1664,7 @@ uint8_t *artnet_read_dmx(artnet_node vn, int port_id, int *length) {
  *
  * @param vn   the artnet_node
  * @param type the node type
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_set_node_type(artnet_node vn, artnet_node_type type) {
   node n = (node) vn;
@@ -1549,8 +1680,9 @@ int artnet_set_node_type(artnet_node vn, artnet_node_type type) {
  * The style code describes the product type and is sent in ArtPollReply Status1 bits 3-0.
  * Can only be set in STANDBY mode.
  *
- * @param vn the artnet_node
+ * @param vn    the artnet_node
  * @param style the style code (artnet_style_code_t)
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_set_style_code(artnet_node vn, artnet_style_code_t style) {
   node n = (node) vn;
@@ -1568,6 +1700,7 @@ int artnet_set_style_code(artnet_node vn, artnet_style_code_t style) {
  *
  * @param vn      the artnet_node
  * @param status2 the Status2 byte value
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_set_status2(artnet_node vn, uint8_t status2) {
   node n = (node) vn;
@@ -1579,26 +1712,12 @@ int artnet_set_status2(artnet_node vn, uint8_t status2) {
 
 
 /**
- * Sets the artnet subnet address for this node.
- * The subnet address has nothing to do with IP addresses). An ArtNet subnet is a grouping of 16 DMX universes
- * (ie. ports)
- *
- * The subnet address is between 0 and 15. If the supplied address is larger than 15, the
- * lower 4 bits will be used in setting the address.
- *
- * It will have no effect if the node is under network control.
- *
- * Note that changing the subnet address will cause the universe addresses of all ports to change.
- *
- * @param vn the artnet_node
- * @param subnet new subnet address
- */
-/**
  * Sets the net address of the node.
  * The net address is bits 14-8 of the 15-bit Art-Net port address (0-127).
  *
  * @param vn the artnet_node
  * @param net the net address (0-127)
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_set_net_addr(artnet_node vn, uint8_t net) {
   node n = (node) vn;
@@ -1649,6 +1768,7 @@ int artnet_set_net_addr(artnet_node vn, uint8_t net) {
  *
  * @param vn     the artnet_node
  * @param subnet new subnet address
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_set_subnet_addr(artnet_node vn, uint8_t subnet) {
   node n = (node) vn;
@@ -1691,8 +1811,9 @@ int artnet_set_subnet_addr(artnet_node vn, uint8_t subnet) {
 /**
  * Sets the RDMnet & LLRP default responder UID (Art-Net 4).
  *
- * @param n the artnet_node
+ * @param vn  the artnet_node
  * @param uid pointer to 6-byte UID array
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_set_default_resp_uid(artnet_node vn, const uint8_t uid[ARTNET_RDM_UID_WIDTH]) {
   node n = (node) vn;
@@ -1715,6 +1836,7 @@ int artnet_set_default_resp_uid(artnet_node vn, const uint8_t uid[ARTNET_RDM_UID
  *
  * @param vn the artnet_node
  * @param ip the gateway IP address as a dotted string
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_set_gateway(artnet_node vn, const char *ip) {
   node n = (node) vn;
@@ -1733,10 +1855,11 @@ int artnet_set_gateway(artnet_node vn, const char *ip) {
 
 /**
  * Sets the short name of the node.
- * The string should be null terminated and a maxmium of 18 Characters will be used
+ * The string should be null terminated and a maxmium of 18 Characters will be used.
  *
- * @param vn the artnet_node
+ * @param vn   the artnet_node
  * @param name the short name of the node.
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_set_short_name(artnet_node vn, const char *name) {
   node n = (node) vn;
@@ -1750,10 +1873,11 @@ int artnet_set_short_name(artnet_node vn, const char *name) {
 
 /**
  * Sets the long name of the node.
- * The string should be null terminated and a maximium of 64 characters will be used
+ * The string should be null terminated and a maximium of 64 characters will be used.
  *
- * @param vn the artnet_node
+ * @param vn   the artnet_node
  * @param name the node's long name
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_set_long_name(artnet_node vn, const char *name) {
   node n = (node) vn;
@@ -1766,11 +1890,13 @@ int artnet_set_long_name(artnet_node vn, const char *name) {
 
 
 /**
- * Sets the direction and type of port
- * @param vn the artnet_node
- * @param id
- * @param direction
- * @param data
+ * Sets the direction and type of port.
+ *
+ * @param vn       the artnet_node
+ * @param port_id  the physical port number (0 to ARTNET_MAX_PORTS-1)
+ * @param settings port settings bitmask (ARTNET_ENABLE_INPUT / ARTNET_ENABLE_OUTPUT)
+ * @param data     the data protocol type (ARTNET_PORT_DMX, etc.)
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_set_port_type(artnet_node vn,
                          int port_id,
@@ -1927,6 +2053,7 @@ int artnet_get_config(artnet_node vn, artnet_node_config_t *config) {
  * Dumps the node config to stdout.
  *
  * @param vn the artnet_node
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_dump_config(artnet_node vn) {
   node n = (node) vn;
@@ -2106,7 +2233,9 @@ int artnet_nl_foreach(artnet_node vn,
 
 
 /**
- * Return a pointer to the staticly allocated error string
+ * Return a pointer to the statically allocated error string.
+ *
+ * @return a pointer to the last error string (do not free)
  */
 char *artnet_strerror() {
   return artnet_errstr;
@@ -2117,6 +2246,14 @@ char *artnet_strerror() {
 // Private functions follow
 //-----------------------------------------------------------------------------
 
+/**
+ * Update the node list with a new ArtPollReply entry.
+ *
+ * @param n     the node
+ * @param nl    the node list to update
+ * @param reply the ArtPollReply packet
+ * @return ARTNET_EOK on success, or ARTNET_EMEM on allocation failure
+ */
 int artnet_nl_update(node n, node_list_t *nl, artnet_packet reply) {
   node_entry_private_t *entry = NULL;
   uint8_t swOut0 = reply->data.ar.swOut[0];
@@ -2172,7 +2309,11 @@ int artnet_nl_update(node n, node_list_t *nl, artnet_packet reply) {
 
 
 /**
- * check if this packet is in list
+ * Check if this packet is in list.
+ *
+ * @param nl the node list to search
+ * @param ip the IP address to search for
+ * @return a pointer to the matching entry, or NULL if not found
  */
 node_entry_private_t *find_entry_from_ip(node_list_t *nl, SI ip) {
   node_entry_private_t *tmp = NULL;
@@ -2187,11 +2328,13 @@ node_entry_private_t *find_entry_from_ip(node_list_t *nl, SI ip) {
 
 
 /**
- * Find all nodes with a port bound to a particular universe
- * @param nl the node list
- * @param uni the universe to search for
- * @param ips store matching node ips here
- * @param size size of ips
+ * Find all nodes with a port bound to a particular universe.
+ *
+ * @param n    the node (for seqlock)
+ * @param nl   the node list
+ * @param uni  the universe to search for
+ * @param ips  store matching node ips here
+ * @param size size of ips array
  * @return number of nodes matched
  */
 int find_nodes_from_uni(node n, node_list_t *nl, uint16_t uni, SI *ips, int size) {
@@ -2225,7 +2368,10 @@ int find_nodes_from_uni(node n, node_list_t *nl, uint16_t uni, SI *ips, int size
 
 
 /**
- * Add a node to the node list from an ArtPollReply msg
+ * Add a node to the node list from an ArtPollReply msg.
+ *
+ * @param e     the node entry to populate
+ * @param reply the ArtPollReply packet
  */
 void copy_apr_to_node_entry(artnet_node_entry e, artnet_reply_t *reply) {
 
@@ -2265,7 +2411,11 @@ void copy_apr_to_node_entry(artnet_node_entry e, artnet_reply_t *reply) {
 }
 
 /**
- * find a node_entry in the node list
+ * Find a node_entry in the node list by IP address.
+ *
+ * @param n the node
+ * @param e the node entry to search for (matched by IP)
+ * @return a pointer to the private entry, or NULL if not found
  */
 node_entry_private_t *find_private_entry(node n, artnet_node_entry e) {
   node_entry_private_t *tmp = NULL;
@@ -2283,6 +2433,12 @@ node_entry_private_t *find_private_entry(node n, artnet_node_entry e) {
 }
 
 
+/**
+ * Check for various timeouts: DMX fail-safe, ArtSync, node list cleanup,
+ * firmware transfer, DMX keepalive retransmission, and pending ArtPollReply.
+ *
+ * @param n the node
+ */
 void check_timeouts(node n) {
   clock_t now = clock();
   time_t now_time = time(NULL);

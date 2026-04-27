@@ -24,7 +24,11 @@
 #include "misc.h"
 
 /**
- * adds a uid to the table of devices
+ * Adds a uid to the table of devices.
+ *
+ * @param tod the TOD to add to
+ * @param uid the RDM UID to add (ARTNET_RDM_UID_WIDTH bytes)
+ * @return 0 on success, -1 on null tod, ARTNET_EMEM on allocation failure
  */
 int add_tod_uid(tod_t *tod, uint8_t uid[ARTNET_RDM_UID_WIDTH]) {
   uint8_t *addr = NULL;
@@ -70,8 +74,11 @@ int add_tod_uid(tod_t *tod, uint8_t uid[ARTNET_RDM_UID_WIDTH]) {
 }
 
 /**
- * remove a uid from the table of devices
+ * Remove a uid from the table of devices.
  *
+ * @param tod the TOD to remove from
+ * @param uid the RDM UID to remove (ARTNET_RDM_UID_WIDTH bytes)
+ * @return 0 on success, -1 if not found or null tod
  */
 int remove_tod_uid(tod_t *tod, uint8_t uid[ARTNET_RDM_UID_WIDTH]) {
   int i = 0;
@@ -107,7 +114,10 @@ int remove_tod_uid(tod_t *tod, uint8_t uid[ARTNET_RDM_UID_WIDTH]) {
 }
 
 /**
- * clear the table of devices
+ * Clear the table of devices and free allocated memory.
+ *
+ * @param tod the TOD to flush
+ * @return 0 on success, -1 if tod is NULL
  */
 int flush_tod(tod_t *tod) {
   if (tod == NULL) {
@@ -123,7 +133,12 @@ int flush_tod(tod_t *tod) {
 }
 
 
-/** @brief Reset the TOD to initial empty state. */
+/**
+ * Reset the TOD to initial empty state.
+ *
+ * @param tod the TOD to reset
+ * @return 0 on success, -1 if tod is NULL
+ */
 int reset_tod(tod_t *tod) {
   if (tod == NULL) {
     return -1;

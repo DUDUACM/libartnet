@@ -23,9 +23,11 @@
 /**
  * Send an art poll
  *
+ * @param n   the node
  * @param ip the ip address to send to
  * @param ttm the talk to me value, either ARTNET_TTM_DEFAULT,
  *   ARTNET_TTM_PRIVATE or ARTNET_TTM_AUTO
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_tx_poll(node n, const char *ip, artnet_ttm_value_t ttm) {
   artnet_packet_t p = {0};
@@ -74,6 +76,7 @@ int artnet_tx_poll(node n, const char *ip, artnet_ttm_value_t ttm) {
  * Send an ArtPollReply
  * @param n        the node
  * @param response non-zero if this reply is in response to a network packet
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_tx_poll_reply(node n, int response) {
   artnet_packet_t reply = {0};
@@ -136,6 +139,9 @@ int artnet_tx_poll_reply(node n, int response) {
  * Send a tod request.
  * Ports may span multiple nets (e.g. when using artnet_join), so we group
  * enabled ports by net and send a separate ArtTodRequest per net group.
+ *
+ * @param n the node
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_tx_tod_request(node n) {
   int i, ret = ARTNET_EOK;
@@ -199,7 +205,9 @@ int artnet_tx_tod_request(node n) {
 
 /**
  * Send a tod data for port number id
+ * @param n  the node
  * @param id the number of the port to send data for
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_tx_tod_data(node n, int id) {
   artnet_packet_t tod = {0};
@@ -259,8 +267,10 @@ int artnet_tx_tod_data(node n, int id) {
 
 /**
  * Send a TOD control datagram
+ * @param n       the node
  * @param address the universe address to control
  * @param action  the control action (e.g. ARTNET_TOD_FULL, ARTNET_TOD_FLUSH)
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_tx_tod_control(node n,
                           uint16_t address,
@@ -292,6 +302,7 @@ int artnet_tx_tod_control(node n,
  * @param address the universe address to send to
  * @param data    pointer to the RDM data payload
  * @param length  length of the RDM data
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_tx_rdm(node n, uint16_t address, uint8_t *data, int length) {
   artnet_packet_t rdm = {0};
@@ -326,6 +337,16 @@ int artnet_tx_rdm(node n, uint16_t address, uint8_t *data, int length) {
 
 /**
  * Send a RDM sub packet
+ *
+ * @param n             the node
+ * @param uid           the RDM UID of the target device
+ * @param command_class the RDM command class
+ * @param param_id      the RDM parameter ID
+ * @param sub_device    the RDM sub-device
+ * @param sub_count     the RDM sub-count
+ * @param data          pointer to the RDM data payload
+ * @param length        length of the RDM data
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_tx_rdmsub(node n,
                      uint8_t uid[ARTNET_RDM_UID_WIDTH],
@@ -365,6 +386,12 @@ int artnet_tx_rdmsub(node n,
 
 /**
  * Send a diagnostic data packet
+ *
+ * @param n            the node
+ * @param priority     the diagnostic priority level
+ * @param logical_port the logical port number
+ * @param text         the diagnostic message text
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_tx_diagdata(node n, uint8_t priority, uint8_t logical_port,
                         const char *text) {
@@ -418,8 +445,10 @@ int artnet_tx_diagdata(node n, uint8_t priority, uint8_t logical_port,
 
 /**
  * Send a firmware reply
+ * @param n    the node
  * @param ip the ip address to send to
  * @param code the response code
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_tx_firmware_reply(node n, in_addr_t ip,
                              artnet_firmware_status_code code) {
@@ -444,7 +473,9 @@ int artnet_tx_firmware_reply(node n, in_addr_t ip,
 /**
  * Send an firmware data datagram
  *
+ * @param n    the node
  * @param firm a pointer to the firmware structure for this transfer
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_tx_firmware_packet(node n, firmware_transfer_t *firm) {
   artnet_packet_t p = {0};
@@ -531,6 +562,9 @@ int artnet_tx_firmware_packet(node n, firmware_transfer_t *firm) {
 
 /**
  * Send an ArtSync packet
+ *
+ * @param n the node
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_tx_sync(node n) {
   artnet_packet_t p = {0};
@@ -555,6 +589,13 @@ int artnet_tx_sync(node n) {
 
 /**
  * Send an ArtNzs packet (non-zero start code DMX)
+ *
+ * @param n           the node
+ * @param port_id     the port index to send from
+ * @param start_code  the DMX start code
+ * @param length      the length of the data
+ * @param data        pointer to the DMX data
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_tx_nzs(node n, int port_id, uint8_t start_code,
                   int16_t length, const uint8_t *data) {
@@ -622,6 +663,13 @@ int artnet_tx_nzs(node n, int port_id, uint8_t start_code,
 
 /**
  * Send an ArtDataReply packet (Art-Net 4)
+ *
+ * @param n            the node
+ * @param ip           the ip address to send to
+ * @param request_code the request code
+ * @param payload      pointer to the payload data
+ * @param length       the length of the payload
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_tx_data_reply(node n, const char *ip, uint16_t request_code,
                          const char *payload, int16_t length) {
@@ -665,6 +713,15 @@ int artnet_tx_data_reply(node n, const char *ip, uint16_t request_code,
 
 /**
  * Send an ArtTimeCode packet
+ *
+ * @param n         the node
+ * @param frames    the timecode frames value
+ * @param seconds   the timecode seconds value
+ * @param minutes   the timecode minutes value
+ * @param hours     the timecode hours value
+ * @param type      the timecode type
+ * @param stream_id the timecode stream identifier
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_tx_timecode(node n, uint8_t frames, uint8_t seconds,
                        uint8_t minutes, uint8_t hours,
@@ -697,6 +754,15 @@ int artnet_tx_timecode(node n, uint8_t frames, uint8_t seconds,
 
 /**
  * Send an ArtTimeSync packet
+ *
+ * @param n       the node
+ * @param tm_sec  the seconds value
+ * @param tm_min  the minutes value
+ * @param tm_hour the hours value
+ * @param tm_mday the day of month value
+ * @param tm_mon  the month value
+ * @param tm_year the year value
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_tx_timesync(node n, uint8_t tm_sec, uint8_t tm_min,
                        uint8_t tm_hour, uint8_t tm_mday,
@@ -729,6 +795,15 @@ int artnet_tx_timesync(node n, uint8_t tm_sec, uint8_t tm_min,
 
 /**
  * Send an ArtTrigger packet
+ *
+ * @param n       the node
+ * @param oem_hi  the high byte of the OEM code
+ * @param oem_lo  the low byte of the OEM code
+ * @param key     the trigger key
+ * @param sub_key the trigger sub-key
+ * @param data    pointer to the trigger data payload
+ * @param length  the length of the trigger data
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_tx_trigger(node n, uint8_t oem_hi, uint8_t oem_lo,
                       uint8_t key, uint8_t sub_key,
@@ -767,6 +842,9 @@ int artnet_tx_trigger(node n, uint8_t oem_hi, uint8_t oem_lo,
 
 /**
  * Send an ArtDirectory request packet (broadcast)
+ *
+ * @param n the node
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_tx_directory(node n) {
   artnet_packet_t p = {0};
@@ -791,6 +869,9 @@ int artnet_tx_directory(node n) {
 
 /**
  * Send an ArtDirectoryReply packet (empty directory)
+ *
+ * @param n the node
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_tx_directory_reply(node n) {
   artnet_packet_t p = {0};
@@ -811,6 +892,9 @@ int artnet_tx_directory_reply(node n) {
 
 /**
  * Send an ArtIpProgReply packet
+ *
+ * @param n the node
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_tx_ipprog_reply(node n) {
   artnet_packet_t p = {0};
@@ -857,6 +941,15 @@ int artnet_tx_ipprog_reply(node n) {
 
 /**
  * Send an ArtFileTnMaster packet (upload file block to node). Unicast.
+ *
+ * @param n           the node
+ * @param ip          the ip address to send to
+ * @param type        the file transfer type
+ * @param blockId     the block identifier
+ * @param totalLength the total file length
+ * @param data        pointer to the file data
+ * @param dataLen     the length of the data
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_tx_file_tn_master(node n, in_addr_t ip, uint8_t type,
                               uint8_t blockId, uint32_t totalLength,
@@ -900,6 +993,11 @@ int artnet_tx_file_tn_master(node n, in_addr_t ip, uint8_t type,
 
 /**
  * Send an ArtFileFnMaster packet (request file download from node). Unicast.
+ *
+ * @param n        the node
+ * @param ip       the ip address to send to
+ * @param filename the filename to request
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_tx_file_fn_master(node n, in_addr_t ip, const char *filename) {
   artnet_packet_t p = {0};
@@ -936,7 +1034,16 @@ int artnet_tx_file_fn_master(node n, in_addr_t ip, const char *filename) {
 }
 
 
-/** @brief Build and send an ArtFileFnReply packet. */
+/**
+ * Build and send an ArtFileFnReply packet.
+ *
+ * @param n           the node
+ * @param blockId     the block identifier
+ * @param totalLength the total file length
+ * @param data        pointer to the file data
+ * @param dataLen     the length of the data
+ * @return ARTNET_EOK on success, or a negative error code
+ */
 int artnet_tx_file_fn_reply(node n, uint8_t blockId, uint16_t totalLength,
                             uint8_t *data, int dataLen) {
   artnet_packet_t p = {0};
@@ -966,6 +1073,9 @@ int artnet_tx_file_fn_reply(node n, uint8_t blockId, uint16_t totalLength,
 /**
  * Called when the node's state changes to rebuild the
  * artpollreply packet
+ *
+ * @param n the node
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_tx_build_art_poll_reply(node n) {
   int i = 0;

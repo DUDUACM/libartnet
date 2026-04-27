@@ -78,8 +78,9 @@ typedef struct iface_s {
 unsigned long LOOPBACK_IP = 0x7F000001;
 
 
-/*
- * Free memory used by the iface's list
+/**
+ * Free memory used by the iface's list.
+ *
  * @param head a pointer to the head of the list
  */
 static void free_ifaces(iface_t *head) {
@@ -92,8 +93,9 @@ static void free_ifaces(iface_t *head) {
 }
 
 
-/*
- * Add a new interface to an interface list
+/**
+ * Add a new interface to an interface list.
+ *
  * @param head pointer to the head of the list
  * @param tail pointer to the end of the list
  * @return a pointer to the new iface_t, or NULL on allocation failure
@@ -119,10 +121,12 @@ static iface_t *new_iface(iface_t **head, iface_t **tail) {
 
 #ifdef WIN32
 
-/*
+/**
  * Set if_head to point to a list of iface_t structures which represent the
- * interfaces on this machine
+ * interfaces on this machine (Win32 implementation).
+ *
  * @param ift_head the address of the pointer to the head of the list
+ * @return ARTNET_EOK on success, or a negative error code
  */
 static int get_ifaces(iface_t **if_head) {
   iface_t *if_tail, *iface;
@@ -192,9 +196,12 @@ static int get_ifaces(iface_t **if_head) {
 
 #ifdef USE_GETIFADDRS
 
-/*
- * Check if we are interested in this interface
- * @param ifa a pointer to a ifaddr struct
+/**
+ * Check if we are interested in this interface and add it to the list.
+ *
+ * @param head pointer to the head of the interface list
+ * @param tail pointer to the tail of the interface list
+ * @param ifa  a pointer to a ifaddr struct
  */
 static void add_iface_if_needed(iface_t **head, iface_t **tail,
                                 struct ifaddrs *ifa) {
@@ -222,10 +229,12 @@ static void add_iface_if_needed(iface_t **head, iface_t **tail,
 }
 
 
-/*
+/**
  * Set if_head to point to a list of iface_t structures which represent the
- * interfaces on this machine
+ * interfaces on this machine (getifaddrs implementation).
+ *
  * @param ift_head the address of the pointer to the head of the list
+ * @return 0 on success, or a negative error code
  */
 static int get_ifaces(iface_t **if_head) {
   struct ifaddrs *ifa_list, *ifa_iter;
@@ -289,10 +298,12 @@ static int get_ifaces(iface_t **if_head) {
 
 #else // no GETIFADDRS
 
-/*
+/**
  * Set if_head to point to a list of iface_t structures which represent the
- * interfaces on this machine
+ * interfaces on this machine (ioctl fallback implementation).
+ *
  * @param ift_head the address of the pointer to the head of the list
+ * @return ARTNET_EOK on success, or a negative error code
  */
 static int get_ifaces(iface_t **if_head) {
   struct ifconf ifc = {0};
@@ -456,6 +467,10 @@ e_return:
 
 /**
  * Scan for interfaces, and work out which one the user wanted to use.
+ *
+ * @param n            the node
+ * @param preferred_ip preferred IP address (NULL for auto-detection)
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_net_init(node n, const char *preferred_ip) {
   iface_t *ift, *ift_head = NULL;
@@ -530,7 +545,10 @@ e_return :
 
 
 /**
- * Start listening on the socket
+ * Start listening on the socket.
+ *
+ * @param n the node
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_net_start(node n) {
   artnet_socket_t sock = 0;
@@ -658,6 +676,11 @@ int artnet_net_start(node n) {
 
 /**
  * Receive a packet.
+ *
+ * @param n     the node
+ * @param p     output: receives the packet data
+ * @param delay timeout in milliseconds to wait for data
+ * @return ARTNET_EOK on success, RECV_NO_DATA on timeout, or a negative error code
  */
 int artnet_net_recv(node n, artnet_packet p, int delay) {
   ssize_t len;
@@ -719,6 +742,10 @@ int artnet_net_recv(node n, artnet_packet p, int delay) {
 
 /**
  * Send a packet.
+ *
+ * @param n the node
+ * @param p the packet to send
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_net_send(node n, artnet_packet p) {
   struct sockaddr_in addr = {0};
@@ -866,7 +893,13 @@ int artnet_net_reprogram(node n) {
 }*/
 
 
-/** @brief Add the node's socket to an fd_set. */
+/**
+ * Add the node's socket to an fd_set.
+ *
+ * @param n     the node
+ * @param fdset pointer to the fd_set to modify
+ * @return ARTNET_EOK on success
+ */
 int artnet_net_set_fdset(node n, fd_set *fdset) {
   FD_SET((unsigned int) n->sd, fdset);
   return ARTNET_EOK;
@@ -874,7 +907,10 @@ int artnet_net_set_fdset(node n, fd_set *fdset) {
 
 
 /**
- * Close a socket
+ * Close a socket.
+ *
+ * @param sock the socket descriptor to close
+ * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_net_close(artnet_socket_t sock) {
 #ifdef WIN32
@@ -895,7 +931,11 @@ int artnet_net_close(artnet_socket_t sock) {
 
 
 /**
- * Convert a string to an in_addr
+ * Convert a string to an in_addr.
+ *
+ * @param ip_address the IP address as a dotted string
+ * @param address    output: receives the converted address
+ * @return ARTNET_EOK on success, or ARTNET_EARG on failure
  */
 int artnet_net_inet_aton(const char *ip_address, struct in_addr *address) {
 #ifdef HAVE_INET_ATON
@@ -913,7 +953,9 @@ int artnet_net_inet_aton(const char *ip_address, struct in_addr *address) {
 
 
 /**
- * Return a string describing the last network error
+ * Return a string describing the last network error.
+ *
+ * @return a static string describing the last error (do not free)
  */
 const char *artnet_net_last_error() {
 #ifdef WIN32
