@@ -670,8 +670,8 @@ int artnet_net_recv(node n, artnet_packet p, int delay) {
   FD_ZERO(&rset);
   FD_SET((unsigned int) n->sd, &rset);
 
-  tv.tv_usec = 0;
-  tv.tv_sec = delay;
+  tv.tv_sec = delay / 1000;
+  tv.tv_usec = (delay % 1000) * 1000;
   p->length = 0;
 
   switch (select(maxfdp1, &rset, NULL, NULL, &tv)) {

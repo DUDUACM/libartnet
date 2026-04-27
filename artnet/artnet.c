@@ -51,9 +51,11 @@ uint8_t TOD_RESPONSE_FULL = 0x00;
 uint8_t TOD_RESPONSE_NAK = 0xff;
 uint8_t MIN_PACKET_SIZE = 10;
 int MERGE_TIMEOUT_MS = 10000;
-int NODELIST_TIMEOUT_SECONDS = 15;
+int NODELIST_TIMEOUT_MS = 15000;
 int DMX_FAILSAFE_TIMEOUT_MS = 800;
-uint8_t FIRMWARE_TIMEOUT_SECONDS = 30;
+int FIRMWARE_TIMEOUT_MS = 30000;
+int ARTSYNC_TIMEOUT_MS = 4000;
+int DMX_KEEPALIVE_INTERVAL_MS = 1000;
 uint8_t RECV_NO_DATA = 1;
 uint8_t MAX_NODE_BCAST_LIMIT = 30; // always bcast after this point
 
@@ -315,7 +317,7 @@ int artnet_set_bcast_limit(artnet_node vn, int limit) {
  *     timeout
  *
  * @param vn the artnet_node
- * @param timeout the number of seconds to block for if nothing is pending
+ * @param timeout the number of milliseconds to block for if nothing is pending
  * @return ARTNET_EOK on success, or a negative ARTNET_E* error code on failure
  */
 int artnet_read(artnet_node vn, int timeout) {
@@ -643,7 +645,7 @@ int artnet_set_rdm_tod_handler(
 
 // sends a poll to the specified ip, or if null, will broadcast
 // talk_to_me - modify remote nodes behaviour, see spec
-// stale nodes are cleaned up in check_timeouts() after NODELIST_TIMEOUT_SECONDS
+// stale nodes are cleaned up in check_timeouts() after NODELIST_TIMEOUT_MS
 
 /**
  *
@@ -2225,31 +2227,30 @@ void check_timeouts(node n) {
     }
   }
 
-  // ArtSync timeout: revert to non-sync mode after 4 seconds without ArtSync
-  // Use time_t for comparison (last_sync_time is time_t from time(NULL))
-  if (n->state.sync_mode && (now_time - n->state.last_sync_time >= 4)) {
+  // ArtSync timeout: revert to non-sync mode after ARTSYNC_TIMEOUT_MS without ArtSync
+  if (n->state.sync_mode && (now_time - n->state.last_sync_time >= ARTSYNC_TIMEOUT_MS / 1000)) {
     n->state.sync_mode = 0;
   }
 
-  // DMX input keepalive: retransmit last DMX data every 1 second (Art-Net 4 Rev BK recommends 800-1000ms for sACN compat)
+  // DMX input keepalive: retransmit last DMX data every DMX_KEEPALIVE_INTERVAL_MS
   for (i = 0; i < ARTNET_MAX_PORTS; i++) {
     input_port_t *in_port = &n->ports.in[i];
     if (!in_port->port_enabled || in_port->last_dmx_send_time == 0) {
       continue;
     }
-    if (now_time - in_port->last_dmx_send_time >= 1) {
+    if (now_time - in_port->last_dmx_send_time >= DMX_KEEPALIVE_INTERVAL_MS / 1000) {
       if (in_port->last_dmx_length > 0) {
         artnet_send_dmx((artnet_node)n, i, (int16_t)in_port->last_dmx_length, in_port->last_dmx_data);
       }
     }
   }
 
-  // node list cleanup: remove nodes that haven't responded in NODELIST_TIMEOUT_SECONDS
+  // node list cleanup: remove nodes that haven't responded in NODELIST_TIMEOUT_MS
   NL_WRITE_BEGIN(n);
   {
     node_entry_private_t **pp = &n->node_list.first;
     while (*pp) {
-      if (time(NULL) - (*pp)->last_seen > NODELIST_TIMEOUT_SECONDS) {
+      if (time(NULL) - (*pp)->last_seen > NODELIST_TIMEOUT_MS / 1000) {
         node_entry_private_t *dead = *pp;
         *pp = dead->next;
         if (dead->firmware.data != NULL) {
@@ -2273,7 +2274,7 @@ void check_timeouts(node n) {
   NL_WRITE_END(n);
 
   if (n->firmware.peer.s_addr != 0
-      && (now_time - n->firmware.last_time >= FIRMWARE_TIMEOUT_SECONDS)) {
+      && (now_time - n->firmware.last_time >= FIRMWARE_TIMEOUT_MS / 1000)) {
 
     printf("firmware timeout\n");
     reset_firmware_upload(n);

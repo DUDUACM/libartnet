@@ -72,8 +72,11 @@ extern uint8_t TOD_RESPONSE_FULL;
 extern uint8_t TOD_RESPONSE_NAK;
 extern uint8_t MIN_PACKET_SIZE;
 extern int MERGE_TIMEOUT_MS;
-extern int NODELIST_TIMEOUT_SECONDS;
-extern uint8_t FIRMWARE_TIMEOUT_SECONDS;
+extern int NODELIST_TIMEOUT_MS;
+extern int DMX_FAILSAFE_TIMEOUT_MS;
+extern int FIRMWARE_TIMEOUT_MS;
+extern int ARTSYNC_TIMEOUT_MS;
+extern int DMX_KEEPALIVE_INTERVAL_MS;
 extern uint8_t RECV_NO_DATA;
 
 #ifndef TRUE

@@ -121,7 +121,7 @@ int handle_poll(node n, artnet_packet p) {
       }
     }
 
-    // Art-Net 4: schedule ArtPollReply with random delay (0-1 second)
+    // Art-Net 4: schedule ArtPollReply with random delay (0-1000ms)
     n->state.apr_pending = TRUE;
     n->state.apr_pending_time = time(NULL) + (rand() % 1001) / 1000;
     return ARTNET_EOK;
@@ -202,7 +202,7 @@ void handle_dmx(node n, artnet_packet p) {
        * The merge exits when:
        *   o ACCancel command is received in an ArtAddress packet
        *       (this is done in handle_address )
-       *   o no data is recv'ed from one source in 10 seconds
+       *   o no data is recv'ed from one source in MERGE_TIMEOUT_MS
        *
        */
 

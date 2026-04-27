@@ -535,7 +535,7 @@ EXTERN int artnet_start(artnet_node n);
 /**
  * @brief Read and process pending ArtNet packets.
  * @param n       The artnet_node
- * @param timeout Maximum seconds to block waiting for packets (0 for non-blocking)
+ * @param timeout Maximum milliseconds to block waiting for packets (0 for non-blocking)
  * @return ARTNET_EOK on success, or a negative ARTNET_E* error code
  */
 EXTERN int artnet_read(artnet_node n, int timeout);
