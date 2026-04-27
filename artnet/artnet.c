@@ -1190,18 +1190,6 @@ int artnet_send_sync(artnet_node vn) {
 
 
 /*
- * Send a non-zero start code DMX packet
- */
-int artnet_send_nzs(artnet_node vn, int port_id, uint8_t start_code,
-                    int16_t length, const uint8_t *data) {
-  node n = (node) vn;
-  check_nullnode(vn);
-
-  return artnet_tx_nzs(n, port_id, start_code, length, data);
-}
-
-
-/*
  * Send an ArtTimeCode packet
  */
 int artnet_send_timecode(artnet_node vn, uint8_t frames, uint8_t seconds,

@@ -162,7 +162,8 @@ int main(int argc, char *argv[]) {
       dmx_data[i % channels] = (uint8_t)(127.5 + 127.5 * sin(phase));
 
       if (start_code) {
-        artnet_send_nzs(node, i, (uint8_t)start_code, (int16_t)channels, dmx_data);
+        uint16_t addr = (uint16_t)((net << 8) | (subnet << 4) | (universe + i));
+        artnet_send_nzs(node, addr, (uint8_t)start_code, (int16_t)channels, dmx_data);
       } else if (raw_mode) {
         uint16_t addr = (uint16_t)((net << 8) | (subnet << 4) | (universe + i));
         artnet_raw_send_dmx(node, addr, (int16_t)channels, dmx_data);

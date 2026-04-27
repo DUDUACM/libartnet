@@ -834,18 +834,6 @@ EXTERN int artnet_send_rdmsub(artnet_node vn,
 EXTERN int artnet_send_sync(artnet_node vn);
 
 /**
- * @brief Send non-zero start code DMX (ArtNzs).
- * @param vn          The artnet_node
- * @param port_id     The port index (0 to ARTNET_MAX_PORTS-1)
- * @param start_code  The DMX start code (non-zero)
- * @param length      Length of data (2-512)
- * @param data        Pointer to the data
- * @return ARTNET_EOK on success, or a negative error code
- */
-EXTERN int artnet_send_nzs(artnet_node vn, int port_id, uint8_t start_code,
-  int16_t length, const uint8_t *data);
-
-/**
  * @brief Send an ArtTimeCode packet.
  * @param vn       The artnet_node
  * @param frames   Frames (0-29 depending on type)
