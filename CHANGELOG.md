@@ -5,6 +5,7 @@ All notable changes to this project are documented in this file.
 ## [1.1.4] - 2026-04-26
 
 ### Added
+
 - `artnet_send_directory()` for broadcasting ArtDirectory requests
 - `artnet_send_directory_reply()` for sending ArtDirectoryReply with file entries
 - `artnet_send_file_tn_master()` for uploading file blocks to nodes (ArtFileTnMaster)
@@ -23,10 +24,12 @@ All notable changes to this project are documented in this file.
   - `directory_query`: ArtDirectory query with ArtDirectoryReply display *(not yet tested)*
 
 ### Fixed
+
 - ArtPollReply debug print now shows both input and output ports (was output only)
 - Port direction convention documented: OUTPUT port = receive DMX from network per Art-Net spec
 
 ### Changed
+
 - Simplified all examples to 4 universes (single node) instead of 8 universes (2 joined nodes)
 - All DMX examples include ArtSync support
 - Removed `dmx_srv_controller_tx_rx` example (superseded by dmx_tx, dmx_rx, node_manager)
@@ -35,6 +38,7 @@ All notable changes to this project are documented in this file.
 ## [1.1.3] - 2026-04-26
 
 ### Added
+
 - DALI port data type (`ARTNET_PORT_DALI = 0x06`) per Art-Net 4 spec
 - `ARTNET_DIAGDATA_HANDLER` callback for ArtDiagData packets
 - Dedicated handle functions for all packet types in receive.c:
@@ -42,6 +46,7 @@ All notable changes to this project are documented in this file.
   `handle_data_reply`, `handle_media`, `handle_media_control_reply`
 
 ### Fixed
+
 - ArtDmx and ArtNzs packet comments corrected to "Unicast only" per Art-Net 4 spec
 - ArtMedia (0x9000) receive now routes through `handle_media()` callback
 - ArtMediaControlReply (0x9300) receive now routes through `handle_media_control_reply()`
@@ -55,6 +60,7 @@ All notable changes to this project are documented in this file.
 ## [1.1.2] - 2026-04-25
 
 ### Added
+
 - Art-Net 4 full protocol compliance with 15-bit port addressing (32768 universes)
 - Art-Net 4 packet types: ArtSync, ArtNzs, ArtTimeCode, ArtTimeSync, ArtTrigger,
   ArtCommand, ArtDirectory, ArtDirectoryReply, ArtFileTnMaster, ArtFileFnMaster,
@@ -82,6 +88,7 @@ All notable changes to this project are documented in this file.
 - `compile_commands.json` generation for IDE support (VS Code, Qt Creator)
 
 ### Fixed
+
 - macOS interface enumeration: use `getifaddrs()` with `AF_LINK` instead of broken `SIOCGIFCONF`
 - Cross-platform stdout buffering in example programs (Qt Creator output visibility)
 - 31 Art-Net 4 protocol compliance issues across 7 rounds of fixes:
@@ -114,6 +121,7 @@ All notable changes to this project are documented in this file.
 - Multi-controller diagnostic broadcast rule: diagnostics now broadcast when multiple controllers request them
 
 ### Changed
+
 - Removed autotools build system (configure.ac, Makefile.am)
 - Removed MSVC project files (replaced by CMake)
 - Removed Debian packaging files
@@ -128,35 +136,42 @@ All notable changes to this project are documented in this file.
 ## [1.1.1] - 2024-04-22
 
 ### Fixed
+
 - ArtFirmwareMaster blockId count
 
 ## [1.1.0] - 2025-12-17
 
 ### Added
+
 - CMake build system support
 
 ### Fixed
+
 - Compiler warning `-Wmemset-elt-size` for memset
 
 ## [1.0.5] - 2006-12-24
 
 ### Fixed
+
 - Compile warnings on macOS
 - OS X interface detection
 
 ## [1.0.4] - 2006-08-28
 
 ### Fixed
+
 - Various network.c patches
 
 ## [1.0.1] - 2006-04-17
 
 ### Fixed
+
 - Namespace issues
 
 ## [1.0.0] - 2005-08-25
 
 ### Added
+
 - Initial release
 - Art-Net II support
 - DMX512 transmit and receive
