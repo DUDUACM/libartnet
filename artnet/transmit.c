@@ -916,7 +916,7 @@ int artnet_tx_file_fn_master(node n, in_addr_t ip, const char *filename) {
   }
 
   flen = strlen(filename);
-  if (flen > 255) flen = 255;
+  if (flen > 255) { flen = 255; }
 
   memset(&p, 0x00, sizeof(p));
   p.to.s_addr = ip;

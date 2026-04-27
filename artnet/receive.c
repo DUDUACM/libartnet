@@ -682,7 +682,7 @@ int handle_tod_request(node n, artnet_packet p) {
             n->ports.out[j].port_enabled) {
           // reply with tod
           int tx_ret = artnet_tx_tod_data(n, j);
-          if (tx_ret) ret = tx_ret;
+          if (tx_ret) { ret = tx_ret; }
         }
       }
     }

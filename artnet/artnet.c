@@ -1725,11 +1725,11 @@ int artnet_set_port_addr(artnet_node vn,
 
   if (dir == ARTNET_INPUT_PORT) {
     port = &n->ports.in[id].port;
-    changed = n->ports.in[id].port_enabled?0:1;
+    changed = n->ports.in[id].port_enabled ? 0 : 1;
     n->ports.in[id].port_enabled = TRUE;
   } else if (dir == ARTNET_OUTPUT_PORT) {
     port = &n->ports.out[id].port;
-    changed = n->ports.out[id].port_enabled?0:1;
+    changed = n->ports.out[id].port_enabled ? 0 : 1;
     n->ports.out[id].port_enabled = TRUE;
   } else {
     artnet_error("%s : Invalid port direction\n", __FUNCTION__);
@@ -1982,11 +1982,11 @@ int artnet_nl_foreach(artnet_node vn,
   uint32_t seq = 0;
   do {
     seq = NL_READ_BEGIN(n);
-    if (seq & 1) continue;
+    if (seq & 1) { continue; }
     for (tmp = nl->first; tmp; tmp = tmp->next) {
       artnet_node_entry_t copy = tmp->pub;
       int ret = cb(&copy, data);
-      if (ret) return ret;
+      if (ret) { return ret; }
     }
   } while (NL_READ_RETRY(n, seq));
 
@@ -2091,7 +2091,7 @@ int find_nodes_from_uni(node n, node_list_t *nl, uint16_t uni, SI *ips, int size
 
   do {
     seq = NL_READ_BEGIN(n);
-    if (seq & 1) continue;  // writer active, retry
+    if (seq & 1) { continue; }  // writer active, retry
     count = 0;
     j = 0;
     for (tmp = nl->first; tmp; tmp = tmp->next) {
