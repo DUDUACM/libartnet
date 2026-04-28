@@ -13,7 +13,7 @@
  * License along with this library; if not, write to the Free Software
  * Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
  *
- * common.c
+ * common.h
  * Constants required for both internally and externally
  * Copyright (C) 2004-2006 Simon Newton
  */
@@ -36,7 +36,7 @@ enum {
 
 /*
  * The maximum ports per node built into the ArtNet protocol.
- * This is always 4. Don't change it unless you really know what your doing
+ * This is always 4. Don't change it unless you really know what you're doing
  */
 enum { ARTNET_MAX_PORTS = 4 };
 
@@ -64,6 +64,7 @@ enum { ARTNET_DMX_LENGTH = 512 };
  * Number of bytes in a RDM UID
  */
 enum { ARTNET_RDM_UID_WIDTH = 6 };
+enum { ARTNET_RDM_VERSION = 0x01 };  // RDM protocol version 1.0
 
 /*
  * Length of the hardware address

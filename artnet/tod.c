@@ -23,15 +23,20 @@
 #include "tod.h"
 #include "misc.h"
 
-/*
- * adds a uid to the table of devices
+/**
+ * Adds a uid to the table of devices.
+ *
+ * @param tod the TOD to add to
+ * @param uid the RDM UID to add (ARTNET_RDM_UID_WIDTH bytes)
+ * @return 0 on success, -1 on null tod, ARTNET_EMEM on allocation failure
  */
 int add_tod_uid(tod_t *tod, uint8_t uid[ARTNET_RDM_UID_WIDTH]) {
-  uint8_t *addr;
-  int size;
+  uint8_t *addr = NULL;
+  int size = 0;
 
-  if (tod == NULL)
+  if (tod == NULL) {
     return -1;
+  }
 
   if (tod->data == NULL) {
     // malloc
@@ -47,13 +52,14 @@ int add_tod_uid(tod_t *tod, uint8_t uid[ARTNET_RDM_UID_WIDTH]) {
   } else if (tod->length == tod->max_length) {
     // realloc
     size = (tod->max_length + ARTNET_TOD_INCREMENT);
-    tod->data = realloc(tod->data, size * ARTNET_RDM_UID_WIDTH);
+    uint8_t *new_data = realloc(tod->data, size * ARTNET_RDM_UID_WIDTH);
 
-    if (tod->data == NULL) {
+    if (new_data == NULL) {
       artnet_error_realloc();
       return ARTNET_EMEM;
     }
 
+    tod->data = new_data;
     tod->max_length = size;
     tod->length++;
 
@@ -67,25 +73,31 @@ int add_tod_uid(tod_t *tod, uint8_t uid[ARTNET_RDM_UID_WIDTH]) {
   return 0;
 }
 
-/*
- * remove a uid from the table of devices
+/**
+ * Remove a uid from the table of devices.
  *
+ * @param tod the TOD to remove from
+ * @param uid the RDM UID to remove (ARTNET_RDM_UID_WIDTH bytes)
+ * @return 0 on success, -1 if not found or null tod
  */
 int remove_tod_uid(tod_t *tod, uint8_t uid[ARTNET_RDM_UID_WIDTH]) {
-  int i;
+  int i = 0;
   int offset = 0;
-  uint8_t *last;
+  uint8_t *last = NULL;
 
-  if (tod == NULL)
+  if (tod == NULL) {
     return -1;
+  }
 
-  if (tod->data == NULL)
+  if (tod->data == NULL) {
     return -1;
+  }
 
   for (i=0; i < tod->length; i++) {
-    offset += ARTNET_RDM_UID_WIDTH;
-    if (memcmp(tod->data + offset, uid, ARTNET_RDM_UID_WIDTH) == 0)
+    offset = i * ARTNET_RDM_UID_WIDTH;
+    if (memcmp(tod->data + offset, uid, ARTNET_RDM_UID_WIDTH) == 0) {
       break;
+    }
   }
 
   if (i == tod->length) {
@@ -101,12 +113,16 @@ int remove_tod_uid(tod_t *tod, uint8_t uid[ARTNET_RDM_UID_WIDTH]) {
   }
 }
 
-/*
- * clear the table of devices
+/**
+ * Clear the table of devices and free allocated memory.
+ *
+ * @param tod the TOD to flush
+ * @return 0 on success, -1 if tod is NULL
  */
 int flush_tod(tod_t *tod) {
-  if (tod == NULL)
+  if (tod == NULL) {
     return -1;
+  }
 
   free(tod->data);
   tod->data = NULL;
@@ -117,10 +133,18 @@ int flush_tod(tod_t *tod) {
 }
 
 
+/**
+ * Reset the TOD to initial empty state.
+ *
+ * @param tod the TOD to reset
+ * @return 0 on success, -1 if tod is NULL
+ */
 int reset_tod(tod_t *tod) {
-  if (tod == NULL)
+  if (tod == NULL) {
     return -1;
+  }
 
+  free(tod->data);
   tod->data = NULL;
   tod->length = 0;
   tod->max_length = 0;

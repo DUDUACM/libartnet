@@ -1,0 +1,7 @@
+add_executable(dmx_tx dmx_tx.c)
+target_link_libraries(dmx_tx PRIVATE artnet)
+if(WIN32)
+    target_link_libraries(dmx_tx PRIVATE ws2_32)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    target_link_libraries(dmx_tx PRIVATE m)
+endif()

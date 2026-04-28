@@ -1,0 +1,5 @@
+add_executable(dmx_rx dmx_rx.c)
+target_link_libraries(dmx_rx PRIVATE artnet)
+if(WIN32)
+    target_link_libraries(dmx_rx PRIVATE ws2_32)
+endif()

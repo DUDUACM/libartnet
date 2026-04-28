@@ -1,9 +1,12 @@
 cmake_minimum_required(VERSION 3.10)
 project(libartnet VERSION 1.1.2 LANGUAGES C)
 
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 # Set C standard
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_C_STANDARD_REQUIRED ON)
+set(CMAKE_C_EXTENSIONS ON)
 
 # Include GNUInstallDirs for standard installation directories
 include(GNUInstallDirs)
@@ -11,6 +14,8 @@ include(GNUInstallDirs)
 # Options
 option(BUILD_SHARED_LIBS "Build shared libraries" ON)
 option(ENABLE_IPV6 "Enable IPv6 support" ON)
+option(BUILD_EXAMPLES "Build example programs" ON)
+option(BUILD_WERROR "Treat compiler warnings as errors" OFF)
 
 # Platform-specific settings
 if(WIN32)
@@ -18,6 +23,7 @@ if(WIN32)
     add_definitions(-D_WIN32_WINNT=0x0600)
 else()
     set(USING_WIN32 FALSE)
+    add_definitions(-D_GNU_SOURCE)
 endif()
 
 # Check for headers
@@ -81,6 +87,11 @@ configure_file(
 
 # Add artnet subdirectory
 add_subdirectory(artnet)
+
+# Add examples
+if(BUILD_EXAMPLES)
+    add_subdirectory(examples)
+endif()
 
 # Generate pkg-config file
 configure_file(

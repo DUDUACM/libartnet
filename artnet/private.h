@@ -22,7 +22,7 @@
 #  include <config.h>
 #endif
 
-#if !defined(WIN32) && !defined(_MSC_VER)
+#if !defined(_WIN32) && !defined(_MSC_VER)
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
@@ -37,6 +37,7 @@
 #include "artnet/packets.h"
 #include "misc.h"
 #include "tod.h"
+#include "time_util.h"
 
 #ifndef ARTNET_PRIVATE_H
 #define ARTNET_PRIVATE_H
@@ -59,10 +60,8 @@ extern uint8_t HIGH_NIBBLE;
 extern uint8_t LOW_NIBBLE;
 extern uint8_t STATUS_PROG_AUTH_MASK;
 extern uint8_t PORT_STATUS_LPT_MODE;
-extern uint8_t PORT_STATUS_SHORT;
-extern uint8_t PORT_STATUS_ERROR;
-extern uint8_t PORT_STATUS_DISABLED_MASK;
-extern uint8_t ORT_STATUS_MERGE;
+extern uint8_t PORT_STATUS_MERGE;
+extern uint8_t PORT_STATUS_INPUT_DISABLED;
 extern uint8_t PORT_STATUS_DMX_TEXT;
 extern uint8_t PORT_STATUS_DMX_SIP;
 extern uint8_t PORT_STATUS_DMX_TEST;
@@ -71,8 +70,12 @@ extern uint8_t PORT_DISABLE_MASK;
 extern uint8_t TOD_RESPONSE_FULL;
 extern uint8_t TOD_RESPONSE_NAK;
 extern uint8_t MIN_PACKET_SIZE;
-extern uint8_t MERGE_TIMEOUT_SECONDS;
-extern uint8_t FIRMWARE_TIMEOUT_SECONDS;
+extern int MERGE_TIMEOUT_MS;
+extern int NODELIST_TIMEOUT_MS;
+extern int DMX_FAILSAFE_TIMEOUT_MS;
+extern int FIRMWARE_TIMEOUT_MS;
+extern int ARTSYNC_TIMEOUT_MS;
+extern int DMX_KEEPALIVE_INTERVAL_MS;
 extern uint8_t RECV_NO_DATA;
 
 #ifndef TRUE
@@ -105,7 +108,7 @@ extern uint16_t HIGH_BYTE;
 #endif
 
 // htols : convert short from host to little endian order
-#ifdef WIN32
+#ifdef _WIN32
 #  define htols(x)  (x)
 #else
 # ifdef HAVE_ENDIAN_H
@@ -124,10 +127,16 @@ extern uint16_t HIGH_BYTE;
 #endif
 
 // convert from shorts to bytes and back again
-#define short_get_high_byte(x) ((HIGH_BYTE & x) >> 8)
-#define short_get_low_byte(x)  (LOW_BYTE & x)
+#define short_get_high_byte(x) ((uint8_t)((HIGH_BYTE & x) >> 8))
+#define short_get_low_byte(x)  ((uint8_t)(LOW_BYTE & x))
 
-#define bytes_to_short(h,l) ( ((h << 8) & 0xff00) | (l & 0x00FF) );
+// seqlock for node list thread safety
+#define NL_WRITE_BEGIN(n) ((n)->state.nl_seq++)
+#define NL_WRITE_END(n)   ((n)->state.nl_seq++)
+#define NL_READ_BEGIN(n)  ((n)->state.nl_seq)
+#define NL_READ_RETRY(n, seq1) ((seq1) != (n)->state.nl_seq || ((seq1) & 1))
+
+#define bytes_to_short(h,l) ( ((h << 8) & 0xff00) | (l & 0x00FF) )
 
 /*
  * These are enums for fields in packets
@@ -141,35 +150,18 @@ extern uint16_t HIGH_BYTE;
 // ArtPollReply
 //-----------------------------------------------------------------------------
 
-// the node report codes
-typedef enum {
-  ARTNET_RCDEBUG,
-  ARTNET_RCPOWEROK,
-  ARTNET_RCPOWERFAIL,
-  ARTNET_RCSOCKETWR1,
-  ARTNET_RCPARSEFAIL,
-  ARTNET_RCUDPFAIL,
-  ARTNET_RCSHNAMEOK,
-  ARTNET_RCLONAMEOK,
-  ARTNET_RCDMXERROR,
-  ARTNET_RCDMXUDPFULL,
-  ARTNET_RCDMXRXFULL,
-  ARTNET_RCSWITCHERR,
-  ARTNET_RCCONFIGERR,
-  ARTNET_RCDMXSHORT,
-  ARTNET_RCFIRMWAREFAIL,
-  ARTNET_RCUSERFAIL
-} artnet_node_report_code;
+// artnet_node_report_code moved to artnet.h as public enum
 
 // these define the types of node that can exist
 // note it's different from artnet_node_type
 typedef enum {
   STNODE = 0x00,
-  STSERVER = 0x01,
+  STCONTROLLER = 0x01,
   STMEDIA = 0x02,
   STROUTE = 0x03,
   STBACKUP = 0x04,
-  STCONFIG = 0x05
+  STCONFIG = 0x05,
+  STVISUAL = 0x06
 } artnet_node_style_code;
 
 // artnet_port_data in artnet.h
@@ -222,7 +214,16 @@ typedef struct {
 } dmx_callback_t;
 
 /*
- * firmware callback is triggered when a firmware recieve has been completed sucessfully
+ * address callback is triggered for RDM/TOD events where the
+ * parameter carries a full 15-bit universe address
+ */
+typedef struct {
+  int (*fh)(artnet_node n, int address, void *data);
+  void *data;
+} address_callback_t;
+
+/*
+ * firmware callback is triggered when a firmware receive has been completed successfully
  */
 typedef struct {
   int (*fh)(artnet_node n, int ubea, uint16_t *data, int length, void *d);
@@ -262,12 +263,29 @@ typedef struct {
   callback_t ipprog;
   callback_t firmware;
   callback_t firmware_reply;
+  callback_t sync;
+  callback_t nzs;
+  callback_t diagdata;
+  callback_t command;
+  callback_t timecode;
+  callback_t timesync;
+  callback_t trigger;
+  callback_t directory;
+  callback_t directory_reply;
+  callback_t file_tn_master;
+  callback_t file_fn_master;
+  callback_t file_fn_reply;
+  callback_t mediapatch;
+  callback_t media;
+  callback_t mediacontrol;
+  callback_t datareq;
+  callback_t datarep;
   dmx_callback_t dmx_c;
   firmware_callback_t firmware_c;
   program_callback_t program_c;
   rdm_callback_t  rdm_c;
   dmx_callback_t rdm_init_c;
-  dmx_callback_t rdm_tod_c;
+  address_callback_t rdm_tod_c;
 } node_callbacks_t;
 
 
@@ -282,8 +300,8 @@ typedef struct {
 
 // first a generic port
 typedef struct {
-  uint8_t addr;        // the port address
-  uint8_t default_addr;    // the address set by the hardware
+  uint16_t addr;        // the full 15-bit port address: (net << 8) | (subnet << 4) | port
+  uint8_t default_addr;    // the 4-bit port switch value set by the hardware (0-15)
   uint8_t net_ctl;      // if the port address is under network control
   uint8_t status;        // status of the port
   uint8_t enabled;      // true if the port has had it's address set, this is internal only,
@@ -300,6 +318,9 @@ typedef struct {
 typedef struct {
   g_port_t port;
   uint8_t seq;
+  uint8_t last_dmx_data[ARTNET_DMX_LENGTH]; // last DMX data sent (for keepalive retransmission)
+  int last_dmx_length;                       // length of last_dmx_data
+  artnet_mtime_t last_dmx_send_time;          // timestamp of last ArtDmx send (ms)
 } input_port_t;
 
 
@@ -315,7 +336,7 @@ typedef enum {
  * struct to represent an output port
  *
  * output ports can merge data from two sources in either HTP
- * (highest takes precedence) or LPT (lowest takes precedence) mode
+ * (highest takes precedence) or LTP (lowest takes precedence) mode
  *
  * we need to store:
  *   o The data from each source
@@ -331,10 +352,18 @@ typedef struct {
                       // picking up packets for the 0x00 port
   uint8_t  data[ARTNET_DMX_LENGTH]; // output data
   merge_t merge_mode; // for merging
+  uint8_t proto_sel;   // 0=Art-Net, 1=sACN
+  uint8_t output_style; // 0=delta, 1=constant
+  uint8_t rdm_enabled;  // 0=disabled, 1=enabled
   uint8_t dataA[ARTNET_DMX_LENGTH];
   uint8_t dataB[ARTNET_DMX_LENGTH];
-  time_t timeA;
-  time_t timeB;
+  artnet_mtime_t timeA;
+  artnet_mtime_t timeB;
+  artnet_mtime_t last_dmx_time;    // last time ArtDmx was received (ms)
+  int failsafe_triggered;   // whether fail-safe has been triggered (avoid repeated action)
+  uint8_t failsafe_data[ARTNET_DMX_LENGTH]; // recorded fail-safe scene data
+  int failsafe_length;      // length of failsafe_data
+  uint8_t nzs_start_code;  // last received ArtNzs start code (0 = none / ArtDmx)
   SI ipA;
   SI ipB;
 } output_port_t;
@@ -346,6 +375,15 @@ typedef struct {
 #define port_status port.status
 #define port_enabled port.enabled
 #define port_tod port.tod
+
+// 15-bit universe address helpers
+static inline uint16_t make_addr(uint8_t net, uint8_t subnet, uint8_t addr) {
+  return (uint16_t)(((net & 0x7F) << 8) | ((subnet & 0x0F) << 4) | (addr & 0x0F));
+}
+
+static inline uint8_t addr_port(uint16_t addr) { return addr & 0x0F; }
+static inline uint8_t addr_subnet(uint16_t addr) { return (addr >> 4) & 0x0F; }
+static inline uint8_t addr_net(uint16_t addr) { return (addr >> 8) & 0x7F; }
 
 // End port structures
 //-----------------------------------------------------------------------------
@@ -366,7 +404,7 @@ typedef struct {
   int      bytes_total;
   struct   in_addr peer;
   int      ubea;
-  time_t   last_time;
+  artnet_mtime_t   last_time;
   int      expected_block;
   int      (*callback)(artnet_node n, artnet_firmware_status_code code, void *d);
   void     *user_data;
@@ -383,6 +421,7 @@ typedef struct node_entry_private_s {
   SI ip;  // don't rely on the ip address that the node
           // sends, they could be faking it. This is the ip that
           // the pollreply was sent from
+  artnet_mtime_t last_seen;  // last time an ArtPollReply was received (ms)
 } node_entry_private_t;
 
 /**
@@ -416,22 +455,48 @@ typedef struct {
   SI reply_addr;
   SI ip_addr;
   SI bcast_addr;
+  SI subnet_mask;
+  SI gateway;
   uint8_t hw_addr[ARTNET_MAC_SIZE];
-  uint8_t default_subnet;
-  uint8_t subnet_net_ctl;
+  uint8_t default_netSwitch;
+  uint8_t netSwitch_net_ctl;
+  uint8_t default_subSwitch;
+  uint8_t subSwitch_net_ctl;
   int send_apr_on_change;
   int ar_count;
   int verbose;
-  char short_name[ARTNET_SHORT_NAME_LENGTH];
-  char long_name[ARTNET_LONG_NAME_LENGTH];
+  char shortName[ARTNET_SHORT_NAME_LENGTH];
+  char longName[ARTNET_LONG_NAME_LENGTH];
   char report[ARTNET_REPORT_LENGTH];
-  uint8_t subnet;
+  uint8_t netSwitch;
+  uint8_t subSwitch;
   uint8_t oem_hi;
   uint8_t oem_lo;
   uint8_t esta_hi;
   uint8_t esta_lo;
   int bcast_limit; // the number of nodes after which we change to bcast
   artnet_node_report_code report_code;
+  uint8_t led_state;     // LED indicator state (Status1 bits 7-6)
+  uint8_t style_code;    // product style code (Status1 bits 3-0)
+  uint8_t status2;       // Status2 register flags
+  uint8_t status3;       // Status3 register flags (Art-Net 4)
+  uint8_t failsafe_mode; // fail-safe mode (artnet_failsafe_mode_t value)
+  SI rdm_reply_addr;     // last RDM requester IP for unicast replies (Art-Net 4)
+  SI tod_reply_addr;     // last TOD requester IP for unicast replies (Art-Net 4)
+  uint8_t acn_priority;  // sACN priority for output ports (0-200, 0xFF=no change)
+  uint8_t default_resp_uid[ARTNET_RDM_UID_WIDTH]; // RDMnet/LLRP default responder UID
+  int diag_enabled;       // whether to send diagnostics (ArtPoll Flags bit 2)
+  int diag_unicast;       // unicast diagnostics to poller (ArtPoll Flags bit 3)
+  int diag_controller_count; // number of distinct controllers requesting diagnostics
+  SI diag_controller_ips[4]; // IPs of up to 4 diagnostic-requesting controllers
+  uint8_t diag_priority;  // minimum diagnostic priority to send (from ArtPoll)
+  uint8_t bqp_policy;     // BackgroundQueuePolicy (ArtAddress 0xe0-0xef)
+  int sync_mode;           // ArtSync: buffering mode active
+  artnet_mtime_t last_sync_time;    // ArtSync: last ArtSync received time (ms)
+  SI last_dmx_source;      // ArtSync: last ArtDmx source IP for sync validation
+  volatile uint32_t nl_seq; // seqlock version for node list thread safety
+  artnet_mtime_t apr_pending_time;  // ArtPollReply: scheduled send time (ms)
+  int apr_pending;           // ArtPollReply: whether a reply is pending
 } node_state_t;
 
 
@@ -445,7 +510,7 @@ typedef struct {
  * The main node structure
  */
 typedef struct artnet_node_s{
-  artnet_socket_t sd;      // the two sockets
+  artnet_socket_t sd;      // the socket descriptor
   node_state_t state;      // the state struct
   node_callbacks_t callbacks;  // the callbacks struct
   struct ports_s {
@@ -467,40 +532,112 @@ typedef artnet_node_t *node;
  */
 
 // exported from artnet.c
+/** @brief Find a node entry in the private list by matching against a public entry. */
 node_entry_private_t *find_private_entry( node n, artnet_node_entry e);
+/** @brief Check and handle merge timeouts for output ports. */
 void check_timeouts(node n);
+/** @brief Find a node entry by its IP address. */
 node_entry_private_t *find_entry_from_ip(node_list_t *nl, SI ip);
-int artnet_nl_update(node_list_t *nl, artnet_packet reply);
+/** @brief Update the node list from an ArtPollReply packet. */
+int artnet_nl_update(node n, node_list_t *nl, artnet_packet reply);
+/** @brief Find all nodes subscribed to a universe address. */
+int find_nodes_from_uni(node n, node_list_t *nl, uint16_t uni, SI *ips, int size);
+
 
 
 // exported from receive.c
+/** @brief Dispatch an incoming Art-Net packet to the appropriate handler. */
 int handle(node n, artnet_packet p);
+/** @brief Extract the OpCode from a raw packet. */
 int16_t get_type(artnet_packet p);
+/** @brief Reset firmware upload state machine. */
 void reset_firmware_upload(node n);
 
 
 // exported from transmit.c
+/** @brief Build and send an ArtPoll packet. */
 int artnet_tx_poll(node n, const char *ip,  artnet_ttm_value_t ttm);
-int artnet_tx_poll_reply(node n, int reply);
+/** @brief Build and send an ArtPollReply packet. */
+int artnet_tx_poll_reply(node n);
+/** @brief Build and send an ArtTodData packet. */
 int artnet_tx_tod_data(node n, int id);
+/** @brief Build and send an ArtFirmwareReply packet. */
 int artnet_tx_firmware_reply(node n, in_addr_t ip, artnet_firmware_status_code code);
+/** @brief Send the next firmware data block. */
 int artnet_tx_firmware_packet(node n, firmware_transfer_t *firm );
+/** @brief Build and send an ArtTodRequest packet. */
 int artnet_tx_tod_request(node n);
-int artnet_tx_tod_control(node n, uint8_t address, artnet_tod_command_code action);
-int artnet_tx_rdm(node n, uint8_t address, uint8_t *data, int length);
+/** @brief Build and send an ArtTodControl packet. */
+int artnet_tx_tod_control(node n, uint16_t address, artnet_tod_command_code action);
+/** @brief Build and send an ArtRdm packet. */
+int artnet_tx_rdm(node n, uint16_t address, uint8_t *data, int length);
+/** @brief Build and send an ArtRdmSub packet. */
+int artnet_tx_rdmsub(node n,
+                     uint8_t uid[ARTNET_RDM_UID_WIDTH],
+                     uint8_t command_class, uint16_t param_id,
+                     uint16_t sub_device, uint16_t sub_count,
+                     uint8_t *data, int length);
+/** @brief Build and send an ArtDiagData packet. */
+int artnet_tx_diagdata(node n, uint8_t priority, uint8_t logical_port, const char *text);
+/** @brief Build the ArtPollReply packet (without sending). */
 int artnet_tx_build_art_poll_reply(node n);
+/** @brief Build and send an ArtNzs packet (non-zero start code DMX). */
+int artnet_tx_nzs(node n, int port_id, uint8_t start_code,
+                  int16_t length, const uint8_t *data);
+/** @brief Build and send an ArtTimeCode packet. */
+int artnet_tx_timecode(node n, uint8_t frames, uint8_t seconds,
+                       uint8_t minutes, uint8_t hours,
+                       artnet_timecode_type_t type, uint8_t stream_id);
+/** @brief Build and send an ArtTimeSync packet. */
+int artnet_tx_timesync(node n, uint8_t tm_sec, uint8_t tm_min,
+                       uint8_t tm_hour, uint8_t tm_mday,
+                       uint8_t tm_mon, uint8_t tm_year);
+/** @brief Build and send an ArtTrigger packet. */
+int artnet_tx_trigger(node n, uint8_t oem_hi, uint8_t oem_lo,
+                      uint8_t key, uint8_t sub_key,
+                      const uint8_t *data, int16_t length);
+/** @brief Build and send an ArtDataReply packet. */
+int artnet_tx_data_reply(node n, const char *ip, uint16_t request_code,
+                         const char *payload, int16_t length);
+/** @brief Build and send an ArtIpProgReply packet. */
+int artnet_tx_ipprog_reply(node n);
+/** @brief Build and send an ArtSync packet. */
+int artnet_tx_sync(node n);
+/** @brief Build and send an ArtDirectory packet. */
+int artnet_tx_directory(node n);
+/** @brief Build and send an ArtDirectoryReply packet. */
+int artnet_tx_directory_reply(node n);
+/** @brief Build and send an ArtFileTnMaster packet. */
+int artnet_tx_file_tn_master(node n, in_addr_t ip, uint8_t type,
+                             uint8_t blockId, uint32_t totalLength,
+                             const uint16_t *data, int dataLen);
+/** @brief Build and send an ArtFileFnMaster packet. */
+int artnet_tx_file_fn_master(node n, in_addr_t ip, const char *filename);
+/** @brief Build and send an ArtFileFnReply packet. */
+int artnet_tx_file_fn_reply(node n, uint8_t blockId, uint16_t totalLength,
+                            uint8_t *data, int dataLen);
 
 
 // exported from network.c
+/** @brief Receive an Art-Net packet from the network. */
 int artnet_net_recv(node n, artnet_packet p, int block);
+/** @brief Send an Art-Net packet on the network. */
 int artnet_net_send(node n, artnet_packet p);
+/** @brief Set the socket to non-blocking mode. */
 int artnet_net_set_non_block(node n);
+/** @brief Initialize the network subsystem. */
 int artnet_net_init(node n, const char *ip);
+/** @brief Start the network (bind and join multicast). */
 int artnet_net_start(node n);
+/** @brief Close a network socket. */
 int artnet_net_close(artnet_socket_t sock);
+/** @brief Join two nodes to share the same socket. */
 int artnet_net_join(node n1, node n2);
+/** @brief Add the node's socket to an fd_set. */
 int artnet_net_set_fdset(node n, fd_set *fdset);
+/** @brief Convert an IP string to a network address. */
 int artnet_net_inet_aton(const char *ip_address, struct in_addr *address);
+/** @brief Return a string describing the last network error. */
 const char *artnet_net_last_error();
 
 #endif

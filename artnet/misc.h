@@ -22,21 +22,31 @@
 #define ARTNET_MISC_H
 
 #include <errno.h>
+#include <stdint.h>
 #include <string.h>
 
-extern char artnet_errstr[256];
+extern char artnet_errstr[256]; /**< Last error string buffer */
+
+/** Write a formatted error message to artnet_errstr */
 void artnet_error(const char *fmt, ...);
+
+/** Convert 4 bytes in network (big-endian) order to a 32-bit integer */
 int32_t artnet_misc_nbytes_to_32(uint8_t bytes[4]);
+
+/** Convert a 32-bit integer to 4 bytes in network (big-endian) order */
 void artnet_misc_int_to_bytes(int data, uint8_t *bytes);
 
-// check if the node is null and return an error
+/** Check if the node is null and return ARTNET_EARG if so */
 #define check_nullnode(node) if (node == NULL) { \
   artnet_error("%s : argument 1 (artnet_node) was null" , __FUNCTION__ ); \
   return ARTNET_EARG; \
 }
 
-#define artnet_error_malloc() artnet_error("%s : malloc error %s" , __FUNCTION__, strerror(errno) ) 
-#define artnet_error_realloc() artnet_error("%s : realloc error %s" , __FUNCTION__, strerror(errno) ) 
-#define artnet_error_nullnode() artnet_error("%s : argument 1 (artnet_node) was null" , __FUNCTION__ ) 
+/** Log a malloc failure with errno information */
+#define artnet_error_malloc() artnet_error("%s : malloc error %s" , __FUNCTION__, strerror(errno) )
+/** Log a realloc failure with errno information */
+#define artnet_error_realloc() artnet_error("%s : realloc error %s" , __FUNCTION__, strerror(errno) )
+/** Log a null node argument error */
+#define artnet_error_nullnode() artnet_error("%s : argument 1 (artnet_node) was null" , __FUNCTION__ )
 
 #endif
