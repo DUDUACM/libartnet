@@ -13,11 +13,14 @@ Art-Net 4 Protocol Specification: [art-net4.md](art-net4.md)
 - Node joining for multi-node configurations (8+ universes)
 - DMX512 transmit and receive (ArtDmx, ArtNzs)
 - Node discovery (ArtPoll / ArtPollReply with random delay to prevent packet storms)
-- RDM over Art-Net (ArtRdm, ArtTodRequest, ArtTodData, ArtTodControl)
+- RDM over Art-Net (ArtRdm, ArtRdmSub, ArtTodRequest, ArtTodData, ArtTodControl)
 - Firmware upload (ArtFirmwareMaster / ArtFirmwareReply)
-- Remote programming (ArtAddress, ArtInput, ArtIPProg)
+- File transfer (ArtFileTnMaster, ArtFileFnMaster, ArtFileFnReply)
+- Remote programming (ArtAddress with sACN priority, ArtInput, ArtIPProg)
 - TimeCode, TimeSync, Trigger, Sync, Diagnostic messages
 - ArtDataRequest/Reply for manufacturer-specific data exchange
+- ArtDirectory/DirectoryReply for file listing queries
+- Unified millisecond-precision monotonic clock (GetTickCount64 / clock_gettime)
 - IPv4 and IPv6 support
 - Cross-platform: Linux, macOS, Windows
 
@@ -76,9 +79,19 @@ find_package(libartnet REQUIRED)
 target_link_libraries(your_target PRIVATE libartnet::artnet)
 ```
 
+## Documentation
+
+Build API documentation with Doxygen:
+
+```bash
+doxygen Doxyfile
+```
+
+Output is generated in `docs/html/`. Open `docs/html/index.html` to browse.
+
 ## Examples
 
-Twelve example programs are included:
+Thirteen example programs are included:
 
 ### DMX Transmitter (`dmx_tx`)
 
@@ -143,6 +156,24 @@ A DMX receiver node that supports remote management via ArtAddress and ArtInput.
 | `-s <subnet>` | Subnet address 0-15 (default: 0) |
 | `-u <universe>` | Starting port address 0-15 (default: 0) |
 
+### Full Node (`full_node`)
+
+A complete Art-Net 4 bidirectional node with 4 input + 4 output ports. Supports DMX receive/transmit, RDM device discovery (TOD), remote programming via ArtAddress/ArtInput, ArtSync, ArtTimeCode, ArtTimeSync, ArtTrigger, ArtNzs receive, firmware upload reception, diagnostics, and fail-safe modes (hold/zero/full/scene). Sends ArtPollReply on condition change.
+
+```bash
+./build/examples/full_node/full_node -i 192.168.1.20
+
+# Custom address range
+./build/examples/full_node/full_node -i 192.168.1.20 -n 1 -s 2 -u 3
+```
+
+| Option | Description |
+|--------|-------------|
+| `-i <ip>` | IP address to bind (default: auto-detect) |
+| `-n <net>` | Net address 0-127 (default: 0) |
+| `-s <subnet>` | Subnet address 0-15 (default: 0) |
+| `-u <universe>` | Starting port address 0-15 (default: 0) |
+
 ### Node Manager (`node_manager`)
 
 Interactive controller for remote node management. Discovers nodes via ArtPoll and provides a command-line menu to change names, addresses, port states, LED indicators, and failsafe modes.
@@ -191,6 +222,51 @@ Example workflow:
 > 3                    # change net -> select node -> enter new net value
 > 8                    # LED locate -> select node -> node flashes LEDs
 ```
+
+### Full Controller (`full_controller`)
+
+Interactive controller demonstrating all Art-Net 4 controller features. Provides a comprehensive menu covering node discovery, DMX transmission (ArtDmx/ArtNzs/raw 15-bit), ArtSync, remote management (ArtAddress/ArtInput), RDM (ArtTodRequest/ArtTodControl/ArtRdm/ArtRdmSub), firmware upload, file transfer, TimeCode/TimeSync, triggers, diagnostics, and directory queries.
+
+```bash
+./build/examples/full_controller/full_controller -i 192.168.1.100
+```
+
+Interactive commands:
+
+| Key | Action |
+|-----|--------|
+| `p` | Send ArtPoll to discover nodes |
+| `l` | List discovered nodes |
+| `d` | Send DMX to a universe (ArtDmx) |
+| `D` | Flood DMX continuously at 40 FPS |
+| `z` | Send ArtNzs (non-zero start code) |
+| `s` | Send ArtSync |
+| `1` | Change short name (ArtAddress) |
+| `2` | Change long name (ArtAddress) |
+| `3` | Change net address (ArtAddress) |
+| `4` | Change subnet address (ArtAddress) |
+| `5` | Change merge mode (ArtAddress) |
+| `6` | Enable/disable ports (ArtInput) |
+| `7` | Send ArtAddress with command |
+| `8` | LED Locate |
+| `9` | LED Mute |
+| `0` | LED Normal |
+| `f` | Failsafe: Hold last state |
+| `g` | Failsafe: Zero all outputs |
+| `h` | Failsafe: Full output |
+| `j` | Failsafe: Play recorded scene |
+| `t` | Send ArtTodRequest (discover RDM devices) |
+| `T` | Send ArtTodControl (flush/end TOD) |
+| `r` | Send ArtRdm command |
+| `R` | Send ArtRdmSub (RDM sub-device) |
+| `c` | Send ArtTimeCode |
+| `y` | Send ArtTimeSync |
+| `k` | Send ArtTrigger |
+| `w` | Upload firmware (ArtFirmwareMaster) |
+| `u` | Upload file (ArtFileTnMaster) |
+| `v` | Download file (ArtFileFnMaster) |
+| `o` | Send ArtDirectory query |
+| `q` | Quit |
 
 ### TimeCode Transmitter (`timecode_tx`)
 
@@ -386,6 +462,7 @@ artnet_destroy(node);                               // cleanup
 artnet_set_node_type(node, ARTNET_NODE);            // ARTNET_NODE or ARTNET_SRV
 artnet_set_style_code(node, ARTNET_ST_NODE);        // product style
 artnet_set_status2(node, status2_flags);            // Art-Net 4 status flags
+artnet_set_status3(node, status3_flags);            // fail-safe, RDMnet, LLRP flags
 artnet_set_port_type(node, 0, ARTNET_ENABLE_OUTPUT, ARTNET_PORT_DMX);
 artnet_set_port_addr(node, 0, ARTNET_OUTPUT_PORT, universe_addr);
 artnet_set_net_addr(node, net);                     // net 0-127
@@ -396,10 +473,11 @@ uint16_t addr = artnet_get_universe_addr(node, 0, ARTNET_OUTPUT_PORT);  // 15-bi
 ### DMX Transmit & Receive
 
 ```c
-artnet_set_dmx_handler(node, my_dmx_callback, NULL); // register DMX RX callback
-artnet_send_dmx(node, port_id, 512, dmx_data);       // send DMX
-artnet_raw_send_dmx(node, uni_addr, 512, dmx_data);  // send to any 15-bit address
-artnet_send_nzs(node, port_id, start_code, len, data); // non-zero start code
+artnet_set_dmx_handler(node, my_dmx_callback, NULL);    // register DMX RX callback
+artnet_send_dmx(node, port_id, 512, dmx_data);          // send DMX via port
+artnet_raw_send_dmx(node, uni_addr, 512, dmx_data);     // send to any 15-bit address
+artnet_send_nzs(node, uni_addr, start_code, len, data); // non-zero start code
+artnet_read_dmx(node, port_id, &length);                 // read latest DMX data
 ```
 
 ### Node Discovery
@@ -410,15 +488,41 @@ artnet_node_list nl = artnet_get_nl(node);           // get node list
 artnet_nl_first(nl);                                  // iterate nodes
 artnet_nl_next(nl);
 artnet_nl_get_length(nl);                            // node count
+artnet_nl_foreach(node, my_callback, user_data);     // iterate with callback
+```
+
+### Remote Programming
+
+```c
+// ArtAddress: change name, address, sACN priority, LED, failsafe, merge mode
+artnet_send_address(node, entry, "newName", NULL, inAddr, outAddr,
+                    net, sub, ARTNET_PC_NONE, 0xFF);
+
+// ArtInput: enable/disable ports
+artnet_send_input(node, entry, settings);
 ```
 
 ### RDM / TOD
 
 ```c
-artnet_send_rdm(node, address, rdm_data, length);
 artnet_send_tod_request(node);                       // request TOD
 artnet_send_tod_control(node, address, ARTNET_TOD_FULL);
+artnet_send_rdm(node, address, rdm_data, length);
+artnet_send_rdmsub(node, uid, cmd_class, param_id, sub_dev, sub_count, data, len);
 artnet_add_rdm_device(node, port, uid);
+artnet_add_rdm_devices(node, port, uids, count);
+artnet_remove_rdm_device(node, port, uid);
+```
+
+### Firmware & File Transfer
+
+```c
+// Firmware upload with progress callback
+artnet_send_firmware(node, entry, ubea, data, length, progress_cb, NULL);
+
+// File transfer
+artnet_send_file_tn_master(node, entry, type, blockId, totalLen, data, dataLen);
+artnet_send_file_fn_master(node, entry, "filename");
 ```
 
 ### TimeCode, Trigger, Sync, Diagnostics
@@ -431,6 +535,14 @@ artnet_send_sync(node);                               // synchronize DMX output
 artnet_send_diagnostic(node, ARTNET_DIAG_LOW, port, "message");
 ```
 
+### Directory & Data
+
+```c
+artnet_send_directory(node);                          // query file listings
+artnet_send_directory_reply(node, entries, count, total);
+artnet_send_data_reply(node, ip, request_code, payload, length);
+```
+
 ### Configuration & Utilities
 
 ```c
@@ -440,6 +552,7 @@ artnet_setoem(node, hi, lo);
 artnet_setesta(node, hi, lo);
 artnet_set_bcast_limit(node, 50);
 artnet_set_default_resp_uid(node, uid);
+artnet_set_gateway(node, "192.168.1.1");
 artnet_dump_config(node);                            // print config to stdout
 artnet_get_config(node, &config);                    // export config struct
 artnet_strerror();                                   // last error string
@@ -462,7 +575,7 @@ artnet_set_firmware_handler(node, my_fw_callback, NULL);
 artnet_set_program_handler(node, my_prog_callback, NULL);
 ```
 
-All 30 handler types are available via `artnet_set_handler()`: `ARTNET_RECV_HANDLER`, `ARTNET_POLL_HANDLER`, `ARTNET_REPLY_HANDLER`, `ARTNET_SYNC_HANDLER`, `ARTNET_TIMECODE_HANDLER`, `ARTNET_TRIGGER_HANDLER`, `ARTNET_DIAGDATA_HANDLER`, `ARTNET_DATAREQUEST_HANDLER`, `ARTNET_DATAREPLY_HANDLER`, and more. See `artnet.h` for the complete list.
+All 30 handler types are available via `artnet_set_handler()`: `ARTNET_RECV_HANDLER`, `ARTNET_POLL_HANDLER`, `ARTNET_REPLY_HANDLER`, `ARTNET_DMX_HANDLER`, `ARTNET_ADDRESS_HANDLER`, `ARTNET_INPUT_HANDLER`, `ARTNET_SYNC_HANDLER`, `ARTNET_NZS_HANDLER`, `ARTNET_TOD_REQUEST_HANDLER`, `ARTNET_TOD_DATA_HANDLER`, `ARTNET_TOD_CONTROL_HANDLER`, `ARTNET_RDM_HANDLER`, `ARTNET_IPPROG_HANDLER`, `ARTNET_FIRMWARE_HANDLER`, `ARTNET_FIRMWARE_REPLY_HANDLER`, `ARTNET_DIAGDATA_HANDLER`, `ARTNET_COMMAND_HANDLER`, `ARTNET_TIMECODE_HANDLER`, `ARTNET_TIMESYNC_HANDLER`, `ARTNET_TRIGGER_HANDLER`, `ARTNET_DIRECTORY_HANDLER`, `ARTNET_DIRECTORY_REPLY_HANDLER`, `ARTNET_FILE_TN_MASTER_HANDLER`, `ARTNET_FILE_FN_MASTER_HANDLER`, `ARTNET_FILE_FN_REPLY_HANDLER`, `ARTNET_MEDIAPATCH_HANDLER`, `ARTNET_MEDIA_HANDLER`, `ARTNET_MEDIACONTROL_HANDLER`, `ARTNET_DATAREQUEST_HANDLER`, `ARTNET_DATAREPLY_HANDLER`. See `artnet.h` for the complete list.
 
 ## License
 

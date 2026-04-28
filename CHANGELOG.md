@@ -2,6 +2,45 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.2.0] - 2026-04-28
+
+### Added
+
+- `artnet_send_nzs()` public API with 15-bit universe addressing and start code validation (rejects 0x00/0xCC)
+- `acnPriority` parameter in `artnet_send_address()` for sACN priority control (was hardcoded to 0x00)
+- `artnet_nl_foreach()` for iterating node list entries with a callback
+- `artnet_get_nzs_start_code()` to read the last received NZS start code per port
+- `artnet_send_rdmsub()` for compressed RDM sub-device communication
+- `artnet_set_status3()` for Art-Net 4 Status3 register (fail-safe, RDMnet, LLRP, port direction)
+- `artnet_set_gateway()` for ArtPollReply gateway IP field
+- `full_node` example: complete Art-Net 4 bidirectional node (4 input + 4 output ports, RDM, fail-safe, remote programming)
+- `full_controller` example: interactive controller demonstrating all Art-Net 4 features (30+ commands)
+- Doxygen API documentation with `/** */` comments on all 148 functions across all source files
+- Doxyfile configuration: EXTRACT_ALL, MACRO_EXPANSION, PREDEFINED for EXTERN macro
+- `time_util.h` / `time_util.c`: unified millisecond-precision monotonic clock module
+  - `artnet_gettime_ms()`: GetTickCount64() on Windows, clock_gettime(CLOCK_MONOTONIC) on POSIX
+  - `artnet_time_diff_ms()`: compute timestamp difference in milliseconds
+  - `artnet_is_timeout()`: check whether a timeout has expired
+  - Platform-specific `artnet_mtime_t` type (ULONGLONG on Windows, uint64_t on POSIX)
+
+### Fixed
+
+- Memory leaks and dangling pointers after free in node cleanup paths
+- Linux build: enable GNU extensions and fix preprocessor logic
+- Link libm only on Linux where it is required (was unconditionally linked)
+- Sign-compare warnings in timeout comparisons (int64_t casts for unsigned/signed mixing)
+- Multiple Art-Net 4 spec compliance bugs and code quality issues
+- Code style: enforce braces on single-statement bodies, fix ternary spacing
+
+### Changed
+
+- Time precision unified from mixed `time_t` (seconds) / `clock_t` (ticks) to single `artnet_mtime_t` millisecond monotonic clock
+- All timeout constants converted to millisecond units (DMX_FAILSAFE_TIMEOUT_MS, ARTSYNC_TIMEOUT_MS, etc.)
+- All 6 timeout comparison sites now use direct millisecond arithmetic (removed `/1000` and `*1000/CLOCKS_PER_SEC` conversions)
+- All internal time fields converted to `artnet_mtime_t`: input_port_t::last_dmx_send_time, output_port_t::timeA/timeB/last_dmx_time, firmware_transfer_t::last_time, node_entry_private_t::last_seen, node_state_t::last_sync_time/apr_pending_time
+- Example count from 12 to 13 (added full_node and full_controller)
+- Updated README.md with new examples, API sections, and Doxygen documentation instructions
+
 ## [1.1.4] - 2026-04-26
 
 ### Added
