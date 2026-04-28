@@ -2,101 +2,63 @@ stages:
   - build
   - release
 
-variables:
-  VERSION: ""
+image: ubuntu:22.04
 
-.build_linux: &build_linux
-  image: ubuntu:22.04
+# ---- Linux amd64 ----
+build:linux-amd64:
+  stage: build
   before_script:
     - apt-get update && apt-get install -y cmake gcc make
   script:
     - VERSION="${CI_COMMIT_TAG#v}"
-    - cmake -B build ${CMAKE_CROSS_FLAGS} -DBUILD_SHARED_LIBS=ON -DBUILD_EXAMPLES=OFF -DCMAKE_INSTALL_PREFIX=install
+    - cmake -B build -DBUILD_SHARED_LIBS=ON -DBUILD_EXAMPLES=OFF -DCMAKE_INSTALL_PREFIX=install
     - cmake --build build --config Release
     - cmake --install build --config Release --prefix install
-    - PKGNAME="libartnet-${VERSION}-${PLATFORM}"
+    - PKGNAME="libartnet-${VERSION}-linux-amd64"
     - mv install "${PKGNAME}"
     - tar czf "${PKGNAME}.tar.gz" "${PKGNAME}"
   artifacts:
     paths:
       - libartnet-*.tar.gz
     expire_in: 1 day
+  rules:
+    - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
 
-.build_native: &build_native
+# ---- Windows amd64 (MinGW cross-compile) ----
+build:windows-amd64:
+  stage: build
+  before_script:
+    - apt-get update && apt-get install -y cmake make mingw-w64
   script:
     - VERSION="${CI_COMMIT_TAG#v}"
-    - cmake -B build -DBUILD_SHARED_LIBS=ON -DBUILD_EXAMPLES=OFF -DCMAKE_INSTALL_PREFIX=install
+    - >-
+      cmake -B build
+      -DCMAKE_SYSTEM_NAME=Windows
+      -DCMAKE_SYSTEM_PROCESSOR=x86_64
+      -DCMAKE_C_COMPILER=x86_64-w64-mingw32-gcc
+      -DBUILD_SHARED_LIBS=ON
+      -DBUILD_EXAMPLES=OFF
+      -DCMAKE_INSTALL_PREFIX=install
     - cmake --build build --config Release
     - cmake --install build --config Release --prefix install
-    - VERSION="${CI_COMMIT_TAG#v}"
-    - PKGNAME="libartnet-${VERSION}-${PLATFORM}"
+    - PKGNAME="libartnet-${VERSION}-windows-amd64"
     - mv install "${PKGNAME}"
-    - |
-      if [ "${PLATFORM}" = "windows-amd64" ]; then
-        7z a "${PKGNAME}.zip" "${PKGNAME}"
-      else
-        tar czf "${PKGNAME}.tar.gz" "${PKGNAME}"
-      fi
+    - tar czf "${PKGNAME}.tar.gz" "${PKGNAME}"
   artifacts:
     paths:
-      - libartnet-*.zip
       - libartnet-*.tar.gz
     expire_in: 1 day
-
-# ---- Linux amd64 ----
-build:linux-amd64:
-  <<: *build_linux
-  stage: build
-  variables:
-    PLATFORM: "linux-amd64"
   rules:
     - if: $CI_COMMIT_TAG
     - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-
-# ---- Linux arm64 (cross-compile) ----
-build:linux-arm64:
-  <<: *build_linux
-  stage: build
-  variables:
-    PLATFORM: "linux-arm64"
-    CMAKE_CROSS_FLAGS: "-DCMAKE_SYSTEM_NAME=Linux -DCMAKE_SYSTEM_PROCESSOR=aarch64 -DCMAKE_C_COMPILER=aarch64-linux-gnu-gcc"
-  before_script:
-    - apt-get update && apt-get install -y cmake gcc-aarch64-linux-gnu make
-  rules:
-    - if: $CI_COMMIT_TAG
-
-# ---- Windows amd64 ----
-build:windows-amd64:
-  <<: *build_native
-  stage: build
-  variables:
-    PLATFORM: "windows-amd64"
-  before_script:
-    - cmake --version
-  rules:
-    - if: $CI_COMMIT_TAG
-    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
-
-# ---- macOS amd64 ----
-build:macos-amd64:
-  <<: *build_native
-  stage: build
-  variables:
-    PLATFORM: "macos-amd64"
-  before_script:
-    - cmake --version
-  rules:
-    - if: $CI_COMMIT_TAG
 
 # ---- Release ----
 release:
   stage: release
-  image: ubuntu:22.04
   needs:
     - build:linux-amd64
-    - build:linux-arm64
     - build:windows-amd64
-    - build:macos-amd64
   script:
     - ls -la libartnet-*
   release:
@@ -106,7 +68,6 @@ release:
       libartnet ${CI_COMMIT_TAG} multi-platform release.
   artifacts:
     paths:
-      - libartnet-*.zip
       - libartnet-*.tar.gz
     expire_in: never
   rules:
