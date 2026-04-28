@@ -37,6 +37,7 @@
 #include "artnet/packets.h"
 #include "misc.h"
 #include "tod.h"
+#include "time_util.h"
 
 #ifndef ARTNET_PRIVATE_H
 #define ARTNET_PRIVATE_H
@@ -319,7 +320,7 @@ typedef struct {
   uint8_t seq;
   uint8_t last_dmx_data[ARTNET_DMX_LENGTH]; // last DMX data sent (for keepalive retransmission)
   int last_dmx_length;                       // length of last_dmx_data
-  time_t last_dmx_send_time;                 // timestamp of last ArtDmx send (for keepalive)
+  artnet_mtime_t last_dmx_send_time;          // timestamp of last ArtDmx send (ms)
 } input_port_t;
 
 
@@ -356,9 +357,9 @@ typedef struct {
   uint8_t rdm_enabled;  // 0=disabled, 1=enabled
   uint8_t dataA[ARTNET_DMX_LENGTH];
   uint8_t dataB[ARTNET_DMX_LENGTH];
-  clock_t timeA;
-  clock_t timeB;
-  clock_t last_dmx_time;   // last time ArtDmx was received on this port (ms via clock())
+  artnet_mtime_t timeA;
+  artnet_mtime_t timeB;
+  artnet_mtime_t last_dmx_time;    // last time ArtDmx was received (ms)
   int failsafe_triggered;   // whether fail-safe has been triggered (avoid repeated action)
   uint8_t failsafe_data[ARTNET_DMX_LENGTH]; // recorded fail-safe scene data
   int failsafe_length;      // length of failsafe_data
@@ -403,7 +404,7 @@ typedef struct {
   int      bytes_total;
   struct   in_addr peer;
   int      ubea;
-  time_t   last_time;
+  artnet_mtime_t   last_time;
   int      expected_block;
   int      (*callback)(artnet_node n, artnet_firmware_status_code code, void *d);
   void     *user_data;
@@ -420,7 +421,7 @@ typedef struct node_entry_private_s {
   SI ip;  // don't rely on the ip address that the node
           // sends, they could be faking it. This is the ip that
           // the pollreply was sent from
-  time_t last_seen;  // last time an ArtPollReply was received from this node
+  artnet_mtime_t last_seen;  // last time an ArtPollReply was received (ms)
 } node_entry_private_t;
 
 /**
@@ -491,10 +492,10 @@ typedef struct {
   uint8_t diag_priority;  // minimum diagnostic priority to send (from ArtPoll)
   uint8_t bqp_policy;     // BackgroundQueuePolicy (ArtAddress 0xe0-0xef)
   int sync_mode;           // ArtSync: buffering mode active
-  time_t last_sync_time;   // ArtSync: last ArtSync received time
+  artnet_mtime_t last_sync_time;    // ArtSync: last ArtSync received time (ms)
   SI last_dmx_source;      // ArtSync: last ArtDmx source IP for sync validation
   volatile uint32_t nl_seq; // seqlock version for node list thread safety
-  clock_t apr_pending_time;  // ArtPollReply: scheduled send time via clock() (ms resolution)
+  artnet_mtime_t apr_pending_time;  // ArtPollReply: scheduled send time (ms)
   int apr_pending;           // ArtPollReply: whether a reply is pending
 } node_state_t;
 

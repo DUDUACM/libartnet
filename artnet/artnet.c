@@ -850,7 +850,7 @@ int artnet_send_dmx(artnet_node vn,
   // Store data for input keepalive retransmission (Art-Net 4)
   memcpy(port->last_dmx_data, data, length);
   port->last_dmx_length = length;
-  port->last_dmx_send_time = time(NULL);
+  port->last_dmx_send_time = artnet_gettime_ms();
 
   return ARTNET_EOK;
 }
@@ -2343,7 +2343,7 @@ int artnet_nl_update(node n, node_list_t *nl, artnet_packet reply) {
 
     copy_apr_to_node_entry(&entry->pub, &reply->data.ar);
     entry->ip = reply->from;
-    entry->last_seen = time(NULL);
+    entry->last_seen = artnet_gettime_ms();
     entry->next = NULL;
 
     if (!nl->first) {
@@ -2357,7 +2357,7 @@ int artnet_nl_update(node n, node_list_t *nl, artnet_packet reply) {
   } else {
     // update entry
     copy_apr_to_node_entry(&entry->pub, &reply->data.ar);
-    entry->last_seen = time(NULL);
+    entry->last_seen = artnet_gettime_ms();
   }
   NL_WRITE_END(n);
   return ARTNET_EOK;
@@ -2496,8 +2496,7 @@ node_entry_private_t *find_private_entry(node n, artnet_node_entry e) {
  * @param n the node
  */
 void check_timeouts(node n) {
-  clock_t now = clock();
-  time_t now_time = time(NULL);
+  artnet_mtime_t now = artnet_gettime_ms();
   int i = 0;
 
   // fail-safe: check for DMX data loss on enabled output ports
@@ -2509,7 +2508,7 @@ void check_timeouts(node n) {
     }
 
     if (!port->failsafe_triggered &&
-        ((int)((now - port->last_dmx_time) * 1000 / CLOCKS_PER_SEC) >= DMX_FAILSAFE_TIMEOUT_MS)) {
+        artnet_is_timeout(now, port->last_dmx_time, DMX_FAILSAFE_TIMEOUT_MS)) {
 
       switch (n->state.failsafe_mode) {
         case ARTNET_FAILSAFE_ZERO:
@@ -2537,7 +2536,7 @@ void check_timeouts(node n) {
   }
 
   // ArtSync timeout: revert to non-sync mode after ARTSYNC_TIMEOUT_MS without ArtSync
-  if (n->state.sync_mode && (now_time - n->state.last_sync_time >= ARTSYNC_TIMEOUT_MS / 1000)) {
+  if (n->state.sync_mode && artnet_is_timeout(now, n->state.last_sync_time, ARTSYNC_TIMEOUT_MS)) {
     n->state.sync_mode = 0;
   }
 
@@ -2547,7 +2546,7 @@ void check_timeouts(node n) {
     if (!in_port->port_enabled || in_port->last_dmx_send_time == 0) {
       continue;
     }
-    if (now_time - in_port->last_dmx_send_time >= DMX_KEEPALIVE_INTERVAL_MS / 1000) {
+    if (artnet_is_timeout(now, in_port->last_dmx_send_time, DMX_KEEPALIVE_INTERVAL_MS)) {
       if (in_port->last_dmx_length > 0) {
         artnet_send_dmx((artnet_node)n, i, (int16_t)in_port->last_dmx_length, in_port->last_dmx_data);
       }
@@ -2559,7 +2558,7 @@ void check_timeouts(node n) {
   {
     node_entry_private_t **pp = &n->node_list.first;
     while (*pp) {
-      if (time(NULL) - (*pp)->last_seen > NODELIST_TIMEOUT_MS / 1000) {
+      if ((int64_t)(now - (*pp)->last_seen) > NODELIST_TIMEOUT_MS) {
         node_entry_private_t *dead = *pp;
         *pp = dead->next;
         if (dead->firmware.data != NULL) {
@@ -2583,7 +2582,7 @@ void check_timeouts(node n) {
   NL_WRITE_END(n);
 
   if (n->firmware.peer.s_addr != 0
-      && (now_time - n->firmware.last_time >= FIRMWARE_TIMEOUT_MS / 1000)) {
+      && artnet_is_timeout(now, n->firmware.last_time, FIRMWARE_TIMEOUT_MS)) {
 
     if (n->state.verbose) {
       printf("firmware timeout\n");
@@ -2594,8 +2593,8 @@ void check_timeouts(node n) {
     // spec says to set ArtPollReply->Status here, but don't know to what value
   }
 
-  // ArtPollReply random delay: send pending reply after scheduled time (clock-based)
-  if (n->state.apr_pending && clock() >= n->state.apr_pending_time) {
+  // ArtPollReply random delay: send pending reply after scheduled time
+  if (n->state.apr_pending && now >= n->state.apr_pending_time) {
     n->state.apr_pending = FALSE;
     artnet_tx_poll_reply(n);
   }

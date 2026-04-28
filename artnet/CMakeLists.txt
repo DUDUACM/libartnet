@@ -4,6 +4,7 @@ set(ARTNET_SOURCES
     misc.c
     network.c
     receive.c
+    time_util.c
     transmit.c
     tod.c
 )
@@ -19,6 +20,7 @@ set(ARTNET_PUBLIC_HEADERS
 set(ARTNET_PRIVATE_HEADERS
     private.h
     misc.h
+    time_util.h
     tod.h
 )
 

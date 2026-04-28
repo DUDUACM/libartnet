@@ -131,9 +131,9 @@ int handle_poll(node n, artnet_packet p) {
       }
     }
 
-    // Art-Net 4: schedule ArtPollReply with random delay (0-999ms) via clock()
+    // Art-Net 4: schedule ArtPollReply with random delay (0-999ms)
     n->state.apr_pending = TRUE;
-    n->state.apr_pending_time = clock() + (clock_t)((rand() % 1000) * CLOCKS_PER_SEC / 1000);
+    n->state.apr_pending_time = artnet_gettime_ms() + (artnet_mtime_t)(rand() % 1000);
     return ARTNET_EOK;
 
   }
@@ -228,7 +228,7 @@ void handle_dmx(node n, artnet_packet p) {
       if (ipA == 0 && ipB == 0) {
         // first packet recv on this port
         port->ipA.s_addr = p->from.s_addr;
-        port->timeA = clock();
+        port->timeA = artnet_gettime_ms();
 
         memcpy(&port->dataA, &p->data.admx.data, data_length);
         port->length = data_length;
@@ -237,7 +237,7 @@ void handle_dmx(node n, artnet_packet p) {
       else if (ipA == p->from.s_addr && ipB == 0) {
         //continued transmission from the same ip (source A)
 
-        port->timeA = clock();
+        port->timeA = artnet_gettime_ms();
         memcpy(&port->dataA, &p->data.admx.data, data_length);
         port->length = data_length;
         memcpy(&port->data, &p->data.admx.data, data_length);
@@ -245,7 +245,7 @@ void handle_dmx(node n, artnet_packet p) {
       else if (ipA == 0 && ipB == p->from.s_addr) {
         //continued transmission from the same ip (source B)
 
-        port->timeB = clock();
+        port->timeB = artnet_gettime_ms();
         memcpy(&port->dataB, &p->data.admx.data, data_length);
         port->length = data_length;
         memcpy(&port->data, &p->data.admx.data, data_length);
@@ -253,7 +253,7 @@ void handle_dmx(node n, artnet_packet p) {
       else if (ipA != p->from.s_addr  && ipB == 0) {
         // new source, start the merge (A exists, new source becomes B)
         port->ipB.s_addr = p->from.s_addr;
-        port->timeB = clock();
+        port->timeB = artnet_gettime_ms();
         memcpy(&port->dataB, &p->data.admx.data,data_length);
         port->length = data_length;
 
@@ -270,7 +270,7 @@ void handle_dmx(node n, artnet_packet p) {
       else if (ipA == 0 && ipB != 0 && ipB != p->from.s_addr) {
         // new source, start the merge (B exists, new source becomes A)
         port->ipA.s_addr = p->from.s_addr;
-        port->timeA = clock();
+        port->timeA = artnet_gettime_ms();
         memcpy(&port->dataA, &p->data.admx.data, data_length);
         port->length = data_length;
 
@@ -286,7 +286,7 @@ void handle_dmx(node n, artnet_packet p) {
       }
       else if (ipA == p->from.s_addr && ipB != p->from.s_addr) {
         // continue merge
-        port->timeA = clock();
+        port->timeA = artnet_gettime_ms();
         memcpy(&port->dataA, &p->data.admx.data,data_length);
         port->length = data_length;
 
@@ -296,7 +296,7 @@ void handle_dmx(node n, artnet_packet p) {
       }
       else if (ipA != p->from.s_addr && ipB == p->from.s_addr) {
         // continue merge
-        port->timeB = clock();
+        port->timeB = artnet_gettime_ms();
         memcpy(&port->dataB, &p->data.admx.data,data_length);
         port->length = data_length;
 
@@ -321,7 +321,7 @@ void handle_dmx(node n, artnet_packet p) {
       }
 
       // Art-Net 4: record last DMX receive time for fail-safe
-      port->last_dmx_time = clock();
+      port->last_dmx_time = artnet_gettime_ms();
       port->failsafe_triggered = FALSE;
     }
   }
@@ -850,7 +850,7 @@ void handle_sync(node n, artnet_packet p) {
   }
 
   n->state.sync_mode = 1;
-  n->state.last_sync_time = time(NULL);
+  n->state.last_sync_time = artnet_gettime_ms();
 }
 
 /**
@@ -880,7 +880,7 @@ void handle_nzs(node n, artnet_packet p) {
       n->ports.out[i].length = data_length;
       n->ports.out[i].nzs_start_code = p->data.nzs.startCode;
       n->ports.out[i].port_status |= PORT_STATUS_ACT_MASK;
-      n->ports.out[i].last_dmx_time = clock();
+      n->ports.out[i].last_dmx_time = artnet_gettime_ms();
 
       if (n->callbacks.dmx_c.fh != NULL) {
         n->callbacks.dmx_c.fh(n, i, n->callbacks.dmx_c.data);
@@ -1166,7 +1166,7 @@ int handle_firmware(node n, artnet_packet p) {
         return ARTNET_EMEM;
       }
       n->firmware.bytes_total = length;
-      n->firmware.last_time = time(NULL);
+      n->firmware.last_time = artnet_gettime_ms();
       n->firmware.expected_block = 1;
 
       // check if this is a ubea upload or not
@@ -1654,21 +1654,21 @@ int16_t get_type(artnet_packet p) {
  */
 void check_merge_timeouts(node n, int port_id) {
   output_port_t *port = NULL;
-  clock_t now = 0;
-  clock_t timeoutA = 0, timeoutB = 0;
+  artnet_mtime_t now = 0;
+  int64_t timeoutA = 0, timeoutB = 0;
   int was_merging = 0;
   port = &n->ports.out[port_id];
-  now = clock();
-  timeoutA = (now - port->timeA) * 1000 / CLOCKS_PER_SEC;
-  timeoutB = (now - port->timeB) * 1000 / CLOCKS_PER_SEC;
+  now = artnet_gettime_ms();
+  timeoutA = now - port->timeA;
+  timeoutB = now - port->timeB;
   was_merging = (port->port_status & PORT_STATUS_MERGE) && port->ipA.s_addr && port->ipB.s_addr;
 
-  if ((int)timeoutA > MERGE_TIMEOUT_MS) {
+  if (timeoutA > MERGE_TIMEOUT_MS) {
     // A is old, stop the merge
     port->ipA.s_addr = 0;
   }
 
-  if ((int)timeoutB > MERGE_TIMEOUT_MS) {
+  if (timeoutB > MERGE_TIMEOUT_MS) {
     // B is old, stop the merge
     port->ipB.s_addr = 0;
   }

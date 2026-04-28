@@ -553,7 +553,7 @@ int artnet_tx_firmware_packet(node n, firmware_transfer_t *firm) {
   } else {
     // update stats
     firm->bytes_current = firm->bytes_current + data_len;
-    firm->last_time = time(NULL);
+    firm->last_time = artnet_gettime_ms();
     firm->expected_block++;
     // limit between 0 and 255 (only 8 bits wide)
     // we dont' actually need this cause it will be shorted when assigned above
