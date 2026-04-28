@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows-amd64
+          - os: ubuntu-latest
+            platform: linux-amd64
+          - os: macos-13
+            platform: macos-amd64
+          - os: macos-latest
+            platform: macos-arm64
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure (shared)
+        run: cmake -B build-shared -DBUILD_SHARED_LIBS=ON -DBUILD_EXAMPLES=ON
+
+      - name: Build (shared)
+        run: cmake --build build-shared --config Release
+
+      - name: Configure (static)
+        run: cmake -B build-static -DBUILD_SHARED_LIBS=OFF -DBUILD_EXAMPLES=ON
+
+      - name: Build (static)
+        run: cmake --build build-static --config Release
+
+  cross-compile-linux-arm64:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install cross-compilation toolchain
+        run: sudo apt-get update && sudo apt-get install -y gcc-aarch64-linux-gnu
+
+      - name: Configure
+        run: |
+          cmake -B build \
+            -DCMAKE_SYSTEM_NAME=Linux \
+            -DCMAKE_SYSTEM_PROCESSOR=aarch64 \
+            -DCMAKE_C_COMPILER=aarch64-linux-gnu-gcc \
+            -DBUILD_SHARED_LIBS=ON \
+            -DBUILD_EXAMPLES=OFF
+
+      - name: Build
+        run: cmake --build build --config Release

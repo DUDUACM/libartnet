@@ -16,6 +16,7 @@ All notable changes to this project are documented in this file.
 - `full_node` example: complete Art-Net 4 bidirectional node (4 input + 4 output ports, RDM, fail-safe, remote programming)
 - `full_controller` example: interactive controller demonstrating all Art-Net 4 features (30+ commands)
 - Doxygen API documentation with `/** */` comments on all 148 functions across all source files
+- GitHub Actions CI/CD pipeline (Windows amd64, Linux amd64/arm64, macOS amd64/arm64)
 - Doxyfile configuration: EXTRACT_ALL, MACRO_EXPANSION, PREDEFINED for EXTERN macro
 - `time_util.h` / `time_util.c`: unified millisecond-precision monotonic clock module
   - `artnet_gettime_ms()`: GetTickCount64() on Windows, clock_gettime(CLOCK_MONOTONIC) on POSIX
