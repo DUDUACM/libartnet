@@ -126,7 +126,7 @@ jobs:
 
       - name: Configure
         run: |
-          TOOLCHAIN_ROOT="$(pwd)/$(ls -d llvm-mingw-*)"
+          TOOLCHAIN_ROOT="$(pwd)/llvm-mingw-20260421-ucrt-ubuntu-22.04-x86_64"
           cmake -B build \
             -DCMAKE_SYSTEM_NAME=Windows \
             -DCMAKE_SYSTEM_PROCESSOR=aarch64 \
