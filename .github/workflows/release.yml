@@ -20,7 +20,7 @@ jobs:
           - os: ubuntu-latest
             platform: linux-amd64
             ext: tar.gz
-          - os: macos-13
+          - os: macos-15-intel
             platform: macos-amd64
             ext: tar.gz
           - os: macos-latest
