@@ -79,3 +79,15 @@ jobs:
 
       - name: Build
         run: cmake --build build --config Release
+
+  cross-compile-windows-arm64:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -B build -A ARM64 -DBUILD_SHARED_LIBS=ON -DBUILD_EXAMPLES=OFF
+
+      - name: Build
+        run: cmake --build build --config Release

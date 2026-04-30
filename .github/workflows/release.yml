@@ -157,8 +157,43 @@ jobs:
           name: linux-armhf
           path: ${{ env.ARTIFACT }}
 
+  cross-compile-windows-arm64:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set version from tag
+        shell: bash
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+
+      - name: Configure
+        run: cmake -B build -A ARM64 -DBUILD_SHARED_LIBS=ON -DBUILD_EXAMPLES=OFF -DCMAKE_INSTALL_PREFIX=install
+
+      - name: Build
+        run: cmake --build build --config Release
+
+      - name: Install
+        run: cmake --install build --config Release --prefix install
+
+      - name: Package
+        shell: bash
+        run: |
+          PKGNAME="libartnet-${VERSION}-windows-arm64"
+          cp -r install "${PKGNAME}"
+          7z a "${PKGNAME}.zip" "${PKGNAME}"
+          echo "ARTIFACT=${PKGNAME}.zip" >> $GITHUB_ENV
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-arm64
+          path: ${{ env.ARTIFACT }}
+
   create-release:
-    needs: [build-and-release, cross-compile-linux-arm64, cross-compile-linux-armhf]
+    needs: [build-and-release, cross-compile-linux-arm64, cross-compile-linux-armhf, cross-compile-windows-arm64]
     runs-on: ubuntu-latest
 
     steps:
@@ -188,6 +223,7 @@ jobs:
             | Platform | File |
             |----------|------|
             | Windows amd64 | `libartnet-${{ env.VERSION }}-windows-amd64.zip` |
+            | Windows arm64 | `libartnet-${{ env.VERSION }}-windows-arm64.zip` |
             | Linux amd64 | `libartnet-${{ env.VERSION }}-linux-amd64.tar.gz` |
             | Linux arm64 | `libartnet-${{ env.VERSION }}-linux-arm64.tar.gz` |
             | Linux armhf | `libartnet-${{ env.VERSION }}-linux-armhf.tar.gz` |
@@ -202,6 +238,7 @@ jobs:
             - pkg-config file (`lib/pkgconfig/libartnet.pc`)
           files: |
             artifacts/windows-amd64/*.zip
+            artifacts/windows-arm64/*.zip
             artifacts/linux-amd64/*.tar.gz
             artifacts/linux-arm64/*.tar.gz
             artifacts/linux-armhf/*.tar.gz
