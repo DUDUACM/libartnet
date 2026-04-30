@@ -192,8 +192,97 @@ jobs:
           name: windows-arm64
           path: ${{ env.ARTIFACT }}
 
+  cross-compile-windows-amd64-mingw:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set version from tag
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+
+      - name: Install MinGW
+        run: sudo apt-get update && sudo apt-get install -y mingw-w64 zip
+
+      - name: Configure
+        run: |
+          cmake -B build \
+            -DCMAKE_SYSTEM_NAME=Windows \
+            -DCMAKE_SYSTEM_PROCESSOR=x86_64 \
+            -DCMAKE_C_COMPILER=x86_64-w64-mingw32-gcc \
+            -DBUILD_SHARED_LIBS=ON \
+            -DBUILD_EXAMPLES=OFF \
+            -DCMAKE_INSTALL_PREFIX=install
+
+      - name: Build
+        run: cmake --build build --config Release
+
+      - name: Install
+        run: cmake --install build --config Release --prefix install
+
+      - name: Package
+        run: |
+          PKGNAME="libartnet-${VERSION}-windows-amd64-mingw"
+          cp -r install "${PKGNAME}"
+          zip -r "${PKGNAME}.zip" "${PKGNAME}"
+          echo "ARTIFACT=${PKGNAME}.zip" >> $GITHUB_ENV
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-amd64-mingw
+          path: ${{ env.ARTIFACT }}
+
+  cross-compile-windows-arm64-mingw:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set version from tag
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+
+      - name: Install llvm-mingw
+        run: |
+          curl -LO https://github.com/mstorsjo/llvm-mingw/releases/download/20250417/llvm-mingw-20250417-ucrt-ubuntu-20.04-x86_64.tar.xz
+          tar xf llvm-mingw-*.tar.xz
+          echo "$(pwd)/llvm-mingw-*/bin" >> $GITHUB_PATH
+
+      - name: Configure
+        run: |
+          cmake -B build \
+            -DCMAKE_SYSTEM_NAME=Windows \
+            -DCMAKE_SYSTEM_PROCESSOR=aarch64 \
+            -DCMAKE_C_COMPILER=aarch64-w64-mingw32-gcc \
+            -DBUILD_SHARED_LIBS=ON \
+            -DBUILD_EXAMPLES=OFF \
+            -DCMAKE_INSTALL_PREFIX=install
+
+      - name: Build
+        run: cmake --build build --config Release
+
+      - name: Install
+        run: cmake --install build --config Release --prefix install
+
+      - name: Package
+        run: |
+          PKGNAME="libartnet-${VERSION}-windows-arm64-mingw"
+          cp -r install "${PKGNAME}"
+          zip -r "${PKGNAME}.zip" "${PKGNAME}"
+          echo "ARTIFACT=${PKGNAME}.zip" >> $GITHUB_ENV
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-arm64-mingw
+          path: ${{ env.ARTIFACT }}
+
   create-release:
-    needs: [build-and-release, cross-compile-linux-arm64, cross-compile-linux-armhf, cross-compile-windows-arm64]
+    needs: [build-and-release, cross-compile-linux-arm64, cross-compile-linux-armhf, cross-compile-windows-arm64, cross-compile-windows-amd64-mingw, cross-compile-windows-arm64-mingw]
     runs-on: ubuntu-latest
 
     steps:
@@ -222,8 +311,10 @@ jobs:
             ### Downloads
             | Platform | File |
             |----------|------|
-            | Windows amd64 | `libartnet-${{ env.VERSION }}-windows-amd64.zip` |
-            | Windows arm64 | `libartnet-${{ env.VERSION }}-windows-arm64.zip` |
+            | Windows amd64 (MSVC) | `libartnet-${{ env.VERSION }}-windows-amd64.zip` |
+            | Windows arm64 (MSVC) | `libartnet-${{ env.VERSION }}-windows-arm64.zip` |
+            | Windows amd64 (MinGW) | `libartnet-${{ env.VERSION }}-windows-amd64-mingw.zip` |
+            | Windows arm64 (MinGW) | `libartnet-${{ env.VERSION }}-windows-arm64-mingw.zip` |
             | Linux amd64 | `libartnet-${{ env.VERSION }}-linux-amd64.tar.gz` |
             | Linux arm64 | `libartnet-${{ env.VERSION }}-linux-arm64.tar.gz` |
             | Linux armhf | `libartnet-${{ env.VERSION }}-linux-armhf.tar.gz` |
@@ -239,6 +330,8 @@ jobs:
           files: |
             artifacts/windows-amd64/*.zip
             artifacts/windows-arm64/*.zip
+            artifacts/windows-amd64-mingw/*.zip
+            artifacts/windows-arm64-mingw/*.zip
             artifacts/linux-amd64/*.tar.gz
             artifacts/linux-arm64/*.tar.gz
             artifacts/linux-armhf/*.tar.gz
