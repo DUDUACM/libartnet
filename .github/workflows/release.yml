@@ -114,8 +114,51 @@ jobs:
           name: linux-arm64
           path: ${{ env.ARTIFACT }}
 
+  cross-compile-linux-armhf:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set version from tag
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+
+      - name: Install cross-compilation toolchain
+        run: sudo apt-get update && sudo apt-get install -y gcc-arm-linux-gnueabihf
+
+      - name: Configure
+        run: |
+          cmake -B build \
+            -DCMAKE_SYSTEM_NAME=Linux \
+            -DCMAKE_SYSTEM_PROCESSOR=arm \
+            -DCMAKE_C_COMPILER=arm-linux-gnueabihf-gcc \
+            -DBUILD_SHARED_LIBS=ON \
+            -DBUILD_EXAMPLES=OFF \
+            -DCMAKE_INSTALL_PREFIX=install
+
+      - name: Build
+        run: cmake --build build --config Release
+
+      - name: Install
+        run: cmake --install build --config Release --prefix install
+
+      - name: Package
+        run: |
+          PKGNAME="libartnet-${VERSION}-linux-armhf"
+          cp -r install "${PKGNAME}"
+          tar czf "${PKGNAME}.tar.gz" "${PKGNAME}"
+          echo "ARTIFACT=${PKGNAME}.tar.gz" >> $GITHUB_ENV
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-armhf
+          path: ${{ env.ARTIFACT }}
+
   create-release:
-    needs: [build-and-release, cross-compile-linux-arm64]
+    needs: [build-and-release, cross-compile-linux-arm64, cross-compile-linux-armhf]
     runs-on: ubuntu-latest
 
     steps:
@@ -147,6 +190,7 @@ jobs:
             | Windows amd64 | `libartnet-${{ env.VERSION }}-windows-amd64.zip` |
             | Linux amd64 | `libartnet-${{ env.VERSION }}-linux-amd64.tar.gz` |
             | Linux arm64 | `libartnet-${{ env.VERSION }}-linux-arm64.tar.gz` |
+            | Linux armhf | `libartnet-${{ env.VERSION }}-linux-armhf.tar.gz` |
             | macOS amd64 | `libartnet-${{ env.VERSION }}-macos-amd64.tar.gz` |
             | macOS arm64 | `libartnet-${{ env.VERSION }}-macos-arm64.tar.gz` |
 
@@ -160,6 +204,7 @@ jobs:
             artifacts/windows-amd64/*.zip
             artifacts/linux-amd64/*.tar.gz
             artifacts/linux-arm64/*.tar.gz
+            artifacts/linux-armhf/*.tar.gz
             artifacts/macos-amd64/*.tar.gz
             artifacts/macos-arm64/*.tar.gz
           draft: false
