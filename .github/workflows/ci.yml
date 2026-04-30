@@ -121,7 +121,7 @@ jobs:
 
       - name: Install llvm-mingw
         run: |
-          curl -LO https://github.com/mstorsjo/llvm-mingw/releases/download/20260407/llvm-mingw-20260407-ucrt-ubuntu-20.04-x86_64.tar.xz
+          curl -LO https://github.com/mstorsjo/llvm-mingw/releases/download/20260421/llvm-mingw-20260421-ucrt-ubuntu-22.04-x86_64.tar.xz
           tar xf llvm-mingw-*.tar.xz
           echo "$(pwd)/llvm-mingw-*/bin" >> $GITHUB_PATH
 
