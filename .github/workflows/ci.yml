@@ -123,14 +123,14 @@ jobs:
         run: |
           curl -LO https://github.com/mstorsjo/llvm-mingw/releases/download/20260421/llvm-mingw-20260421-ucrt-ubuntu-22.04-x86_64.tar.xz
           tar xf llvm-mingw-*.tar.xz
-          echo "$(pwd)/$(ls -d llvm-mingw-*)/bin" >> $GITHUB_PATH
 
       - name: Configure
         run: |
+          TOOLCHAIN_ROOT="$(pwd)/$(ls -d llvm-mingw-*)"
           cmake -B build \
             -DCMAKE_SYSTEM_NAME=Windows \
             -DCMAKE_SYSTEM_PROCESSOR=aarch64 \
-            -DCMAKE_C_COMPILER=aarch64-w64-mingw32-gcc \
+            -DCMAKE_C_COMPILER="${TOOLCHAIN_ROOT}/bin/aarch64-w64-mingw32-gcc" \
             -DBUILD_SHARED_LIBS=ON \
             -DBUILD_EXAMPLES=OFF
 
