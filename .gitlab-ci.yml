@@ -63,12 +63,11 @@ package:generic:
     - apt-get update && apt-get install -y curl
   script:
     - |
-      VERSION="${CI_COMMIT_TAG#v}"
       for f in libartnet-*.tar.gz; do
         echo "Uploading $f to Generic Package Registry..."
         curl --header "JOB-TOKEN: $CI_JOB_TOKEN" \
              --upload-file "$f" \
-             "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/libartnet/${VERSION}/$f"
+             "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/libartnet/${CI_COMMIT_TAG}/$f"
       done
   rules:
     - if: $CI_COMMIT_TAG
@@ -76,11 +75,11 @@ package:generic:
 # ---- Release ----
 release:
   stage: release
+  image: registry.gitlab.com/gitlab-org/release-cli:latest
   needs:
     - job: package:generic
       artifacts: false
   script:
-    - VERSION="${CI_COMMIT_TAG#v}"
     - echo "Creating release with asset links..."
   release:
     tag_name: $CI_COMMIT_TAG
@@ -89,11 +88,11 @@ release:
       libartnet ${CI_COMMIT_TAG} multi-platform release.
     assets:
       links:
-        - name: "libartnet-${VERSION}-linux-amd64.tar.gz"
-          url: "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/libartnet/${VERSION}/libartnet-${VERSION}-linux-amd64.tar.gz"
+        - name: "libartnet-${CI_COMMIT_TAG}-linux-amd64.tar.gz"
+          url: "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/libartnet/${CI_COMMIT_TAG}/libartnet-${CI_COMMIT_TAG}-linux-amd64.tar.gz"
           link_type: package
-        - name: "libartnet-${VERSION}-windows-amd64.tar.gz"
-          url: "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/libartnet/${VERSION}/libartnet-${VERSION}-windows-amd64.tar.gz"
+        - name: "libartnet-${CI_COMMIT_TAG}-windows-amd64.tar.gz"
+          url: "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/generic/libartnet/${CI_COMMIT_TAG}/libartnet-${CI_COMMIT_TAG}-windows-amd64.tar.gz"
           link_type: package
   rules:
     - if: $CI_COMMIT_TAG
