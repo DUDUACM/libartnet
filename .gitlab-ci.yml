@@ -59,6 +59,8 @@ package:generic:
   needs:
     - build:linux-amd64
     - build:windows-amd64
+  before_script:
+    - apt-get update && apt-get install -y curl
   script:
     - |
       VERSION="${CI_COMMIT_TAG#v}"
