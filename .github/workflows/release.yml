@@ -9,7 +9,23 @@ permissions:
   contents: write
 
 jobs:
+  test-linux-amd64:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -B build-test -DBUILD_SHARED_LIBS=ON -DBUILD_EXAMPLES=OFF -DBUILD_TESTS=ON
+
+      - name: Build
+        run: cmake --build build-test --config Release
+
+      - name: Test
+        run: ctest --test-dir build-test --output-on-failure
+
   build-and-release:
+    needs: [test-linux-amd64]
     strategy:
       fail-fast: false
       matrix:
@@ -72,6 +88,7 @@ jobs:
           path: ${{ env.ARTIFACT }}
 
   cross-compile-linux-arm64:
+    needs: [test-linux-amd64]
     runs-on: ubuntu-latest
 
     steps:
@@ -115,6 +132,7 @@ jobs:
           path: ${{ env.ARTIFACT }}
 
   cross-compile-linux-armhf:
+    needs: [test-linux-amd64]
     runs-on: ubuntu-latest
 
     steps:
@@ -158,6 +176,7 @@ jobs:
           path: ${{ env.ARTIFACT }}
 
   cross-compile-windows-arm64:
+    needs: [test-linux-amd64]
     runs-on: windows-latest
 
     steps:
@@ -193,6 +212,7 @@ jobs:
           path: ${{ env.ARTIFACT }}
 
   cross-compile-windows-amd64-mingw:
+    needs: [test-linux-amd64]
     runs-on: ubuntu-latest
 
     steps:
@@ -236,6 +256,7 @@ jobs:
           path: ${{ env.ARTIFACT }}
 
   cross-compile-windows-arm64-mingw:
+    needs: [test-linux-amd64]
     runs-on: ubuntu-latest
 
     steps:
@@ -282,7 +303,7 @@ jobs:
           path: ${{ env.ARTIFACT }}
 
   create-release:
-    needs: [build-and-release, cross-compile-linux-arm64, cross-compile-linux-armhf, cross-compile-windows-arm64, cross-compile-windows-amd64-mingw, cross-compile-windows-arm64-mingw]
+    needs: [test-linux-amd64, build-and-release, cross-compile-linux-arm64, cross-compile-linux-armhf, cross-compile-windows-arm64, cross-compile-windows-amd64-mingw, cross-compile-windows-arm64-mingw]
     runs-on: ubuntu-latest
 
     steps:

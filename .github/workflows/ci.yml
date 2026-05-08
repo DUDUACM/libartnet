@@ -27,24 +27,31 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Configure (shared)
-        run: >
-          cmake -B build-shared
-          -DBUILD_SHARED_LIBS=ON
-          -DBUILD_EXAMPLES=ON
-          -DBUILD_TESTS=${{ matrix.os == 'ubuntu-latest' && matrix.platform == 'linux-amd64' && 'ON' || 'OFF' }}
+        run: cmake -B build-shared -DBUILD_SHARED_LIBS=ON -DBUILD_EXAMPLES=ON -DBUILD_TESTS=OFF
 
       - name: Build (shared)
         run: cmake --build build-shared --config Release
-
-      - name: Test (shared, linux-amd64 only)
-        if: matrix.os == 'ubuntu-latest' && matrix.platform == 'linux-amd64'
-        run: ctest --test-dir build-shared --output-on-failure
 
       - name: Configure (static)
         run: cmake -B build-static -DBUILD_SHARED_LIBS=OFF -DBUILD_EXAMPLES=ON
 
       - name: Build (static)
         run: cmake --build build-static --config Release
+
+  test-linux-amd64:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -B build-test -DBUILD_SHARED_LIBS=ON -DBUILD_EXAMPLES=OFF -DBUILD_TESTS=ON
+
+      - name: Build
+        run: cmake --build build-test --config Release
+
+      - name: Test
+        run: ctest --test-dir build-test --output-on-failure
 
   cross-compile-linux-arm64:
     runs-on: ubuntu-latest
