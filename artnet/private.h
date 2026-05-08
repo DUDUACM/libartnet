@@ -278,6 +278,7 @@ typedef struct {
   callback_t mediapatch;
   callback_t media;
   callback_t mediacontrol;
+  callback_t mediacontrol_reply;
   callback_t datareq;
   callback_t datarep;
   dmx_callback_t dmx_c;
@@ -357,6 +358,8 @@ typedef struct {
   uint8_t rdm_enabled;  // 0=disabled, 1=enabled
   uint8_t dataA[ARTNET_DMX_LENGTH];
   uint8_t dataB[ARTNET_DMX_LENGTH];
+  uint8_t physicalA;
+  uint8_t physicalB;
   artnet_mtime_t timeA;
   artnet_mtime_t timeB;
   artnet_mtime_t last_dmx_time;    // last time ArtDmx was received (ms)
@@ -364,6 +367,10 @@ typedef struct {
   uint8_t failsafe_data[ARTNET_DMX_LENGTH]; // recorded fail-safe scene data
   int failsafe_length;      // length of failsafe_data
   uint8_t nzs_start_code;  // last received ArtNzs start code (0 = none / ArtDmx)
+  uint8_t sync_data[ARTNET_DMX_LENGTH]; // buffered ArtDmx data pending ArtSync flush
+  int sync_length;         // buffered ArtDmx length pending ArtSync flush
+  uint8_t sync_pending;    // whether buffered ArtDmx data is waiting for ArtSync flush
+  uint8_t cancel_merge_pending; // AcCancelMerge received; next accepted ArtDmx ends merge mode
   SI ipA;
   SI ipB;
 } output_port_t;
@@ -491,6 +498,7 @@ typedef struct {
   SI diag_controller_ips[4]; // IPs of up to 4 diagnostic-requesting controllers
   uint8_t diag_priority;  // minimum diagnostic priority to send (from ArtPoll)
   uint8_t bqp_policy;     // BackgroundQueuePolicy (ArtAddress 0xe0-0xef)
+  uint16_t refresh_rate;  // ArtPollReply RefreshRate in Hz (0-44 = DMX512 max, higher = non-DMX gateway)
   int sync_mode;           // ArtSync: buffering mode active
   artnet_mtime_t last_sync_time;    // ArtSync: last ArtSync received time (ms)
   SI last_dmx_source;      // ArtSync: last ArtDmx source IP for sync validation
@@ -601,6 +609,7 @@ int artnet_tx_trigger(node n, uint8_t oem_hi, uint8_t oem_lo,
 /** @brief Build and send an ArtDataReply packet. */
 int artnet_tx_data_reply(node n, const char *ip, uint16_t request_code,
                          const char *payload, int16_t length);
+int artnet_tx_data_request(node n, const char *ip, uint16_t request_code);
 /** @brief Build and send an ArtIpProgReply packet. */
 int artnet_tx_ipprog_reply(node n);
 /** @brief Build and send an ArtSync packet. */

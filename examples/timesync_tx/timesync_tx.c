@@ -87,7 +87,7 @@ int main(int argc, char *argv[]) {
 
     int ret = artnet_send_timesync(node,
       (uint8_t)t->tm_sec, (uint8_t)t->tm_min, (uint8_t)t->tm_hour,
-      (uint8_t)t->tm_mday, (uint8_t)t->tm_mon, (uint8_t)(t->tm_year % 100));
+      (uint8_t)t->tm_mday, (uint8_t)t->tm_mon, (uint8_t)t->tm_year);
 
     if (ret != ARTNET_EOK) {
       printf("[TimeSync] Error: %s\n", artnet_strerror());

@@ -8,21 +8,22 @@ Art-Net 4 Protocol Specification: [art-net4.md](art-net4.md)
 
 ## Features
 
-- Art-Net 4 protocol compliance with 15-bit port addressing (32768 universes)
+- Art-Net 4 protocol implementation with 15-bit port addressing (32768 universes)
 - Node and Controller modes with up to 4 ports per node
 - Node joining for multi-node configurations (8+ universes)
-- DMX512 transmit and receive (ArtDmx, ArtNzs)
-- Node discovery (ArtPoll / ArtPollReply with random delay to prevent packet storms)
-- RDM over Art-Net (ArtRdm, ArtRdmSub, ArtTodRequest, ArtTodData, ArtTodControl)
-- Firmware upload (ArtFirmwareMaster / ArtFirmwareReply)
-- File transfer (ArtFileTnMaster, ArtFileFnMaster, ArtFileFnReply)
-- Remote programming (ArtAddress with sACN priority, ArtInput, ArtIPProg)
-- TimeCode, TimeSync, Trigger, Sync, Diagnostic messages
-- ArtDataRequest/Reply for manufacturer-specific data exchange
-- ArtDirectory/DirectoryReply for file listing queries
+- Built-in protocol behaviors for DMX512 transport, merge, keepalive, fail-safe, ArtSync, discovery, remote programming, TOD/RDM exchange, firmware upload, directory reply, and IP programming
+- Generic packet send/receive support plus handler callbacks for ArtCommand, ArtTimeCode, ArtTimeSync, ArtTrigger, ArtDiagData, ArtDataRequest/Reply, file transfer packets, media packets, and other Art-Net 4 opcodes
+- Strict inbound packet validation for protocol version, minimum packet length, key field ranges, and variable-length payload consistency
 - Unified millisecond-precision monotonic clock (GetTickCount64 / clock_gettime)
 - IPv4 and IPv6 support
 - Cross-platform: Linux, macOS, Windows
+
+## Capability Model
+
+The library exposes two classes of Art-Net functionality:
+
+- Built-in protocol behavior: libartnet maintains state machines and default protocol actions for `ArtPoll` / `ArtPollReply`, `ArtDmx` / `ArtNzs`, `ArtSync`, `ArtAddress`, `ArtInput`, `ArtIpProg`, `ArtTodRequest` / `ArtTodControl` / `ArtTodData`, `ArtRdm`, `ArtRdmSub`, firmware upload, directory reply, node list maintenance, merge, keepalive, and fail-safe handling.
+- Packet transport plus callbacks: libartnet also parses, validates, and dispatches many other opcodes to application handlers. For these packets, the library provides wire-format support and callback delivery, but application-specific behavior remains the responsibility of the embedding program. This includes `ArtCommand`, `ArtTimeCode`, `ArtTimeSync`, `ArtTrigger`, `ArtDiagData`, `ArtDataRequest`, `ArtDataReply`, `ArtFileFnMaster`, `ArtFileFnReply`, `ArtMedia`, `ArtMediaPatch`, and `ArtMediaControl` / `ArtMediaControlReply`.
 
 ## Building
 
@@ -71,13 +72,16 @@ The regression suite uses a stubbed network backend to validate protocol behavio
 - `ArtAddress` / `ArtInput`
 - `ArtDmx` / `ArtNzs` / `ArtSync`
 - `ArtIpProg` / `ArtIpProgReply`
+- `ArtDataRequest` / `ArtDataReply`
 - `ArtDirectory` / `ArtDirectoryReply`
 - `ArtFileFnMaster` / `ArtFileFnReply`
 - `ArtTodRequest` / `ArtTodControl` / `ArtTodData`
 - `ArtRdm` / `ArtRdmSub`
+- `ArtCommand` / `ArtTimeCode` / `ArtTimeSync` / `ArtTrigger` / `ArtDiagData`
 - Firmware upload / reply state machine
 - Node list update and timeout cleanup
-- Fail-safe, merge, keepalive, and diagnostic controller edge cases
+- Strict inbound packet validation for truncated packets, invalid protocol versions, invalid field ranges, and malformed variable-length payloads
+- Fail-safe, merge, keepalive, sync buffering, and diagnostic controller edge cases
 
 CI runs this suite as a required gate before packaging and release on both GitHub Actions and GitLab CI.
 
@@ -185,7 +189,7 @@ A DMX receiver node that supports remote management via ArtAddress and ArtInput.
 
 ### Full Node (`full_node`)
 
-A complete Art-Net 4 bidirectional node with 4 input + 4 output ports. Supports DMX receive/transmit, RDM device discovery (TOD), remote programming via ArtAddress/ArtInput, ArtSync, ArtTimeCode, ArtTimeSync, ArtTrigger, ArtNzs receive, firmware upload reception, diagnostics, and fail-safe modes (hold/zero/full/scene). Sends ArtPollReply on condition change.
+A test-oriented Art-Net 4 bidirectional node with 4 input + 4 output ports. Supports DMX receive/transmit, RDM device discovery (TOD), remote programming via ArtAddress/ArtInput, ArtSync, ArtTimeCode, ArtTimeSync, ArtTrigger, ArtNzs receive, firmware upload reception, diagnostics, `ArtDataRequest` replies, `ArtDirectory` replies, and in-memory file download responses for `ArtFileFnMaster`. Sends ArtPollReply on condition change.
 
 ```bash
 ./build/examples/full_node/full_node -i 192.168.1.20
@@ -200,6 +204,12 @@ A complete Art-Net 4 bidirectional node with 4 input + 4 output ports. Supports 
 | `-n <net>` | Net address 0-127 (default: 0) |
 | `-s <subnet>` | Subnet address 0-15 (default: 0) |
 | `-u <universe>` | Starting port address 0-15 (default: 0) |
+
+Test-node notes:
+
+- The example exposes an in-memory directory and file table for controller-side directory and file-download testing.
+- `ArtDataRequest` replies are minimal test payloads intended for protocol validation, not product metadata completeness.
+- File download replies are generated from memory, not a persistent filesystem.
 
 ### Node Manager (`node_manager`)
 
@@ -252,7 +262,7 @@ Example workflow:
 
 ### Full Controller (`full_controller`)
 
-Interactive controller demonstrating all Art-Net 4 controller features. Provides a comprehensive menu covering node discovery, DMX transmission (ArtDmx/ArtNzs/raw 15-bit), ArtSync, remote management (ArtAddress/ArtInput), RDM (ArtTodRequest/ArtTodControl/ArtRdm/ArtRdmSub), firmware upload, file transfer, TimeCode/TimeSync, triggers, diagnostics, and directory queries.
+Interactive controller demonstrating all Art-Net 4 controller features. Provides a comprehensive menu covering node discovery, DMX transmission (ArtDmx/ArtNzs/raw 15-bit), ArtSync, remote management (ArtAddress/ArtInput), RDM (ArtTodRequest/ArtTodControl/ArtRdm/ArtRdmSub), firmware upload, file transfer, TimeCode/TimeSync, triggers, diagnostics, directory queries, and ArtDataRequest queries. The event loop listens to both the Art-Net socket and stdin so interactive input remains responsive while network traffic is active.
 
 ```bash
 ./build/examples/full_controller/full_controller -i 192.168.1.100
@@ -292,8 +302,45 @@ Interactive commands:
 | `w` | Upload firmware (ArtFirmwareMaster) |
 | `u` | Upload file (ArtFileTnMaster) |
 | `v` | Download file (ArtFileFnMaster) |
-| `o` | Send ArtDirectory query |
+| `x` | Send ArtDirectory query |
+| `b` | Send ArtDataRequest |
 | `q` | Quit |
+
+Recommended controller-to-node workflow:
+
+```text
+1. Start `full_node` on a reachable Art-Net IP.
+2. Start `full_controller` on the same subnet.
+3. Press `p` then `l` to discover and inspect the node.
+4. Use `d` / `D` / `s` to verify DMX and ArtSync behavior.
+5. Use `1`-`9`, `0`, `f`-`j` to verify remote programming and failsafe commands.
+6. Use `t`, `T`, `r`, `R` to validate TOD/RDM paths.
+7. Use `x` to query the node's directory, then `v` to download one of the advertised files.
+8. Use `b` to query the node's ArtDataRequest responses (product URL, user guide URL, support URL).
+9. Use `w` / `u` to exercise firmware and file upload receive paths on the node.
+```
+
+Controller-to-node checklist:
+
+| Step | Controller Action | Expected Node / Controller Result |
+|------|-------------------|-----------------------------------|
+| 1 | Start `full_node`, then `full_controller`, press `p` | Controller prints at least one `Reply` entry for `FullNode` |
+| 2 | Press `l` | Controller shows node IP, short name, Net/Sub, and port list |
+| 3 | Press `d` and send a small DMX frame | Node prints `[DMX] Port ...` with channel values |
+| 4 | Press `D` to start flood, then `s` if needed | Node shows regular DMX updates; controller remains interactive |
+| 5 | Press `1` or `2` to change names | Node prints `Remote Programming Applied` and updated config |
+| 6 | Press `3` / `4` / `5` / `6` / `7` / `8` / `9` / `0` | Node prints `Address` / `Input` updates and refreshed configuration |
+| 7 | Press `t` | Controller receives `TodData`; node prints `ArtTodRequest received` |
+| 8 | Press `r` or `R` | Node prints `RDM` activity for the requested address or UID |
+| 9 | Press `x` | Controller prints `DirectoryReply` and lists `full_node.log`, `scene_A.dmx`, `readme.txt` |
+| 10 | Press `v` and request one of the listed files | Controller prints one or more `FileFnReply` blocks and then the reconstructed file payload |
+| 11 | Press `b` and request codes `1`, `2`, `3` | Controller prints `DataReply` payloads for product URL, user guide URL, and support URL |
+| 12 | Press `w` or `u` | Node prints firmware/file upload activity and controller sees upload acknowledgements where applicable |
+
+Notes:
+
+- `full_node` is a protocol test node, not a production device. Directory contents, files, and `ArtDataRequest` replies are in-memory test fixtures.
+- `full_controller` now multiplexes stdin and the Art-Net socket, so it should remain responsive while replies are arriving.
 
 ### TimeCode Transmitter (`timecode_tx`)
 
@@ -357,6 +404,8 @@ Interactive commands:
 ### TimeSync Transmitter (`timesync_tx`)
 
 Sends ArtTimeSync packets with the current system date/time at a configurable interval. Useful for synchronizing clocks across Art-Net nodes.
+
+`ArtTimeSync` arguments follow `struct tm` semantics: `tm_mon` is `0-11` and `tm_year` is years since 1900.
 
 ```bash
 # Send every 1 second (default)
@@ -436,40 +485,40 @@ Interactive commands:
 
 ## Supported Packet Types
 
-| Packet | Opcode | Direction | Description |
-|--------|--------|-----------|-------------|
-| ArtPoll | 0x2000 | TX/RX | Discover nodes on the network |
-| ArtPollReply | 0x2100 | TX/RX | Node identification response |
-| ArtDiagData | 0x2300 | TX/RX | Diagnostic text messages |
-| ArtCommand | 0x2400 | TX/RX | String command |
-| ArtDataRequest | 0x2700 | TX/RX | Manufacturer data request |
-| ArtDataReply | 0x2800 | TX/RX | Manufacturer data reply |
-| ArtDmx | 0x5000 | TX/RX | DMX512 data transfer |
-| ArtNzs | 0x5100 | TX/RX | Non-zero start code DMX |
-| ArtSync | 0x5200 | TX/RX | Synchronize DMX output |
-| ArtAddress | 0x6000 | TX/RX | Remote programming |
-| ArtInput | 0x7000 | TX/RX | Remote port configuration |
-| ArtTodRequest | 0x8000 | TX/RX | Request Table of Devices |
-| ArtTodData | 0x8100 | TX/RX | Transfer Table of Devices |
-| ArtTodControl | 0x8200 | TX/RX | RDM discovery control |
-| ArtRdm | 0x8300 | TX/RX | RDM sub-device communication |
-| ArtRdmSub | 0x8400 | TX/RX | Compressed RDM sub-device data |
-| ArtMedia | 0x9000 | RX | Media server data |
-| ArtMediaPatch | 0x9100 | TX/RX | Media patch control |
-| ArtMediaControl | 0x9200 | TX/RX | Media playback control |
-| ArtMediaControlReply | 0x9300 | RX | Media control response |
-| ArtTimeCode | 0x9700 | TX/RX | Time code distribution |
-| ArtTimeSync | 0x9800 | TX/RX | Time synchronization |
-| ArtTrigger | 0x9900 | TX/RX | Trigger macros/show keys |
-| ArtDirectory | 0x9A00 | TX/RX | Directory request |
-| ArtDirectoryReply | 0x9B00 | TX/RX | Directory response |
-| ArtFirmwareMaster | 0xF200 | TX/RX | Firmware upload |
-| ArtFirmwareReply | 0xF300 | TX/RX | Firmware upload response |
-| ArtFileTnMaster | 0xF400 | TX/RX | File upload to node |
-| ArtFileFnMaster | 0xF500 | TX/RX | File download from node |
-| ArtFileFnReply | 0xF600 | TX/RX | File download response |
-| ArtIpProg | 0xF800 | TX/RX | IP programming |
-| ArtIpProgReply | 0xF900 | TX/RX | IP programming response |
+| Packet | Opcode | Direction | Library Behavior |
+|--------|--------|-----------|------------------|
+| ArtPoll | 0x2000 | TX/RX | Built-in discovery handling and delayed `ArtPollReply` scheduling |
+| ArtPollReply | 0x2100 | TX/RX | Built-in reply generation and node list maintenance |
+| ArtDiagData | 0x2300 | TX/RX | Validated packet transport and callback dispatch |
+| ArtCommand | 0x2400 | TX/RX | Validated packet transport and callback dispatch |
+| ArtDataRequest | 0x2700 | TX/RX | Validated packet transport and callback dispatch |
+| ArtDataReply | 0x2800 | TX/RX | Validated packet transport and callback dispatch |
+| ArtDmx | 0x5000 | TX/RX | Built-in DMX buffering, merge, keepalive, fail-safe, and sync interaction |
+| ArtNzs | 0x5100 | TX/RX | Built-in receive state update and transmit support |
+| ArtSync | 0x5200 | TX/RX | Built-in sync buffering and flush behavior |
+| ArtAddress | 0x6000 | TX/RX | Built-in remote programming and `ArtPollReply` update |
+| ArtInput | 0x7000 | TX/RX | Built-in input enable/disable handling and `ArtPollReply` update |
+| ArtTodRequest | 0x8000 | TX/RX | Built-in TOD request routing and reply targeting |
+| ArtTodData | 0x8100 | TX/RX | Built-in TOD packet generation plus validated callback dispatch |
+| ArtTodControl | 0x8200 | TX/RX | Built-in discovery control handling and TOD reply generation |
+| ArtRdm | 0x8300 | TX/RX | Built-in reply targeting plus application RDM callback delivery |
+| ArtRdmSub | 0x8400 | TX/RX | Built-in reply targeting plus validated callback dispatch |
+| ArtMedia | 0x9000 | RX | Validated packet transport and callback dispatch |
+| ArtMediaPatch | 0x9100 | TX/RX | Validated packet transport and callback dispatch |
+| ArtMediaControl | 0x9200 | TX/RX | Validated packet transport and callback dispatch |
+| ArtMediaControlReply | 0x9300 | RX | Validated packet transport and dedicated reply callback dispatch |
+| ArtTimeCode | 0x9700 | TX/RX | Validated packet transport and callback dispatch |
+| ArtTimeSync | 0x9800 | TX/RX | Validated packet transport and callback dispatch |
+| ArtTrigger | 0x9900 | TX/RX | Validated packet transport and callback dispatch |
+| ArtDirectory | 0x9A00 | TX/RX | Built-in request handling and empty directory reply generation |
+| ArtDirectoryReply | 0x9B00 | TX/RX | Built-in transmit support plus validated callback dispatch |
+| ArtFirmwareMaster | 0xF200 | TX/RX | Built-in firmware upload state machine |
+| ArtFirmwareReply | 0xF300 | TX/RX | Built-in firmware upload response state machine |
+| ArtFileTnMaster | 0xF400 | TX/RX | Built-in receive acknowledgement plus application firmware callback bridge |
+| ArtFileFnMaster | 0xF500 | TX/RX | Built-in reply targeting plus callback dispatch |
+| ArtFileFnReply | 0xF600 | TX/RX | Built-in transmit support plus validated callback dispatch |
+| ArtIpProg | 0xF800 | TX/RX | Built-in IP programming query/program handling |
+| ArtIpProgReply | 0xF900 | TX/RX | Built-in reply generation |
 
 ## API Overview
 
@@ -555,17 +604,20 @@ artnet_send_file_fn_master(node, entry, "filename");
 ### TimeCode, Trigger, Sync, Diagnostics
 
 ```c
-artnet_send_timecode(node, frames, sec, min, hour, ARTNET_TC_FILM, 0);
+artnet_send_timecode(node, frames, sec, min, hour, ARTNET_TIMECODE_FILM, 0);
 artnet_send_timesync(node, tm_sec, tm_min, tm_hour, tm_mday, tm_mon, tm_year);
 artnet_send_trigger(node, oem_hi, oem_lo, key, sub_key, data, len);
 artnet_send_sync(node);                               // synchronize DMX output
 artnet_send_diagnostic(node, ARTNET_DIAG_LOW, port, "message");
 ```
 
+`artnet_send_timesync()` uses `struct tm`-style fields for month and year.
+
 ### Directory & Data
 
 ```c
 artnet_send_directory(node);                          // query file listings
+artnet_send_data_request(node, ip, request_code);    // query node metadata / URLs
 artnet_send_directory_reply(node, entries, count, total);
 artnet_send_data_reply(node, ip, request_code, payload, length);
 ```
@@ -587,10 +639,10 @@ artnet_strerror();                                   // last error string
 
 ### Callbacks
 
-Register callbacks to handle incoming packets:
+Register callbacks to handle incoming packets. Use these both for passive packet observation and for opcodes where application-specific behavior is expected:
 
 ```c
-// Generic handler for any packet type
+// Generic packet handler for a specific opcode
 artnet_set_handler(node, ARTNET_DMX_HANDLER, my_callback, user_data);
 
 // Convenience helpers for common callbacks
@@ -602,7 +654,7 @@ artnet_set_firmware_handler(node, my_fw_callback, NULL);
 artnet_set_program_handler(node, my_prog_callback, NULL);
 ```
 
-All 30 handler types are available via `artnet_set_handler()`: `ARTNET_RECV_HANDLER`, `ARTNET_POLL_HANDLER`, `ARTNET_REPLY_HANDLER`, `ARTNET_DMX_HANDLER`, `ARTNET_ADDRESS_HANDLER`, `ARTNET_INPUT_HANDLER`, `ARTNET_SYNC_HANDLER`, `ARTNET_NZS_HANDLER`, `ARTNET_TOD_REQUEST_HANDLER`, `ARTNET_TOD_DATA_HANDLER`, `ARTNET_TOD_CONTROL_HANDLER`, `ARTNET_RDM_HANDLER`, `ARTNET_IPPROG_HANDLER`, `ARTNET_FIRMWARE_HANDLER`, `ARTNET_FIRMWARE_REPLY_HANDLER`, `ARTNET_DIAGDATA_HANDLER`, `ARTNET_COMMAND_HANDLER`, `ARTNET_TIMECODE_HANDLER`, `ARTNET_TIMESYNC_HANDLER`, `ARTNET_TRIGGER_HANDLER`, `ARTNET_DIRECTORY_HANDLER`, `ARTNET_DIRECTORY_REPLY_HANDLER`, `ARTNET_FILE_TN_MASTER_HANDLER`, `ARTNET_FILE_FN_MASTER_HANDLER`, `ARTNET_FILE_FN_REPLY_HANDLER`, `ARTNET_MEDIAPATCH_HANDLER`, `ARTNET_MEDIA_HANDLER`, `ARTNET_MEDIACONTROL_HANDLER`, `ARTNET_DATAREQUEST_HANDLER`, `ARTNET_DATAREPLY_HANDLER`. See `artnet.h` for the complete list.
+All 31 handler types are available via `artnet_set_handler()`: `ARTNET_RECV_HANDLER`, `ARTNET_POLL_HANDLER`, `ARTNET_REPLY_HANDLER`, `ARTNET_DMX_HANDLER`, `ARTNET_ADDRESS_HANDLER`, `ARTNET_INPUT_HANDLER`, `ARTNET_SYNC_HANDLER`, `ARTNET_NZS_HANDLER`, `ARTNET_TOD_REQUEST_HANDLER`, `ARTNET_TOD_DATA_HANDLER`, `ARTNET_TOD_CONTROL_HANDLER`, `ARTNET_RDM_HANDLER`, `ARTNET_IPPROG_HANDLER`, `ARTNET_FIRMWARE_HANDLER`, `ARTNET_FIRMWARE_REPLY_HANDLER`, `ARTNET_DIAGDATA_HANDLER`, `ARTNET_COMMAND_HANDLER`, `ARTNET_TIMECODE_HANDLER`, `ARTNET_TIMESYNC_HANDLER`, `ARTNET_TRIGGER_HANDLER`, `ARTNET_DIRECTORY_HANDLER`, `ARTNET_DIRECTORY_REPLY_HANDLER`, `ARTNET_FILE_TN_MASTER_HANDLER`, `ARTNET_FILE_FN_MASTER_HANDLER`, `ARTNET_FILE_FN_REPLY_HANDLER`, `ARTNET_MEDIAPATCH_HANDLER`, `ARTNET_MEDIA_HANDLER`, `ARTNET_MEDIACONTROL_HANDLER`, `ARTNET_MEDIACONTROL_REPLY_HANDLER`, `ARTNET_DATAREQUEST_HANDLER`, `ARTNET_DATAREPLY_HANDLER`. See `artnet.h` for the complete list.
 
 ## License
 

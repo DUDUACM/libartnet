@@ -27,6 +27,7 @@
 #include <ctype.h>
 #include <math.h>
 #include <time.h>
+#include <sys/select.h>
 #include <artnet/artnet.h>
 #include <artnet/packets.h>
 #include <artnet/common.h>
@@ -37,6 +38,9 @@
 
 static volatile int running = 1;
 static volatile int dmx_active = 0;
+static uint8_t g_file_download_buf[ARTNET_FIRMWARE_SIZE * sizeof(uint16_t) * 16];
+static int g_file_download_total = -1;
+static int g_file_download_received = 0;
 
 /* ---- Helpers ---- */
 
@@ -162,12 +166,40 @@ static int file_fn_reply_handler(artnet_node n, void *pp, void *data) {
   (void)n; (void)data;
   artnet_packet packet = (artnet_packet)pp;
   artnet_file_fn_reply_t *r = &packet->data.filefnr;
-
   int totalLen = ((int)r->fileLengthHi << 8) | r->fileLengthLo;
-  printf("\n[FileFnReply] block=%d totalLen=%d\n", r->blockId, totalLen);
+  int payloadLen = packet->length - ((int)sizeof(artnet_file_fn_reply_t) -
+                                     ARTNET_FIRMWARE_SIZE * (int)sizeof(uint16_t));
+  int offset = r->blockId * ARTNET_FIRMWARE_SIZE * (int)sizeof(uint16_t);
+
+  if (g_file_download_total != totalLen) {
+    g_file_download_total = totalLen;
+    g_file_download_received = 0;
+    memset(g_file_download_buf, 0, sizeof(g_file_download_buf));
+  }
+
+  if (payloadLen > 0 && offset >= 0 &&
+      offset + payloadLen <= (int)sizeof(g_file_download_buf)) {
+    memcpy(g_file_download_buf + offset, r->data, (size_t)payloadLen);
+    if (offset + payloadLen > g_file_download_received) {
+      g_file_download_received = offset + payloadLen;
+    }
+  }
+
+  printf("\n[FileFnReply] block=%d totalLen=%d received=%d\n",
+         r->blockId, totalLen, g_file_download_received);
   printf("  Data (first 16 bytes):");
-  for (int i = 0; i < 16 && i < 32; i++)
+  for (int i = 0; i < 16 && i < payloadLen; i++)
     printf(" %02X", ((uint8_t *)r->data)[i]);
+  if (g_file_download_total > 0 && g_file_download_received >= g_file_download_total) {
+    printf("\n  Complete file: ");
+    for (int i = 0; i < g_file_download_total; i++) {
+      uint8_t c = g_file_download_buf[i];
+      if (c >= 0x20 && c < 0x7F)
+        printf("%c", c);
+      else
+        printf("\\x%02X", c);
+    }
+  }
   printf("\n> ");
   fflush(stdout);
   return 0;
@@ -181,6 +213,29 @@ static int directory_reply_handler(artnet_node n, void *pp, void *data) {
   int count = ((int)r->dirCountHi << 8) | r->dirCountLo;
   int total = ((int)r->dirTotalHi << 8) | r->dirTotalLo;
   printf("\n[DirectoryReply] entries=%d total=%d\n", count, total);
+  if (count > 0) {
+    int start = 0;
+    while (start < count) {
+      printf("  - %s\n", (char *)&r->dirEntry[start]);
+      start += (int)strlen((char *)&r->dirEntry[start]) + 1;
+    }
+  }
+  printf("> ");
+  fflush(stdout);
+  return 0;
+}
+
+static int data_reply_handler(artnet_node n, void *pp, void *data) {
+  (void)n; (void)data;
+  artnet_packet packet = (artnet_packet)pp;
+  artnet_data_reply_t *r = &packet->data.datarep;
+  int request = ((int)r->requestHi << 8) | r->requestLo;
+  int payload_len = ((int)r->payLenHi << 8) | r->payLenLo;
+
+  printf("\n[DataReply] request=0x%04X payloadLen=%d\n", request, payload_len);
+  if (payload_len > 0) {
+    printf("  Payload: %.*s\n", payload_len, (char *)r->payLoad);
+  }
   printf("> ");
   fflush(stdout);
   return 0;
@@ -337,20 +392,31 @@ static void cmd_dmx_flood(artnet_node n) {
   int tick = 0;
 
   while (dmx_active && running) {
-    artnet_read(n, 0);
-
-    /* Check stdin for stop command */
     fd_set fds;
     struct timeval tv = {0, 0};
+    artnet_socket_t sd = artnet_get_sd(n);
+    int maxfd = 0;
     FD_ZERO(&fds);
+    if (sd >= 0) {
+      FD_SET((int)sd, &fds);
+      maxfd = (int)sd;
+    }
     FD_SET(0, &fds);
-    if (select(1, &fds, NULL, NULL, &tv) > 0 && FD_ISSET(0, &fds)) {
+    if (maxfd < 0) {
+      maxfd = 0;
+    }
+    if (select(maxfd + 1, &fds, NULL, NULL, &tv) > 0) {
+      if (sd >= 0 && FD_ISSET((int)sd, &fds)) {
+        artnet_read(n, 0);
+      }
+      if (FD_ISSET(0, &fds)) {
       char cmd[16];
       if (fgets(cmd, sizeof(cmd), stdin)) {
         if (cmd[0] == 'd' || cmd[0] == 'q') {
           dmx_active = 0;
           break;
         }
+      }
       }
     }
 
@@ -567,7 +633,7 @@ static void cmd_timesync(artnet_node n) {
 
   int ret = artnet_send_timesync(n, (uint8_t)t->tm_sec, (uint8_t)t->tm_min,
                                   (uint8_t)t->tm_hour, (uint8_t)t->tm_mday,
-                                  (uint8_t)(t->tm_mon + 1), (uint8_t)(t->tm_year));
+                                  (uint8_t)t->tm_mon, (uint8_t)t->tm_year);
   printf("[TimeSync] %04d-%02d-%02d %02d:%02d:%02d: %s\n",
          t->tm_year + 1900, t->tm_mon + 1, t->tm_mday,
          t->tm_hour, t->tm_min, t->tm_sec,
@@ -661,11 +727,11 @@ static void cmd_data_request(artnet_node n) {
     return;
   }
 
-  printf("  Request code: 0=Poll 1=ProductURL 2=UserGuide 3=SupportURL\n");
+  printf("  Request code: 0=Poll 1=ProductURL 2=UserGuide 3=SupportURL 4=PersUDR 5=PersGDTF\n");
   int code = read_int("  Code (default 0): ", 0);
 
-  int ret = artnet_send_data_reply(n, ip_buf, (uint16_t)code, NULL, 0);
-  printf("[DataReply] %s\n", ret == ARTNET_EOK ? "OK" : artnet_strerror());
+  int ret = artnet_send_data_request(n, ip_buf, (uint16_t)code);
+  printf("[DataRequest] %s\n", ret == ARTNET_EOK ? "OK" : artnet_strerror());
 }
 
 static void cmd_short_name(artnet_node n) {
@@ -844,6 +910,7 @@ int main(int argc, char *argv[]) {
   artnet_set_handler(node, ARTNET_FIRMWARE_REPLY_HANDLER, firmware_reply_handler, NULL);
   artnet_set_handler(node, ARTNET_FILE_FN_REPLY_HANDLER, file_fn_reply_handler, NULL);
   artnet_set_handler(node, ARTNET_DIRECTORY_REPLY_HANDLER, directory_reply_handler, NULL);
+  artnet_set_handler(node, ARTNET_DATAREPLY_HANDLER, data_reply_handler, NULL);
   artnet_set_handler(node, ARTNET_SYNC_HANDLER, sync_handler, NULL);
   artnet_set_handler(node, ARTNET_TIMECODE_HANDLER, timecode_handler, NULL);
   artnet_set_handler(node, ARTNET_TIMESYNC_HANDLER, timesync_handler, NULL);
@@ -866,16 +933,39 @@ int main(int argc, char *argv[]) {
   print_menu();
 
   while (running) {
-    artnet_read(node, 0);
-
-    if (dmx_active) continue;
-
     fd_set fds;
     struct timeval tv = {0, 100000};
-    FD_ZERO(&fds);
-    FD_SET(0, &fds);
+    artnet_socket_t sd = artnet_get_sd(node);
+    int maxfd = 0;
 
-    if (select(1, &fds, NULL, NULL, &tv) > 0 && FD_ISSET(0, &fds)) {
+    FD_ZERO(&fds);
+    if (sd >= 0) {
+      FD_SET((int)sd, &fds);
+      maxfd = (int)sd;
+    }
+    FD_SET(0, &fds);
+    if (maxfd < 0) {
+      maxfd = 0;
+    }
+
+    if (maxfd < 0) {
+      maxfd = 0;
+    }
+
+    int ready = select(maxfd + 1, &fds, NULL, NULL, &tv);
+    if (ready < 0) {
+      continue;
+    }
+
+    if (sd >= 0 && FD_ISSET((int)sd, &fds)) {
+      artnet_read(node, 0);
+    }
+
+    if (dmx_active) {
+      continue;
+    }
+
+    if (FD_ISSET(0, &fds)) {
       if (!fgets(cmd, sizeof(cmd), stdin)) break;
 
       switch (cmd[0]) {

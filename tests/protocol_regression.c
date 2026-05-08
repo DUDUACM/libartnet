@@ -59,6 +59,7 @@ void handle_rdm_sub(node n, artnet_packet p);
 void check_merge_timeouts(node n, int port_id);
 int handle_firmware(node n, artnet_packet p);
 int handle_firmware_reply(node n, artnet_packet p);
+int handle_file_tn_master(node n, artnet_packet p);
 int handle_tod_request(node n, artnet_packet p);
 int handle_tod_control(node n, artnet_packet p);
 static struct in_addr ip4(const char *text);
@@ -158,6 +159,8 @@ static void init_packet(artnet_packet_t *p, artnet_packet_type_t type, struct in
   memset(p, 0, sizeof(*p));
   memcpy(p->data.ap.id, k_artnet_id, sizeof(k_artnet_id));
   p->data.ap.opCode = htols(type);
+  p->data.ap.verH = 0;
+  p->data.ap.ver = ARTNET_VERSION;
   p->length = (int)sizeof(artnet_packet_t);
   p->from = from;
   p->type = type;
@@ -376,7 +379,7 @@ static void test_address_programming_updates_node_state_and_replies(void) {
   start_sendable_node(&n);
   n.callbacks.send.fh = send_capture_handler;
   n.callbacks.send.data = &send_capture;
-  n.state.reply_addr = requester;
+  n.state.reply_addr = ip4("127.0.0.199");
   n.state.default_netSwitch = 0;
   n.state.default_subSwitch = 0;
   n.state.netSwitch = 0;
@@ -417,6 +420,8 @@ static void test_address_programming_updates_node_state_and_replies(void) {
               "handle_address should emit one ArtPollReply");
   ASSERT_TRUE(send_capture.type == ARTNET_REPLY,
               "handle_address should respond with ArtPollReply");
+  ASSERT_TRUE(send_capture.to.s_addr == requester.s_addr,
+              "handle_address should unicast ArtPollReply to the current requester");
 
   stop_sendable_node(&n);
 }
@@ -501,7 +506,7 @@ static void test_input_disable_and_enable_updates_port_status_and_reply(void) {
   start_sendable_node(&n);
   n.callbacks.send.fh = send_capture_handler;
   n.callbacks.send.data = &send_capture;
-  n.state.reply_addr = requester;
+  n.state.reply_addr = ip4("127.0.0.198");
 
   init_packet(&p, ARTNET_INPUT, requester);
   p.data.ainput.numbports = 1;
@@ -513,6 +518,8 @@ static void test_input_disable_and_enable_updates_port_status_and_reply(void) {
               "_artnet_handle_input should set input disabled bit");
   ASSERT_TRUE(send_capture.called == 1 && send_capture.type == ARTNET_REPLY,
               "_artnet_handle_input should respond with ArtPollReply after disable");
+  ASSERT_TRUE(send_capture.to.s_addr == requester.s_addr,
+              "_artnet_handle_input should reply to the current requester after disable");
 
   send_capture.called = 0;
   p.data.ainput.input[0] = 0x00;
@@ -522,6 +529,8 @@ static void test_input_disable_and_enable_updates_port_status_and_reply(void) {
               "_artnet_handle_input should clear input disabled bit");
   ASSERT_TRUE(send_capture.called == 1 && send_capture.type == ARTNET_REPLY,
               "_artnet_handle_input should respond with ArtPollReply after enable");
+  ASSERT_TRUE(send_capture.to.s_addr == requester.s_addr,
+              "_artnet_handle_input should reply to the current requester after enable");
 
   stop_sendable_node(&n);
 }
@@ -539,6 +548,7 @@ static void test_poll_reply_build_populates_artnet4_fields(void) {
   n.state.status3 = ARTNET_STATUS3_PORT_DIRECTION | ARTNET_STATUS3_RDMNET;
   n.state.failsafe_mode = ARTNET_FAILSAFE_SCENE;
   n.state.bqp_policy = ARTNET_BQP_WARNING;
+  n.state.refresh_rate = 44;
   memcpy(n.state.default_resp_uid, uid, sizeof(uid));
   n.ports.types[0] = ARTNET_ENABLE_OUTPUT | ARTNET_PORT_DMX;
   n.ports.out[0].port_enabled = TRUE;
@@ -556,18 +566,45 @@ static void test_poll_reply_build_populates_artnet4_fields(void) {
               "PollReply should mark root device bind index");
   ASSERT_TRUE(memcmp(reply->bindIp, &n.state.ip_addr.s_addr, ARTNET_IP_SIZE) == 0,
               "PollReply should publish bind IP equal to node IP");
+  ASSERT_TRUE(reply->estaMan[0] == 0x34 && reply->estaMan[1] == 0x12,
+              "PollReply should encode ESTA manufacturer bytes in wire-order low/high");
   ASSERT_TRUE(reply->status2 == n.state.status2,
               "PollReply should carry Status2 flags");
+  ASSERT_TRUE((reply->status & STATUS_PROG_AUTH_MASK) == 0x10,
+              "PollReply should default programming authority to front-panel/local control");
   ASSERT_TRUE(reply->status3 == (uint8_t)(ARTNET_FAILSAFE_SCENE | n.state.status3),
               "PollReply should combine failsafe mode with Status3 flags");
   ASSERT_TRUE(reply->goodOutputB[0] == (ARTNET_GOODB_RDM_DISABLED | ARTNET_GOODB_STYLE_CONSTANT),
               "PollReply should publish GoodOutputB state for RDM disabled and constant style");
-  ASSERT_TRUE(reply->refreshRateHi == 0 && reply->refreshRateLo == 0,
-              "PollReply should publish default refresh rate");
+  ASSERT_TRUE(reply->refreshRateHi == 0 && reply->refreshRateLo == 44,
+              "PollReply should publish configured refresh rate");
   ASSERT_TRUE(reply->bgQueuePolicy == ARTNET_BQP_WARNING,
               "PollReply should publish background queue policy");
   ASSERT_TRUE(memcmp(reply->defaultRespUid, uid, sizeof(uid)) == 0,
               "PollReply should publish default responder UID");
+}
+
+static void test_poll_reply_build_marks_network_programming_and_bg_discovery_state(void) {
+  artnet_node_t n;
+  artnet_reply_t *reply = NULL;
+
+  init_test_node(&n);
+  n.state.mode = ARTNET_ON;
+  n.state.netSwitch_net_ctl = TRUE;
+  n.state.bqp_policy = ARTNET_BQP_DISABLED;
+  n.ports.types[0] = ARTNET_ENABLE_OUTPUT | ARTNET_PORT_DMX;
+  n.ports.out[0].port_enabled = TRUE;
+  n.ports.out[0].rdm_enabled = 1;
+  n.ports.out[0].output_style = 0;
+
+  ASSERT_TRUE(artnet_tx_build_art_poll_reply(&n) == ARTNET_EOK,
+              "artnet_tx_build_art_poll_reply should succeed for network-programmed state");
+
+  reply = &n.ar_temp;
+  ASSERT_TRUE((reply->status & STATUS_PROG_AUTH_MASK) == 0x20,
+              "PollReply should mark programming authority as network-controlled when remote programming is active");
+  ASSERT_TRUE(reply->goodOutputB[0] == (ARTNET_GOODB_DISCOVERY_IDLE | ARTNET_GOODB_BG_DISCOVERY_DISABLED),
+              "PollReply should publish discovery idle and background discovery disabled bits when applicable");
 }
 
 static void test_send_dmx_unicasts_to_matching_subscribers_only(void) {
@@ -642,6 +679,36 @@ static void test_send_nzs_unicasts_and_preserves_start_code(void) {
   stop_sendable_node(&n);
 }
 
+static void test_send_data_request_encodes_target_and_request_code(void) {
+  artnet_node_t n;
+  send_capture_t send_capture = {0};
+
+  init_test_node(&n);
+  start_sendable_node(&n);
+  n.callbacks.send.fh = send_capture_handler;
+  n.callbacks.send.data = &send_capture;
+
+  ASSERT_TRUE(artnet_send_data_request((artnet_node)&n, "192.168.1.55", ARTNET_DR_URL_PRODUCT) == ARTNET_EOK,
+              "artnet_send_data_request should succeed for a valid target");
+  ASSERT_TRUE(send_capture.called == 1,
+              "artnet_send_data_request should emit one outbound packet");
+  ASSERT_TRUE(send_capture.type == ARTNET_DATAREQUEST,
+              "artnet_send_data_request should send an ArtDataRequest packet");
+  ASSERT_TRUE(send_capture.to.s_addr == ip4("192.168.1.55").s_addr,
+              "artnet_send_data_request should target the requested IP address");
+  ASSERT_TRUE(send_capture.data.datareq.requestHi == 0x00 &&
+              send_capture.data.datareq.requestLo == 0x01,
+              "artnet_send_data_request should encode the selected request code");
+  ASSERT_TRUE(send_capture.data.datareq.estaManHi == 0x12 &&
+              send_capture.data.datareq.estaManLo == 0x34,
+              "artnet_send_data_request should include the node ESTA code");
+  ASSERT_TRUE(send_capture.data.datareq.oemHi == 0x56 &&
+              send_capture.data.datareq.oemLo == 0x78,
+              "artnet_send_data_request should include the node OEM code");
+
+  stop_sendable_node(&n);
+}
+
 static void test_sync_only_accepts_matching_last_dmx_source(void) {
   artnet_node_t n;
   artnet_packet_t sync_packet;
@@ -659,6 +726,102 @@ static void test_sync_only_accepts_matching_last_dmx_source(void) {
   handle_sync(&n, &sync_packet);
   ASSERT_TRUE(n.state.sync_mode == 1,
               "handle_sync should accept ArtSync from the same source as the last ArtDmx");
+}
+
+static void test_sync_buffers_dmx_until_sync_flush(void) {
+  artnet_node_t n;
+  artnet_packet_t dmx_packet;
+  artnet_packet_t sync_packet;
+  rdm_init_capture_t dmx_capture = {0};
+
+  init_test_node(&n);
+  n.ports.out[0].port_enabled = TRUE;
+  n.ports.out[0].port_addr = make_addr(1, 2, 3);
+  n.state.sync_mode = 1;
+  n.callbacks.dmx_c.fh = rdm_init_handler;
+  n.callbacks.dmx_c.data = &dmx_capture;
+
+  init_packet(&dmx_packet, ARTNET_DMX, ip4("10.8.8.8"));
+  dmx_packet.length = (int)(sizeof(artnet_dmx_t) - ARTNET_DMX_LENGTH + 3);
+  dmx_packet.data.admx.universe = htols(make_addr(1, 2, 3));
+  dmx_packet.data.admx.lengthHi = 0;
+  dmx_packet.data.admx.length = 3;
+  dmx_packet.data.admx.data[0] = 11;
+  dmx_packet.data.admx.data[1] = 22;
+  dmx_packet.data.admx.data[2] = 33;
+
+  handle_dmx(&n, &dmx_packet);
+
+  ASSERT_TRUE(n.ports.out[0].sync_pending == TRUE,
+              "handle_dmx should buffer output data while sync mode is active");
+  ASSERT_TRUE(n.ports.out[0].length == 0,
+              "buffered ArtDmx should not update live output length before ArtSync");
+  ASSERT_TRUE(dmx_capture.called == 0,
+              "buffered ArtDmx should not trigger the DMX callback before ArtSync");
+
+  init_packet(&sync_packet, ARTNET_SYNC, ip4("10.8.8.8"));
+  handle_sync(&n, &sync_packet);
+
+  ASSERT_TRUE(n.ports.out[0].sync_pending == FALSE,
+              "handle_sync should flush buffered ArtDmx data");
+  ASSERT_TRUE(n.ports.out[0].length == 3,
+              "handle_sync should commit buffered ArtDmx length");
+  ASSERT_TRUE(n.ports.out[0].data[0] == 11 &&
+              n.ports.out[0].data[1] == 22 &&
+              n.ports.out[0].data[2] == 33,
+              "handle_sync should commit buffered ArtDmx payload");
+  ASSERT_TRUE(dmx_capture.called == 1 && dmx_capture.port == 0,
+              "handle_sync should trigger the DMX callback when flushing buffered data");
+}
+
+static void test_sync_flushes_same_ip_different_physical_merge(void) {
+  artnet_node_t n;
+  artnet_packet_t p1;
+  artnet_packet_t p2;
+  artnet_packet_t sync_packet;
+  rdm_init_capture_t dmx_capture = {0};
+
+  init_test_node(&n);
+  n.ports.out[0].port_enabled = TRUE;
+  n.ports.out[0].port_addr = make_addr(1, 2, 3);
+  n.ports.out[0].merge_mode = ARTNET_MERGE_LTP;
+  n.state.sync_mode = 1;
+  n.state.last_dmx_source = ip4("10.40.40.1");
+  n.callbacks.dmx_c.fh = rdm_init_handler;
+  n.callbacks.dmx_c.data = &dmx_capture;
+
+  init_packet(&p1, ARTNET_DMX, ip4("10.40.40.1"));
+  p1.data.admx.universe = htols(make_addr(1, 2, 3));
+  p1.data.admx.lengthHi = 0;
+  p1.data.admx.length = 2;
+  p1.data.admx.physical = 1;
+  p1.data.admx.data[0] = 10;
+  p1.data.admx.data[1] = 20;
+
+  init_packet(&p2, ARTNET_DMX, ip4("10.40.40.1"));
+  p2.data.admx.universe = htols(make_addr(1, 2, 3));
+  p2.data.admx.lengthHi = 0;
+  p2.data.admx.length = 2;
+  p2.data.admx.physical = 2;
+  p2.data.admx.data[0] = 30;
+  p2.data.admx.data[1] = 40;
+
+  handle_dmx(&n, &p1);
+  handle_dmx(&n, &p2);
+  ASSERT_TRUE((n.ports.out[0].port_status & PORT_STATUS_MERGE) != 0,
+              "setup should enter merge mode for same-IP different-Physical sources");
+  ASSERT_TRUE(n.ports.out[0].sync_pending == TRUE,
+              "merged output should remain buffered while sync mode is active");
+
+  init_packet(&sync_packet, ARTNET_SYNC, ip4("10.40.40.1"));
+  handle_sync(&n, &sync_packet);
+
+  ASSERT_TRUE(n.ports.out[0].sync_pending == FALSE,
+              "ArtSync should flush buffered data for same-IP different-Physical merge");
+  ASSERT_TRUE(n.ports.out[0].data[0] == 30 && n.ports.out[0].data[1] == 40,
+              "same-IP different-Physical merge should still flush the merged/latest frame");
+  ASSERT_TRUE(dmx_capture.called == 1 && dmx_capture.port == 0,
+              "ArtSync should still trigger the DMX callback for same-IP different-Physical merge");
 }
 
 static void test_rdm_request_updates_reply_target_and_callback_payload(void) {
@@ -827,6 +990,99 @@ static void test_dmx_merge_htp_ltp_and_timeout_cleanup(void) {
               "merge timeout should clear merge mode when sources expire");
 }
 
+static void test_dmx_merge_detects_same_ip_different_physical(void) {
+  artnet_node_t n;
+  artnet_packet_t p1;
+  artnet_packet_t p2;
+
+  init_test_node(&n);
+  n.ports.out[0].port_enabled = TRUE;
+  n.ports.out[0].port_addr = make_addr(0x01, 0x02, 0x03);
+  n.ports.out[0].merge_mode = ARTNET_MERGE_HTP;
+
+  init_packet(&p1, ARTNET_DMX, ip4("10.20.30.1"));
+  p1.data.admx.universe = htols(make_addr(0x01, 0x02, 0x03));
+  p1.data.admx.lengthHi = 0;
+  p1.data.admx.length = 2;
+  p1.data.admx.physical = 1;
+  p1.data.admx.data[0] = 10;
+  p1.data.admx.data[1] = 40;
+
+  init_packet(&p2, ARTNET_DMX, ip4("10.20.30.1"));
+  p2.data.admx.universe = htols(make_addr(0x01, 0x02, 0x03));
+  p2.data.admx.lengthHi = 0;
+  p2.data.admx.length = 2;
+  p2.data.admx.physical = 2;
+  p2.data.admx.data[0] = 30;
+  p2.data.admx.data[1] = 20;
+
+  handle_dmx(&n, &p1);
+  handle_dmx(&n, &p2);
+
+  ASSERT_TRUE((n.ports.out[0].port_status & PORT_STATUS_MERGE) != 0,
+              "ArtDmx from the same IP but different Physical should enter merge mode");
+  ASSERT_TRUE(n.ports.out[0].data[0] == 30 && n.ports.out[0].data[1] == 40,
+              "same-IP different-Physical merge should still apply the selected merge mode");
+}
+
+static void test_address_cancel_merge_ends_merge_on_next_dmx(void) {
+  artnet_node_t n;
+  artnet_packet_t p1;
+  artnet_packet_t p2;
+  artnet_packet_t addr;
+
+  init_test_node(&n);
+  n.ports.out[0].port_enabled = TRUE;
+  n.ports.out[0].port_addr = make_addr(0x01, 0x02, 0x03);
+  n.ports.out[0].merge_mode = ARTNET_MERGE_HTP;
+
+  init_packet(&p1, ARTNET_DMX, ip4("10.30.30.1"));
+  p1.data.admx.universe = htols(make_addr(0x01, 0x02, 0x03));
+  p1.data.admx.lengthHi = 0;
+  p1.data.admx.length = 2;
+  p1.data.admx.data[0] = 10;
+  p1.data.admx.data[1] = 50;
+
+  init_packet(&p2, ARTNET_DMX, ip4("10.30.30.2"));
+  p2.data.admx.universe = htols(make_addr(0x01, 0x02, 0x03));
+  p2.data.admx.lengthHi = 0;
+  p2.data.admx.length = 2;
+  p2.data.admx.data[0] = 20;
+  p2.data.admx.data[1] = 40;
+
+  handle_dmx(&n, &p1);
+  handle_dmx(&n, &p2);
+  ASSERT_TRUE((n.ports.out[0].port_status & PORT_STATUS_MERGE) != 0,
+              "setup should enter merge mode before cancel");
+
+  init_packet(&addr, ARTNET_ADDRESS, ip4("127.0.0.240"));
+  memset(addr.data.addr.shortName, PROGRAM_NO_CHANGE, ARTNET_SHORT_NAME_LENGTH);
+  memset(addr.data.addr.longName, PROGRAM_NO_CHANGE, ARTNET_LONG_NAME_LENGTH);
+  memset(addr.data.addr.swIn, PROGRAM_NO_CHANGE, ARTNET_MAX_PORTS);
+  memset(addr.data.addr.swOut, PROGRAM_NO_CHANGE, ARTNET_MAX_PORTS);
+  addr.data.addr.bindIndex = 1;
+  addr.data.addr.netSwitch = PROGRAM_NO_CHANGE;
+  addr.data.addr.subSwitch = PROGRAM_NO_CHANGE;
+  addr.data.addr.acnPriority = 0xFF;
+  addr.data.addr.command = ARTNET_PC_CANCEL;
+
+  handle_address(&n, &addr);
+  ASSERT_TRUE(n.ports.out[0].cancel_merge_pending == TRUE,
+              "AcCancelMerge should arm merge cancellation until the next ArtDmx");
+
+  p1.data.admx.data[0] = 60;
+  p1.data.admx.data[1] = 70;
+  handle_dmx(&n, &p1);
+
+  ASSERT_TRUE((n.ports.out[0].port_status & PORT_STATUS_MERGE) == 0,
+              "the next ArtDmx after AcCancelMerge should end merge mode");
+  ASSERT_TRUE(n.ports.out[0].cancel_merge_pending == FALSE,
+              "merge cancel flag should clear after the terminating ArtDmx");
+  ASSERT_TRUE(n.ports.out[0].ipA.s_addr == p1.from.s_addr &&
+              n.ports.out[0].ipB.s_addr == 0,
+              "after AcCancelMerge, the terminating ArtDmx source should become the sole active source");
+}
+
 static void test_firmware_single_block_upload_completes_and_replies_allgood(void) {
   artnet_node_t n;
   artnet_packet_t p;
@@ -851,8 +1107,8 @@ static void test_firmware_single_block_upload_completes_and_replies_allgood(void
               "single-block firmware upload should succeed");
   ASSERT_TRUE(fw_capture.called == 1,
               "single-block firmware upload should invoke the firmware callback");
-  ASSERT_TRUE(fw_capture.length == total_words * (int)sizeof(uint16_t),
-              "single-block firmware callback should receive the full byte length");
+  ASSERT_TRUE(fw_capture.length == total_words,
+              "single-block firmware callback should receive the full word count");
   ASSERT_TRUE(memcmp(fw_capture.data, words, sizeof(words)) == 0,
               "single-block firmware callback should receive the uploaded words");
   ASSERT_TRUE(send_capture.called == 1 &&
@@ -1124,15 +1380,22 @@ static void test_diag_unicast_then_broadcast_with_multiple_controllers(void) {
 static void test_sync_timeout_and_dmx_keepalive_retransmission(void) {
   artnet_node_t n;
   send_capture_t send_capture = {0};
+  rdm_init_capture_t dmx_capture = {0};
 
   init_test_node(&n);
   n.state.node_type = ARTNET_SRV;
   start_sendable_node(&n);
   n.callbacks.send.fh = send_capture_handler;
   n.callbacks.send.data = &send_capture;
+  n.callbacks.dmx_c.fh = rdm_init_handler;
+  n.callbacks.dmx_c.data = &dmx_capture;
 
   n.state.sync_mode = 1;
   n.state.last_sync_time = 1;
+  n.ports.out[0].sync_pending = TRUE;
+  n.ports.out[0].sync_length = 2;
+  n.ports.out[0].sync_data[0] = 55;
+  n.ports.out[0].sync_data[1] = 66;
 
   n.ports.in[0].port_enabled = TRUE;
   n.ports.in[0].port_addr = make_addr(1, 2, 6);
@@ -1147,6 +1410,13 @@ static void test_sync_timeout_and_dmx_keepalive_retransmission(void) {
 
   ASSERT_TRUE(n.state.sync_mode == 0,
               "check_timeouts should clear sync mode after ArtSync timeout");
+  ASSERT_TRUE(n.ports.out[0].sync_pending == FALSE &&
+              n.ports.out[0].length == 2 &&
+              n.ports.out[0].data[0] == 55 &&
+              n.ports.out[0].data[1] == 66,
+              "check_timeouts should flush pending sync output when sync mode times out");
+  ASSERT_TRUE(dmx_capture.called == 1 && dmx_capture.port == 0,
+              "check_timeouts should trigger the DMX callback when flushing timed-out sync data");
   ASSERT_TRUE(send_capture.called == 1 &&
               send_capture.type == ARTNET_DMX &&
               send_capture.to.s_addr == ip4("192.168.1.20").s_addr,
@@ -1347,6 +1617,11 @@ static void test_file_fn_master_updates_reply_target_and_reply_target_is_used(vo
 
   n.state.reply_addr = ip4("2.2.2.2");
   init_packet(&p, ARTNET_FILEFNMASTER, requester);
+  p.data.filefn.lengthHi = 0;
+  p.data.filefn.lengthLo = 8;
+  memcpy(p.data.filefn.filename, "test.bin", 8);
+  p.data.filefn.filename[8] = '\0';
+  p.length = (int)(sizeof(artnet_file_fn_master_t) - sizeof(p.data.filefn.filename) + 9);
 
   handle(&n, &p);
 
@@ -1550,6 +1825,481 @@ static void test_reply_tx_requires_reply_target(void) {
               "artnet_tx_file_fn_reply should fail with EACTION when reply_addr is unset");
 }
 
+static void test_handle_ignores_short_address_packet(void) {
+  artnet_node_t n;
+  artnet_packet_t p;
+  send_capture_t send_capture = {0};
+  struct in_addr requester = ip4("127.0.0.210");
+
+  init_test_node(&n);
+  start_sendable_node(&n);
+  n.callbacks.send.fh = send_capture_handler;
+  n.callbacks.send.data = &send_capture;
+  n.state.reply_addr = ip4("127.0.0.211");
+
+  init_packet(&p, ARTNET_ADDRESS, requester);
+  p.length = (int)sizeof(artnet_address_t) - 1;
+  memset(p.data.addr.shortName, 0, ARTNET_SHORT_NAME_LENGTH);
+  memcpy(p.data.addr.shortName, "ShortPkt", 8);
+  p.data.addr.netSwitch = 0x80 | 0x04;
+
+  handle(&n, &p);
+
+  ASSERT_TRUE(n.state.shortName[0] == '\0',
+              "handle should ignore short ArtAddress packets before changing node state");
+  ASSERT_TRUE(n.state.netSwitch == 0,
+              "handle should ignore short ArtAddress packets before changing network addressing");
+  ASSERT_TRUE(send_capture.called == 0,
+              "handle should ignore short ArtAddress packets before sending a reply");
+
+  stop_sendable_node(&n);
+}
+
+static void test_handle_ignores_legacy_protocol_version_packet(void) {
+  artnet_node_t n;
+  artnet_packet_t p;
+  simple_capture_t capture = {0};
+
+  init_test_node(&n);
+  n.callbacks.command.fh = simple_packet_handler;
+  n.callbacks.command.data = &capture;
+
+  init_packet(&p, ARTNET_COMMAND, ip4("127.0.0.220"));
+  p.data.cmd.verH = 0;
+  p.data.cmd.ver = ARTNET_VERSION - 1;
+
+  handle(&n, &p);
+
+  ASSERT_TRUE(capture.called == 0,
+              "handle should ignore packets from protocol versions older than Art-Net 4");
+  ASSERT_TRUE(n.state.report_code == ARTNET_RC_PARSE_FAIL,
+              "legacy protocol packets should update the node report to parse failure");
+}
+
+static void test_handle_ignores_invalid_dmx_length_packet(void) {
+  artnet_node_t n;
+  artnet_packet_t p;
+  rdm_init_capture_t dmx_capture = {0};
+
+  init_test_node(&n);
+  n.ports.out[0].port_enabled = TRUE;
+  n.ports.out[0].port_addr = make_addr(1, 2, 3);
+  n.callbacks.dmx_c.fh = rdm_init_handler;
+  n.callbacks.dmx_c.data = &dmx_capture;
+
+  init_packet(&p, ARTNET_DMX, ip4("127.0.0.221"));
+  p.length = (int)(sizeof(artnet_dmx_t) - ARTNET_DMX_LENGTH + 3);
+  p.data.admx.universe = htols(make_addr(1, 2, 3));
+  p.data.admx.lengthHi = 0;
+  p.data.admx.length = 3;
+  p.data.admx.data[0] = 1;
+  p.data.admx.data[1] = 2;
+  p.data.admx.data[2] = 3;
+
+  handle(&n, &p);
+
+  ASSERT_TRUE(dmx_capture.called == 0,
+              "handle should ignore ArtDmx packets with odd payload lengths");
+  ASSERT_TRUE(n.ports.out[0].length == 0,
+              "invalid ArtDmx packets should not update output state");
+  ASSERT_TRUE(n.state.report_code == ARTNET_RC_PARSE_FAIL,
+              "invalid ArtDmx packets should update the node report to parse failure");
+}
+
+static void test_handle_ignores_invalid_address_acn_priority(void) {
+  artnet_node_t n;
+  artnet_packet_t p;
+
+  init_test_node(&n);
+  init_packet(&p, ARTNET_ADDRESS, ip4("127.0.0.222"));
+  memset(p.data.addr.shortName, PROGRAM_NO_CHANGE, ARTNET_SHORT_NAME_LENGTH);
+  memset(p.data.addr.longName, PROGRAM_NO_CHANGE, ARTNET_LONG_NAME_LENGTH);
+  memset(p.data.addr.swIn, PROGRAM_NO_CHANGE, ARTNET_MAX_PORTS);
+  memset(p.data.addr.swOut, PROGRAM_NO_CHANGE, ARTNET_MAX_PORTS);
+  p.data.addr.bindIndex = 1;
+  p.data.addr.acnPriority = 201;
+
+  handle(&n, &p);
+
+  ASSERT_TRUE(n.state.acn_priority == 0,
+              "handle should ignore ArtAddress packets with invalid sACN priorities");
+  ASSERT_TRUE(n.state.report_code == ARTNET_RC_PARSE_FAIL,
+              "invalid ArtAddress packets should update the node report to parse failure");
+}
+
+static void test_media_control_reply_uses_dedicated_handler(void) {
+  artnet_node_t n;
+  artnet_packet_t p;
+  simple_capture_t control_capture = {0};
+  simple_capture_t reply_capture = {0};
+
+  init_test_node(&n);
+  n.callbacks.mediacontrol.fh = simple_packet_handler;
+  n.callbacks.mediacontrol.data = &control_capture;
+  n.callbacks.mediacontrol_reply.fh = simple_packet_handler;
+  n.callbacks.mediacontrol_reply.data = &reply_capture;
+
+  init_packet(&p, ARTNET_MEDIACONTROLREPLY, ip4("127.0.0.223"));
+  handle(&n, &p);
+
+  ASSERT_TRUE(control_capture.called == 0,
+              "ArtMediaControlReply should not be dispatched to the request handler");
+  ASSERT_TRUE(reply_capture.called == 1,
+              "ArtMediaControlReply should be dispatched to the dedicated reply handler");
+}
+
+static void test_handle_ignores_command_with_truncated_text_payload(void) {
+  artnet_node_t n;
+  artnet_packet_t p;
+  simple_capture_t capture = {0};
+
+  init_test_node(&n);
+  n.callbacks.command.fh = simple_packet_handler;
+  n.callbacks.command.data = &capture;
+
+  init_packet(&p, ARTNET_COMMAND, ip4("127.0.0.224"));
+  p.data.cmd.estaManHi = 0x12;
+  p.data.cmd.estaManLo = 0x34;
+  p.data.cmd.lengthHi = 0;
+  p.data.cmd.lengthLo = 5;
+  p.length = (int)(sizeof(artnet_command_t) - ARTNET_DMX_LENGTH + 4);
+  memcpy(p.data.cmd.data, "ABCD", 4);
+
+  handle(&n, &p);
+
+  ASSERT_TRUE(capture.called == 0,
+              "handle should ignore ArtCommand packets whose declared text length exceeds the packet body");
+  ASSERT_TRUE(n.state.report_code == ARTNET_RC_PARSE_FAIL,
+              "truncated ArtCommand packets should update the node report to parse failure");
+}
+
+static void test_handle_ignores_diagdata_without_null_terminator(void) {
+  artnet_node_t n;
+  artnet_packet_t p;
+  simple_capture_t capture = {0};
+
+  init_test_node(&n);
+  n.callbacks.diagdata.fh = simple_packet_handler;
+  n.callbacks.diagdata.data = &capture;
+
+  init_packet(&p, ARTNET_DIAGDATA, ip4("127.0.0.225"));
+  p.data.diagdata.lengthHi = 0;
+  p.data.diagdata.length = 4;
+  p.length = (int)(sizeof(artnet_diagdata_t) - ARTNET_DMX_LENGTH + 4);
+  memcpy(p.data.diagdata.data, "ABCD", 4);
+
+  handle(&n, &p);
+
+  ASSERT_TRUE(capture.called == 0,
+              "handle should ignore ArtDiagData packets whose text payload is not null terminated");
+  ASSERT_TRUE(n.state.report_code == ARTNET_RC_PARSE_FAIL,
+              "invalid ArtDiagData packets should update the node report to parse failure");
+}
+
+static void test_handle_ignores_file_fn_master_without_filename_terminator(void) {
+  artnet_node_t n;
+  artnet_packet_t p;
+
+  init_test_node(&n);
+  init_packet(&p, ARTNET_FILEFNMASTER, ip4("127.0.0.226"));
+  p.data.filefn.lengthHi = 0;
+  p.data.filefn.lengthLo = 4;
+  p.length = (int)(sizeof(artnet_file_fn_master_t) - sizeof(p.data.filefn.filename) + 4);
+  memcpy(p.data.filefn.filename, "test", 4);
+
+  handle(&n, &p);
+
+  ASSERT_TRUE(n.state.reply_addr.s_addr == 0,
+              "handle should ignore ArtFileFnMaster packets without a null-terminated filename");
+  ASSERT_TRUE(n.state.report_code == ARTNET_RC_PARSE_FAIL,
+              "invalid ArtFileFnMaster packets should update the node report to parse failure");
+}
+
+static void test_file_tn_master_uses_actual_payload_length_for_callback(void) {
+  artnet_node_t n;
+  artnet_packet_t p;
+  firmware_capture_t fw_capture = {0};
+  send_capture_t send_capture = {0};
+  uint16_t words[4] = {0x0102, 0x0304, 0x0506, 0x0708};
+
+  init_test_node(&n);
+  start_sendable_node(&n);
+  n.callbacks.send.fh = send_capture_handler;
+  n.callbacks.send.data = &send_capture;
+  n.callbacks.firmware_c.fh = firmware_data_handler;
+  n.callbacks.firmware_c.data = &fw_capture;
+
+  init_packet(&p, ARTNET_FILETNMASTER, ip4("127.0.0.234"));
+  artnet_misc_int_to_bytes(4, p.data.filetn.length);
+  memcpy(p.data.filetn.data, words, sizeof(words));
+  p.length = (int)(sizeof(artnet_file_tn_master_t) -
+                   ARTNET_FIRMWARE_SIZE * sizeof(uint16_t) +
+                   sizeof(words));
+
+  ASSERT_TRUE(handle_file_tn_master(&n, &p) == ARTNET_EOK,
+              "ArtFileTnMaster with a short payload should be accepted");
+  ASSERT_TRUE(fw_capture.called == 1,
+              "ArtFileTnMaster should bridge received payload into the firmware callback");
+  ASSERT_TRUE(fw_capture.length == 4,
+              "ArtFileTnMaster callback length should report the number of 16-bit words present");
+  ASSERT_TRUE(memcmp(fw_capture.data, words, sizeof(words)) == 0,
+              "ArtFileTnMaster callback should receive only the actual payload words");
+  ASSERT_TRUE(send_capture.called == 1 &&
+              send_capture.type == ARTNET_FIRMWAREREPLY &&
+              send_capture.data.firmwarer.type == ARTNET_FIRMWARE_ALLGOOD,
+              "ArtFileTnMaster should acknowledge a valid short payload with ALLGOOD");
+
+  stop_sendable_node(&n);
+}
+
+static void test_file_tn_master_rejects_truncated_word_payload(void) {
+  artnet_node_t n;
+  artnet_packet_t p;
+  send_capture_t send_capture = {0};
+  uint8_t odd_bytes[3] = {0xAA, 0xBB, 0xCC};
+
+  init_test_node(&n);
+  start_sendable_node(&n);
+  n.callbacks.send.fh = send_capture_handler;
+  n.callbacks.send.data = &send_capture;
+
+  init_packet(&p, ARTNET_FILETNMASTER, ip4("127.0.0.235"));
+  artnet_misc_int_to_bytes(2, p.data.filetn.length);
+  memcpy(p.data.filetn.data, odd_bytes, sizeof(odd_bytes));
+  p.length = (int)(sizeof(artnet_file_tn_master_t) -
+                   ARTNET_FIRMWARE_SIZE * sizeof(uint16_t) +
+                   sizeof(odd_bytes));
+
+  ASSERT_TRUE(handle_file_tn_master(&n, &p) == ARTNET_EOK,
+              "truncated ArtFileTnMaster payload should still be handled");
+  ASSERT_TRUE(send_capture.called == 1 &&
+              send_capture.type == ARTNET_FIRMWAREREPLY &&
+              send_capture.data.firmwarer.type == ARTNET_FIRMWARE_FAIL,
+              "truncated ArtFileTnMaster payload should be rejected with FAIL");
+
+  stop_sendable_node(&n);
+}
+
+static void test_handle_ignores_file_fn_reply_with_payload_longer_than_total_length(void) {
+  artnet_node_t n;
+  artnet_packet_t p;
+  simple_capture_t capture = {0};
+  uint16_t words[4] = {1, 2, 3, 4};
+
+  init_test_node(&n);
+  n.callbacks.file_fn_reply.fh = simple_packet_handler;
+  n.callbacks.file_fn_reply.data = &capture;
+
+  init_packet(&p, ARTNET_FILEFNREPLY, ip4("127.0.0.237"));
+  p.data.filefnr.fileLengthHi = 0;
+  p.data.filefnr.fileLengthLo = 2;
+  memcpy(p.data.filefnr.data, words, sizeof(words));
+  p.length = (int)(sizeof(artnet_file_fn_reply_t) -
+                   ARTNET_FIRMWARE_SIZE * sizeof(uint16_t) +
+                   sizeof(words));
+
+  handle(&n, &p);
+
+  ASSERT_TRUE(capture.called == 0,
+              "handle should ignore ArtFileFnReply packets whose payload exceeds declared total length");
+  ASSERT_TRUE(n.state.report_code == ARTNET_RC_PARSE_FAIL,
+              "invalid ArtFileFnReply packets should update the node report to parse failure");
+}
+
+static void test_firmware_first_block_rejects_truncated_payload(void) {
+  artnet_node_t n;
+  artnet_packet_t p;
+  send_capture_t send_capture = {0};
+  uint16_t words[4] = {0x1111, 0x2222, 0x3333, 0x4444};
+
+  init_test_node(&n);
+  start_sendable_node(&n);
+  n.callbacks.send.fh = send_capture_handler;
+  n.callbacks.send.data = &send_capture;
+
+  init_packet(&p, ARTNET_FIRMWAREMASTER, ip4("127.0.0.236"));
+  p.data.firmware.type = ARTNET_FIRMWARE_FIRMFIRST;
+  artnet_misc_int_to_bytes(4, p.data.firmware.length);
+  memcpy(p.data.firmware.data, words, sizeof(words));
+  p.length = (int)(sizeof(artnet_firmware_t) -
+                   ARTNET_FIRMWARE_SIZE * sizeof(uint16_t) +
+                   sizeof(words) - 1);
+
+  ASSERT_TRUE(handle_firmware(&n, &p) == ARTNET_EOK,
+              "truncated first firmware block should still be handled");
+  ASSERT_TRUE(send_capture.called == 1 &&
+              send_capture.type == ARTNET_FIRMWAREREPLY &&
+              send_capture.data.firmwarer.type == ARTNET_FIRMWARE_FAIL,
+              "truncated first firmware block should be rejected with FAIL");
+
+  stop_sendable_node(&n);
+}
+
+static void test_handle_ignores_invalid_timesync_fields(void) {
+  artnet_node_t n;
+  artnet_packet_t p;
+  simple_capture_t capture = {0};
+
+  init_test_node(&n);
+  n.callbacks.timesync.fh = simple_packet_handler;
+  n.callbacks.timesync.data = &capture;
+
+  init_packet(&p, ARTNET_TIMESYNC, ip4("127.0.0.227"));
+  p.data.tsync.tm_sec = 60;
+  p.data.tsync.tm_min = 10;
+  p.data.tsync.tm_hour = 12;
+  p.data.tsync.tm_mday = 1;
+  p.data.tsync.tm_mon = 0;
+
+  handle(&n, &p);
+
+  ASSERT_TRUE(capture.called == 0,
+              "handle should ignore ArtTimeSync packets with out-of-range time fields");
+  ASSERT_TRUE(n.state.report_code == ARTNET_RC_PARSE_FAIL,
+              "invalid ArtTimeSync packets should update the node report to parse failure");
+}
+
+static void test_handle_ignores_invalid_trigger_key(void) {
+  artnet_node_t n;
+  artnet_packet_t p;
+  simple_capture_t capture = {0};
+
+  init_test_node(&n);
+  n.callbacks.trigger.fh = simple_packet_handler;
+  n.callbacks.trigger.data = &capture;
+
+  init_packet(&p, ARTNET_TRIGGER, ip4("127.0.0.228"));
+  p.data.trigger.oemCodeHi = 0x56;
+  p.data.trigger.oemCodeLo = 0x78;
+  p.data.trigger.key = 0x09;
+
+  handle(&n, &p);
+
+  ASSERT_TRUE(capture.called == 0,
+              "handle should ignore ArtTrigger packets with undefined key values");
+  ASSERT_TRUE(n.state.report_code == ARTNET_RC_PARSE_FAIL,
+              "invalid ArtTrigger packets should update the node report to parse failure");
+}
+
+static void test_handle_ignores_invalid_data_request_code(void) {
+  artnet_node_t n;
+  artnet_packet_t p;
+  simple_capture_t capture = {0};
+
+  init_test_node(&n);
+  n.callbacks.datareq.fh = simple_packet_handler;
+  n.callbacks.datareq.data = &capture;
+
+  init_packet(&p, ARTNET_DATAREQUEST, ip4("127.0.0.229"));
+  p.data.datareq.requestHi = 0x00;
+  p.data.datareq.requestLo = 0x06;
+
+  handle(&n, &p);
+
+  ASSERT_TRUE(capture.called == 0,
+              "handle should ignore ArtDataRequest packets with undefined request codes");
+  ASSERT_TRUE(n.state.report_code == ARTNET_RC_PARSE_FAIL,
+              "invalid ArtDataRequest packets should update the node report to parse failure");
+}
+
+static void test_handle_ignores_data_reply_without_null_terminated_payload(void) {
+  artnet_node_t n;
+  artnet_packet_t p;
+  simple_capture_t capture = {0};
+
+  init_test_node(&n);
+  n.callbacks.datarep.fh = simple_packet_handler;
+  n.callbacks.datarep.data = &capture;
+
+  init_packet(&p, ARTNET_DATAREPLY, ip4("127.0.0.230"));
+  p.data.datarep.requestHi = 0x00;
+  p.data.datarep.requestLo = 0x01;
+  p.data.datarep.payLenHi = 0;
+  p.data.datarep.payLenLo = 4;
+  p.length = (int)(sizeof(artnet_data_reply_t) - sizeof(p.data.datarep.payLoad) + 4);
+  memcpy(p.data.datarep.payLoad, "ABCD", 4);
+
+  handle(&n, &p);
+
+  ASSERT_TRUE(capture.called == 0,
+              "handle should ignore ArtDataReply packets whose payload is not null terminated");
+  ASSERT_TRUE(n.state.report_code == ARTNET_RC_PARSE_FAIL,
+              "invalid ArtDataReply packets should update the node report to parse failure");
+}
+
+static void test_handle_ignores_invalid_diag_priority(void) {
+  artnet_node_t n;
+  artnet_packet_t p;
+  simple_capture_t capture = {0};
+
+  init_test_node(&n);
+  n.callbacks.diagdata.fh = simple_packet_handler;
+  n.callbacks.diagdata.data = &capture;
+
+  init_packet(&p, ARTNET_DIAGDATA, ip4("127.0.0.231"));
+  p.data.diagdata.diagPriority = 0x20;
+  p.data.diagdata.lengthHi = 0;
+  p.data.diagdata.length = 5;
+  p.length = (int)(sizeof(artnet_diagdata_t) - ARTNET_DMX_LENGTH + 5);
+  memcpy(p.data.diagdata.data, "OK!\0", 5);
+
+  handle(&n, &p);
+
+  ASSERT_TRUE(capture.called == 0,
+              "handle should ignore ArtDiagData packets with undefined priority values");
+  ASSERT_TRUE(n.state.report_code == ARTNET_RC_PARSE_FAIL,
+              "invalid ArtDiagData packets should update the node report to parse failure");
+}
+
+static void test_handle_ignores_invalid_timecode_frame_value(void) {
+  artnet_node_t n;
+  artnet_packet_t p;
+  simple_capture_t capture = {0};
+
+  init_test_node(&n);
+  n.callbacks.timecode.fh = simple_packet_handler;
+  n.callbacks.timecode.data = &capture;
+
+  init_packet(&p, ARTNET_TIMECODE, ip4("127.0.0.232"));
+  p.data.tc.frames = 30;
+  p.data.tc.seconds = 10;
+  p.data.tc.minutes = 20;
+  p.data.tc.hours = 1;
+  p.data.tc.type = ARTNET_TIMECODE_SMPTE;
+
+  handle(&n, &p);
+
+  ASSERT_TRUE(capture.called == 0,
+              "handle should ignore ArtTimeCode packets with out-of-range frame values");
+  ASSERT_TRUE(n.state.report_code == ARTNET_RC_PARSE_FAIL,
+              "invalid ArtTimeCode packets should update the node report to parse failure");
+}
+
+static void test_handle_ignores_truncated_toddata_payload(void) {
+  artnet_node_t n;
+  artnet_packet_t p;
+  simple_capture_t capture = {0};
+
+  init_test_node(&n);
+  n.callbacks.toddata.fh = simple_packet_handler;
+  n.callbacks.toddata.data = &capture;
+
+  init_packet(&p, ARTNET_TODDATA, ip4("127.0.0.233"));
+  p.data.toddata.rdmVer = ARTNET_RDM_VERSION;
+  p.data.toddata.port = 1;
+  p.data.toddata.bindIndex = 1;
+  p.data.toddata.cmdRes = ARTNET_TOD_FULL;
+  p.data.toddata.uidCount = 2;
+  p.length = (int)(sizeof(artnet_toddata_t) - sizeof(p.data.toddata.tod) + ARTNET_RDM_UID_WIDTH);
+
+  handle(&n, &p);
+
+  ASSERT_TRUE(capture.called == 0,
+              "handle should ignore ArtTodData packets whose UID payload is truncated");
+  ASSERT_TRUE(n.state.report_code == ARTNET_RC_PARSE_FAIL,
+              "truncated ArtTodData packets should update the node report to parse failure");
+}
+
 int main(void) {
   test_poll_schedules_unicast_reply_and_reply_on_change_flag();
   test_poll_target_mode_filters_non_matching_node();
@@ -1558,14 +2308,20 @@ int main(void) {
   test_address_rdm_and_bqp_commands_update_state();
   test_input_disable_and_enable_updates_port_status_and_reply();
   test_poll_reply_build_populates_artnet4_fields();
+  test_poll_reply_build_marks_network_programming_and_bg_discovery_state();
   test_send_dmx_unicasts_to_matching_subscribers_only();
   test_send_nzs_unicasts_and_preserves_start_code();
+  test_send_data_request_encodes_target_and_request_code();
   test_sync_only_accepts_matching_last_dmx_source();
+  test_sync_buffers_dmx_until_sync_flush();
+  test_sync_flushes_same_ip_different_physical_merge();
   test_rdm_request_updates_reply_target_and_callback_payload();
   test_send_rdm_and_rdmsub_unicast_to_last_requester();
   test_rdm_sub_updates_reply_target();
   test_failsafe_zero_full_and_scene_modes();
   test_dmx_merge_htp_ltp_and_timeout_cleanup();
+  test_dmx_merge_detects_same_ip_different_physical();
+  test_address_cancel_merge_ends_merge_on_next_dmx();
   test_firmware_single_block_upload_completes_and_replies_allgood();
   test_firmware_first_block_with_zero_length_fails();
   test_firmware_multi_block_upload_completes_after_last_block();
@@ -1589,6 +2345,25 @@ int main(void) {
   test_trigger_oem_filter_blocks_non_matching_callbacks();
   test_trigger_oem_filter_allows_matching_callbacks();
   test_reply_tx_requires_reply_target();
+  test_handle_ignores_short_address_packet();
+  test_handle_ignores_legacy_protocol_version_packet();
+  test_handle_ignores_invalid_dmx_length_packet();
+  test_handle_ignores_invalid_address_acn_priority();
+  test_media_control_reply_uses_dedicated_handler();
+  test_handle_ignores_command_with_truncated_text_payload();
+  test_handle_ignores_diagdata_without_null_terminator();
+  test_handle_ignores_file_fn_master_without_filename_terminator();
+  test_handle_ignores_invalid_timesync_fields();
+  test_handle_ignores_invalid_trigger_key();
+  test_handle_ignores_invalid_data_request_code();
+  test_handle_ignores_data_reply_without_null_terminated_payload();
+  test_handle_ignores_invalid_diag_priority();
+  test_handle_ignores_invalid_timecode_frame_value();
+  test_handle_ignores_truncated_toddata_payload();
+  test_file_tn_master_uses_actual_payload_length_for_callback();
+  test_file_tn_master_rejects_truncated_word_payload();
+  test_handle_ignores_file_fn_reply_with_payload_longer_than_total_length();
+  test_firmware_first_block_rejects_truncated_payload();
 
   if (g_failures != 0) {
     fprintf(stderr, "Protocol regression tests failed: %d\n", g_failures);

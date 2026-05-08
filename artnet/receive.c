@@ -22,6 +22,11 @@
 
 void check_merge_timeouts(node n, int port);
 void merge(node n, int port, int length, uint8_t *latest);
+static void commit_output_data(node n, int port_id, const uint8_t *data, int length);
+static void stage_output_data(node n, int port_id, const uint8_t *data, int length);
+static void flush_sync_output(node n, int port_id);
+static int packet_length_is_valid(artnet_packet p);
+static int packet_fields_are_valid(artnet_packet p);
 
 /**
  * Checks if the callback is defined, if so call it passing the packet and
@@ -140,6 +145,398 @@ int handle_poll(node n, artnet_packet p) {
   return ARTNET_EOK;
 }
 
+static void commit_output_data(node n, int port_id, const uint8_t *data, int length) {
+  output_port_t *port = &n->ports.out[port_id];
+  int copy_length = min(length, ARTNET_DMX_LENGTH);
+
+  if (copy_length < 0) {
+    copy_length = 0;
+  }
+
+  if (copy_length > 0 && data != NULL) {
+    memcpy(port->data, data, copy_length);
+  }
+  port->length = copy_length;
+}
+
+static void stage_output_data(node n, int port_id, const uint8_t *data, int length) {
+  output_port_t *port = &n->ports.out[port_id];
+  int copy_length = min(length, ARTNET_DMX_LENGTH);
+
+  if (copy_length < 0) {
+    copy_length = 0;
+  }
+
+  if (n->state.sync_mode) {
+    if (copy_length > 0 && data != NULL) {
+      memcpy(port->sync_data, data, copy_length);
+    }
+    port->sync_length = copy_length;
+    port->sync_pending = TRUE;
+    return;
+  }
+
+  commit_output_data(n, port_id, data, copy_length);
+}
+
+static void flush_sync_output(node n, int port_id) {
+  output_port_t *port = &n->ports.out[port_id];
+
+  if (!port->sync_pending) {
+    return;
+  }
+
+  commit_output_data(n, port_id, port->sync_data, port->sync_length);
+  port->sync_pending = FALSE;
+
+  if (n->callbacks.dmx_c.fh != NULL) {
+    n->callbacks.dmx_c.fh(n, port_id, n->callbacks.dmx_c.data);
+  }
+}
+
+static int packet_length_is_valid(artnet_packet p) {
+  int min_len = MIN_PACKET_SIZE;
+
+  switch (p->type) {
+    case ARTNET_POLL:
+      min_len = (int)sizeof(artnet_poll_t);
+      break;
+    case ARTNET_REPLY:
+      min_len = 207;  // Art-Net 4 minimum valid ArtPollReply length
+      break;
+    case ARTNET_IPPROG:
+      min_len = (int)sizeof(artnet_ipprog_t);
+      break;
+    case ARTNET_IPREPLY:
+      min_len = (int)sizeof(artnet_ipprog_reply_t);
+      break;
+    case ARTNET_DATAREQUEST:
+      min_len = (int)sizeof(artnet_data_request_t);
+      break;
+    case ARTNET_DATAREPLY:
+      min_len = (int)(sizeof(artnet_data_reply_t) - ARTNET_DMX_LENGTH);
+      break;
+    case ARTNET_ADDRESS:
+      min_len = (int)sizeof(artnet_address_t);
+      break;
+    case ARTNET_DMX:
+      min_len = (int)(sizeof(artnet_dmx_t) - ARTNET_DMX_LENGTH);
+      break;
+    case ARTNET_INPUT:
+      min_len = (int)sizeof(artnet_input_t);
+      break;
+    case ARTNET_TODREQUEST:
+      min_len = (int)(sizeof(artnet_todrequest_t) - ARTNET_MAX_RDM_ADCOUNT);
+      break;
+    case ARTNET_TODDATA:
+      min_len = (int)(sizeof(artnet_toddata_t) - (ARTNET_MAX_UID_COUNT * ARTNET_RDM_UID_WIDTH));
+      break;
+    case ARTNET_TODCONTROL:
+      min_len = (int)sizeof(artnet_todcontrol_t);
+      break;
+    case ARTNET_RDM:
+      min_len = (int)(sizeof(artnet_rdm_t) - ARTNET_MAX_RDM_DATA);
+      break;
+    case ARTNET_RDMSUB:
+      min_len = (int)(sizeof(artnet_rdm_sub_t) - ARTNET_MAX_RDM_DATA);
+      break;
+    case ARTNET_DIAGDATA:
+      min_len = (int)(sizeof(artnet_diagdata_t) - ARTNET_DMX_LENGTH);
+      break;
+    case ARTNET_COMMAND:
+      min_len = (int)(sizeof(artnet_command_t) - ARTNET_DMX_LENGTH);
+      break;
+    case ARTNET_SYNC:
+      min_len = (int)sizeof(artnet_sync_t);
+      break;
+    case ARTNET_NZS:
+      min_len = (int)(sizeof(artnet_nzs_t) - ARTNET_DMX_LENGTH);
+      break;
+    case ARTNET_TIMECODE:
+      min_len = (int)sizeof(artnet_timecode_t);
+      break;
+    case ARTNET_TIMESYNC:
+      min_len = (int)sizeof(artnet_timesync_t);
+      break;
+    case ARTNET_TRIGGER:
+      min_len = (int)(sizeof(artnet_trigger_t) - ARTNET_DMX_LENGTH);
+      break;
+    case ARTNET_DIRECTORY:
+      min_len = (int)sizeof(artnet_directory_t);
+      break;
+    case ARTNET_DIRECTORYREPLY:
+      min_len = (int)(sizeof(artnet_directory_reply_t) - sizeof(((artnet_directory_reply_t *)0)->dirEntry));
+      break;
+    case ARTNET_FIRMWAREMASTER:
+      min_len = (int)(sizeof(artnet_firmware_t) - ARTNET_FIRMWARE_SIZE * (int)sizeof(uint16_t));
+      break;
+    case ARTNET_FIRMWAREREPLY:
+      min_len = (int)sizeof(artnet_firmware_reply_t);
+      break;
+    case ARTNET_FILETNMASTER:
+      min_len = (int)(sizeof(artnet_file_tn_master_t) - ARTNET_FIRMWARE_SIZE * (int)sizeof(uint16_t));
+      break;
+    case ARTNET_FILEFNMASTER:
+      min_len = (int)(sizeof(artnet_file_fn_master_t) - sizeof(((artnet_file_fn_master_t *)0)->filename));
+      break;
+    case ARTNET_FILEFNREPLY:
+      min_len = (int)(sizeof(artnet_file_fn_reply_t) - ARTNET_FIRMWARE_SIZE * (int)sizeof(uint16_t));
+      break;
+    case ARTNET_MEDIA:
+      return TRUE;
+    case ARTNET_MEDIAPATCH:
+      min_len = (int)(sizeof(artnet_media_patch_t) - ARTNET_DMX_LENGTH);
+      break;
+    case ARTNET_MEDIACONTROL:
+    case ARTNET_MEDIACONTROLREPLY:
+      min_len = (int)(sizeof(artnet_media_control_t) - ARTNET_DMX_LENGTH);
+      break;
+    default:
+      return TRUE;
+  }
+
+  return p->length >= min_len;
+}
+
+static int packet_fields_are_valid(artnet_packet p) {
+  int prot_ver = 0;
+  int payload_length = 0;
+  int header_length = 0;
+  int request_code = 0;
+
+  switch (p->type) {
+    case ARTNET_REPLY:
+      return TRUE;
+    case ARTNET_IPREPLY:
+      prot_ver = bytes_to_short(p->data.aipr.ProVerHi, p->data.aipr.ProVerLo);
+      break;
+    default:
+      prot_ver = bytes_to_short(p->data.ap.verH, p->data.ap.ver);
+      break;
+  }
+
+  if (prot_ver < ARTNET_VERSION) {
+    return FALSE;
+  }
+
+  switch (p->type) {
+    case ARTNET_DMX:
+      payload_length = bytes_to_short(p->data.admx.lengthHi, p->data.admx.length);
+      if (payload_length < 2 || payload_length > ARTNET_DMX_LENGTH || (payload_length & 0x01)) {
+        return FALSE;
+      }
+      header_length = (int)(sizeof(artnet_dmx_t) - ARTNET_DMX_LENGTH);
+      if (p->length < header_length + payload_length) {
+        return FALSE;
+      }
+      break;
+    case ARTNET_NZS:
+      payload_length = bytes_to_short(p->data.nzs.lengthHi, p->data.nzs.length);
+      if (payload_length < 1 || payload_length > ARTNET_DMX_LENGTH) {
+        return FALSE;
+      }
+      header_length = (int)(sizeof(artnet_nzs_t) - ARTNET_DMX_LENGTH);
+      if (p->length < header_length + payload_length) {
+        return FALSE;
+      }
+      if (p->data.nzs.startCode == 0x00 || p->data.nzs.startCode == 0xCC) {
+        return FALSE;
+      }
+      break;
+    case ARTNET_DATAREPLY:
+      request_code = bytes_to_short(p->data.datarep.requestHi, p->data.datarep.requestLo);
+      if (request_code > 0x0005 && request_code < 0x8000) {
+        return FALSE;
+      }
+      payload_length = bytes_to_short(p->data.datarep.payLenHi, p->data.datarep.payLenLo);
+      if (payload_length < 0 || payload_length > 512) {
+        return FALSE;
+      }
+      header_length = (int)(sizeof(artnet_data_reply_t) - sizeof(p->data.datarep.payLoad));
+      if (p->length < header_length + payload_length) {
+        return FALSE;
+      }
+      if (payload_length > 0 && p->data.datarep.payLoad[payload_length - 1] != '\0') {
+        return FALSE;
+      }
+      break;
+    case ARTNET_DATAREQUEST:
+      request_code = bytes_to_short(p->data.datareq.requestHi, p->data.datareq.requestLo);
+      if (request_code > 0x0005 && request_code < 0x8000) {
+        return FALSE;
+      }
+      break;
+    case ARTNET_DIAGDATA:
+      payload_length = bytes_to_short(p->data.diagdata.lengthHi, p->data.diagdata.length);
+      if (payload_length == 0) {
+        break;
+      }
+      if (p->data.diagdata.diagPriority != ARTNET_DIAG_LOW &&
+          p->data.diagdata.diagPriority != ARTNET_DIAG_MEDIUM &&
+          p->data.diagdata.diagPriority != ARTNET_DIAG_HIGH &&
+          p->data.diagdata.diagPriority != ARTNET_DIAG_CRITICAL &&
+          p->data.diagdata.diagPriority != ARTNET_DIAG_VOLATILE) {
+        return FALSE;
+      }
+      if (payload_length < 1 || payload_length > ARTNET_DMX_LENGTH) {
+        return FALSE;
+      }
+      header_length = (int)(sizeof(artnet_diagdata_t) - sizeof(p->data.diagdata.data));
+      if (p->length < header_length + payload_length) {
+        return FALSE;
+      }
+      if (p->data.diagdata.data[payload_length - 1] != '\0') {
+        return FALSE;
+      }
+      break;
+    case ARTNET_COMMAND:
+      payload_length = bytes_to_short(p->data.cmd.lengthHi, p->data.cmd.lengthLo);
+      if (payload_length == 0) {
+        break;
+      }
+      if (payload_length < 1 || payload_length > ARTNET_DMX_LENGTH) {
+        return FALSE;
+      }
+      header_length = (int)(sizeof(artnet_command_t) - sizeof(p->data.cmd.data));
+      if (p->length < header_length + payload_length) {
+        return FALSE;
+      }
+      if (p->data.cmd.data[payload_length - 1] != '\0') {
+        return FALSE;
+      }
+      break;
+    case ARTNET_ADDRESS:
+      if (p->data.addr.bindIndex == 0) {
+        return FALSE;
+      }
+      if (p->data.addr.acnPriority != 0xFF && p->data.addr.acnPriority > 200) {
+        return FALSE;
+      }
+      break;
+    case ARTNET_INPUT:
+      if (p->data.ainput.bindIndex == 0 || p->data.ainput.numbportsH != 0) {
+        return FALSE;
+      }
+      break;
+    case ARTNET_TODREQUEST:
+      if (p->data.todreq.command != ARTNET_TOD_FULL ||
+          p->data.todreq.adCount > ARTNET_MAX_RDM_ADCOUNT) {
+        return FALSE;
+      }
+      break;
+    case ARTNET_TODDATA:
+      if (p->data.toddata.rdmVer != ARTNET_RDM_VERSION ||
+          p->data.toddata.port < 1 || p->data.toddata.port > ARTNET_MAX_PORTS ||
+          p->data.toddata.bindIndex == 0 ||
+          (p->data.toddata.cmdRes != ARTNET_TOD_FULL && p->data.toddata.cmdRes != TOD_RESPONSE_NAK) ||
+          p->data.toddata.uidCount > ARTNET_MAX_UID_COUNT) {
+        return FALSE;
+      }
+      header_length = (int)(sizeof(artnet_toddata_t) - sizeof(p->data.toddata.tod));
+      if (p->length < header_length + (p->data.toddata.uidCount * ARTNET_RDM_UID_WIDTH)) {
+        return FALSE;
+      }
+      break;
+    case ARTNET_TODCONTROL:
+      if (p->data.todcontrol.cmd > ARTNET_TOD_INC_OFF) {
+        return FALSE;
+      }
+      break;
+    case ARTNET_RDM:
+      if (p->data.rdm.rdmVer != ARTNET_RDM_VERSION || p->data.rdm.cmd != 0x00) {
+        return FALSE;
+      }
+      break;
+    case ARTNET_RDMSUB:
+      if (p->data.rdmsub.rdmVer != ARTNET_RDM_VERSION ||
+          (p->data.rdmsub.subCountHi == 0x00 && p->data.rdmsub.subCount == 0x00)) {
+        return FALSE;
+      }
+      break;
+    case ARTNET_SYNC:
+      if (p->data.asyn.aux1 != 0 || p->data.asyn.aux2 != 0) {
+        return FALSE;
+      }
+      break;
+    case ARTNET_TIMECODE:
+      if (p->data.tc.type > ARTNET_TIMECODE_SMPTE ||
+          p->data.tc.frames > 29 ||
+          p->data.tc.seconds > 59 ||
+          p->data.tc.minutes > 59 ||
+          p->data.tc.hours > 23) {
+        return FALSE;
+      }
+      break;
+    case ARTNET_TIMESYNC:
+      if (p->data.tsync.tm_sec > 59 || p->data.tsync.tm_min > 59 ||
+          p->data.tsync.tm_hour > 23 || p->data.tsync.tm_mday < 1 ||
+          p->data.tsync.tm_mday > 31 || p->data.tsync.tm_mon > 11) {
+        return FALSE;
+      }
+      break;
+    case ARTNET_TRIGGER:
+      if (p->data.trigger.key > ARTNET_TRIGGER_KEY_SHOW) {
+        return FALSE;
+      }
+      break;
+    case ARTNET_IPPROG:
+      if (p->data.aip.Filler1 != 0 || p->data.aip.Filler2 != 0 || p->data.aip.Filler4 != 0) {
+        return FALSE;
+      }
+      break;
+    case ARTNET_DIRECTORYREPLY:
+      payload_length = bytes_to_short(p->data.dirr.dirCountHi, p->data.dirr.dirCountLo);
+      if (payload_length < 0 || payload_length > (int)sizeof(p->data.dirr.dirEntry)) {
+        return FALSE;
+      }
+      header_length = (int)(sizeof(artnet_directory_reply_t) - sizeof(p->data.dirr.dirEntry));
+      if (p->length < header_length + payload_length) {
+        return FALSE;
+      }
+      break;
+    case ARTNET_FILEFNMASTER:
+      payload_length = bytes_to_short(p->data.filefn.lengthHi, p->data.filefn.lengthLo);
+      if (payload_length < 1 || payload_length > 255) {
+        return FALSE;
+      }
+      header_length = (int)(sizeof(artnet_file_fn_master_t) - sizeof(p->data.filefn.filename));
+      if (p->length < header_length + payload_length + 1) {
+        return FALSE;
+      }
+      if (p->data.filefn.filename[payload_length] != '\0') {
+        return FALSE;
+      }
+      break;
+    case ARTNET_FILEFNREPLY:
+      payload_length = p->length - ((int)sizeof(artnet_file_fn_reply_t) -
+                                    ARTNET_FIRMWARE_SIZE * (int)sizeof(uint16_t));
+      if (payload_length < 0 ||
+          payload_length > ARTNET_FIRMWARE_SIZE * (int)sizeof(uint16_t) ||
+          (payload_length % (int)sizeof(uint16_t)) != 0) {
+        return FALSE;
+      }
+      if (payload_length > bytes_to_short(p->data.filefnr.fileLengthHi,
+                                          p->data.filefnr.fileLengthLo)) {
+        return FALSE;
+      }
+      break;
+    case ARTNET_MEDIAPATCH:
+      payload_length = bytes_to_short(p->data.mpatch.lengthHi, p->data.mpatch.length);
+      if (payload_length < 1 || payload_length > ARTNET_DMX_LENGTH) {
+        return FALSE;
+      }
+      header_length = (int)(sizeof(artnet_media_patch_t) - sizeof(p->data.mpatch.data));
+      if (p->length < header_length + payload_length) {
+        return FALSE;
+      }
+      break;
+    default:
+      break;
+  }
+
+  return TRUE;
+}
+
 /**
  * handle an art poll reply
  *
@@ -167,6 +564,7 @@ void handle_dmx(node n, artnet_packet p) {
   int i = 0, data_length = 0;
   output_port_t *port = NULL;
   in_addr_t ipA = 0, ipB = 0;
+  uint8_t physical = 0;
 
   // run callback if defined
   if (check_callback(n, p, n->callbacks.dmx)) {
@@ -189,6 +587,7 @@ void handle_dmx(node n, artnet_packet p) {
       port = &n->ports.out[i];
       ipA = port->ipA.s_addr;
       ipB = port->ipB.s_addr;
+      physical = p->data.admx.physical;
 
       // ok packet matches this port
       n->ports.out[i].port_status = n->ports.out[i].port_status | PORT_STATUS_ACT_MASK;
@@ -228,34 +627,32 @@ void handle_dmx(node n, artnet_packet p) {
       if (ipA == 0 && ipB == 0) {
         // first packet recv on this port
         port->ipA.s_addr = p->from.s_addr;
+        port->physicalA = physical;
         port->timeA = artnet_gettime_ms();
 
         memcpy(&port->dataA, &p->data.admx.data, data_length);
-        port->length = data_length;
-        memcpy(&port->data, &p->data.admx.data, data_length);
+        stage_output_data(n, i, p->data.admx.data, data_length);
       }
-      else if (ipA == p->from.s_addr && ipB == 0) {
+      else if (ipA == p->from.s_addr && port->physicalA == physical && ipB == 0) {
         //continued transmission from the same ip (source A)
 
         port->timeA = artnet_gettime_ms();
         memcpy(&port->dataA, &p->data.admx.data, data_length);
-        port->length = data_length;
-        memcpy(&port->data, &p->data.admx.data, data_length);
+        stage_output_data(n, i, p->data.admx.data, data_length);
       }
-      else if (ipA == 0 && ipB == p->from.s_addr) {
+      else if (ipA == 0 && ipB == p->from.s_addr && port->physicalB == physical) {
         //continued transmission from the same ip (source B)
 
         port->timeB = artnet_gettime_ms();
         memcpy(&port->dataB, &p->data.admx.data, data_length);
-        port->length = data_length;
-        memcpy(&port->data, &p->data.admx.data, data_length);
+        stage_output_data(n, i, p->data.admx.data, data_length);
       }
-      else if (ipA != p->from.s_addr  && ipB == 0) {
+      else if (((ipA != p->from.s_addr) || (port->physicalA != physical)) && ipB == 0) {
         // new source, start the merge (A exists, new source becomes B)
         port->ipB.s_addr = p->from.s_addr;
+        port->physicalB = physical;
         port->timeB = artnet_gettime_ms();
         memcpy(&port->dataB, &p->data.admx.data,data_length);
-        port->length = data_length;
 
         // merge, newest data is port B
         merge(n,i,data_length, port->dataB);
@@ -267,12 +664,12 @@ void handle_dmx(node n, artnet_packet p) {
         }
 
       }
-      else if (ipA == 0 && ipB != 0 && ipB != p->from.s_addr) {
+      else if (ipA == 0 && ((ipB != p->from.s_addr) || (port->physicalB != physical))) {
         // new source, start the merge (B exists, new source becomes A)
         port->ipA.s_addr = p->from.s_addr;
+        port->physicalA = physical;
         port->timeA = artnet_gettime_ms();
         memcpy(&port->dataA, &p->data.admx.data, data_length);
-        port->length = data_length;
 
         // merge, newest data is port A
         merge(n, i, data_length, port->dataA);
@@ -284,30 +681,32 @@ void handle_dmx(node n, artnet_packet p) {
         }
 
       }
-      else if (ipA == p->from.s_addr && ipB != p->from.s_addr) {
+      else if (ipA == p->from.s_addr && port->physicalA == physical &&
+               (ipB != p->from.s_addr || port->physicalB != physical)) {
         // continue merge
         port->timeA = artnet_gettime_ms();
         memcpy(&port->dataA, &p->data.admx.data,data_length);
-        port->length = data_length;
 
         // merge, newest data is portA
         merge(n,i,data_length, port->dataA);
 
       }
-      else if (ipA != p->from.s_addr && ipB == p->from.s_addr) {
+      else if ((ipA != p->from.s_addr || port->physicalA != physical) &&
+               ipB == p->from.s_addr && port->physicalB == physical) {
         // continue merge
         port->timeB = artnet_gettime_ms();
         memcpy(&port->dataB, &p->data.admx.data,data_length);
-        port->length = data_length;
 
         // merge newest data is portB
         merge(n,i,data_length, port->dataB);
 
       }
-      else if (ipA == p->from.s_addr && ipB == p->from.s_addr) {
+      else if (ipA == p->from.s_addr && port->physicalA == physical &&
+               ipB == p->from.s_addr && port->physicalB == physical) {
         // source matches both buffers
       }
-      else if (ipA != p->from.s_addr && ipB != p->from.s_addr) {
+      else if ((ipA != p->from.s_addr || port->physicalA != physical) &&
+               (ipB != p->from.s_addr || port->physicalB != physical)) {
         // more than two sources, discarding data
       }
       else {
@@ -315,8 +714,20 @@ void handle_dmx(node n, artnet_packet p) {
 
       }
 
-      // do the dmx callback here
-      if (n->callbacks.dmx_c.fh != NULL) {
+      if (port->cancel_merge_pending) {
+        port->cancel_merge_pending = FALSE;
+        port->port_status &= ~PORT_STATUS_MERGE;
+        port->ipA = p->from;
+        port->physicalA = physical;
+        port->timeA = artnet_gettime_ms();
+        memcpy(port->dataA, p->data.admx.data, (size_t)data_length);
+        port->ipB.s_addr = 0;
+        port->physicalB = 0;
+        port->timeB = 0;
+        memset(port->dataB, 0, sizeof(port->dataB));
+      }
+
+      if (!n->state.sync_mode && n->callbacks.dmx_c.fh != NULL) {
         n->callbacks.dmx_c.fh(n,i, n->callbacks.dmx_c.data);
       }
 
@@ -353,6 +764,8 @@ int handle_address(node n, artnet_packet p) {
   if (n->state.node_type == ARTNET_SRV || n->state.node_type == ARTNET_RAW) {
     return ARTNET_EOK;
   }
+
+  n->state.reply_addr = p->from;
 
   // reprogram shortName if required
   if (p->data.addr.shortName[0] != PROGRAM_DEFAULTS &&
@@ -451,11 +864,9 @@ int handle_address(node n, artnet_packet p) {
 
     case ARTNET_PC_CANCEL:
       for (i = 0; i < ARTNET_MAX_PORTS; i++) {
-        n->ports.out[i].ipA.s_addr = 0;
-        n->ports.out[i].ipB.s_addr = 0;
-        n->ports.out[i].timeA = 0;
-        n->ports.out[i].timeB = 0;
-        n->ports.out[i].port_status &= ~PORT_STATUS_MERGE;
+        if (n->ports.out[i].port_status & PORT_STATUS_MERGE) {
+          n->ports.out[i].cancel_merge_pending = TRUE;
+        }
       }
       break;
 
@@ -518,8 +929,11 @@ int handle_address(node n, artnet_packet p) {
       n->ports.types[port_idx] &= ~ARTNET_ENABLE_INPUT;
       n->ports.out[port_idx].ipA.s_addr = 0;
       n->ports.out[port_idx].ipB.s_addr = 0;
+      n->ports.out[port_idx].physicalA = 0;
+      n->ports.out[port_idx].physicalB = 0;
       n->ports.out[port_idx].timeA = 0;
       n->ports.out[port_idx].timeB = 0;
+      n->ports.out[port_idx].cancel_merge_pending = FALSE;
       n->ports.out[port_idx].port_status &= ~PORT_STATUS_MERGE;
       break;
 
@@ -532,8 +946,11 @@ int handle_address(node n, artnet_packet p) {
       n->ports.types[port_idx] &= ~ARTNET_ENABLE_OUTPUT;
       n->ports.out[port_idx].ipA.s_addr = 0;
       n->ports.out[port_idx].ipB.s_addr = 0;
+      n->ports.out[port_idx].physicalA = 0;
+      n->ports.out[port_idx].physicalB = 0;
       n->ports.out[port_idx].timeA = 0;
       n->ports.out[port_idx].timeB = 0;
+      n->ports.out[port_idx].cancel_merge_pending = FALSE;
       n->ports.out[port_idx].port_status &= ~PORT_STATUS_MERGE;
       break;
 
@@ -662,6 +1079,8 @@ int _artnet_handle_input(node n, artnet_packet p) {
   if (n->state.node_type != ARTNET_NODE && n->state.node_type != ARTNET_MSRV) {
     return ARTNET_EOK;
   }
+
+  n->state.reply_addr = p->from;
 
   ports = min( p->data.ainput.numbports, ARTNET_MAX_PORTS);
   for (i =0; i < ports; i++) {
@@ -841,6 +1260,8 @@ void handle_rdm(node n, artnet_packet p) {
  * @param p The received Art-Net packet.
  */
 void handle_sync(node n, artnet_packet p) {
+  int i = 0;
+
   if (check_callback(n, p, n->callbacks.sync)) {
     return;
   }
@@ -849,6 +1270,21 @@ void handle_sync(node n, artnet_packet p) {
   if (n->state.last_dmx_source.s_addr != 0 &&
       n->state.last_dmx_source.s_addr != p->from.s_addr) {
     return;
+  }
+
+  for (i = 0; i < ARTNET_MAX_PORTS; i++) {
+    output_port_t *port = &n->ports.out[i];
+
+    if (!port->port_enabled) {
+      continue;
+    }
+    if ((port->port_status & PORT_STATUS_MERGE) &&
+        port->ipA.s_addr && port->ipB.s_addr &&
+        port->ipA.s_addr != port->ipB.s_addr) {
+      continue;
+    }
+
+    flush_sync_output(n, i);
   }
 
   n->state.sync_mode = 1;
@@ -999,16 +1435,36 @@ void handle_directory_reply(node n, artnet_packet p) {
  */
 int handle_file_tn_master(node n, artnet_packet p) {
   artnet_firmware_status_code code = ARTNET_FIRMWARE_FAIL;
+  uint32_t total_words = 0;
+  int payload_bytes = 0;
+  int payload_words = 0;
+  int max_payload_bytes = ARTNET_FIRMWARE_SIZE * (int)sizeof(uint16_t);
 
   if (check_callback(n, p, n->callbacks.file_tn_master)) {
     return ARTNET_EOK;
   }
 
+  total_words = (uint32_t)artnet_misc_nbytes_to_32(p->data.filetn.length);
+  if (total_words == 0) {
+    return artnet_tx_firmware_reply(n, p->from.s_addr, ARTNET_FIRMWARE_FAIL);
+  }
+
+  payload_bytes = p->length - ((int)sizeof(artnet_file_tn_master_t) -
+                               ARTNET_FIRMWARE_SIZE * (int)sizeof(uint16_t));
+  payload_bytes = min(payload_bytes, max_payload_bytes);
+  if (payload_bytes <= 0 || (payload_bytes % (int)sizeof(uint16_t)) != 0) {
+    return artnet_tx_firmware_reply(n, p->from.s_addr, ARTNET_FIRMWARE_FAIL);
+  }
+  payload_words = payload_bytes / (int)sizeof(uint16_t);
+  if ((uint32_t)payload_words > total_words) {
+    return artnet_tx_firmware_reply(n, p->from.s_addr, ARTNET_FIRMWARE_FAIL);
+  }
+
   if (n->callbacks.firmware_c.fh != NULL) {
     uint16_t data[ARTNET_FIRMWARE_SIZE];
-    int length = (int)sizeof(data);
-    memcpy(data, p->data.filetn.data, length);
-    if (n->callbacks.firmware_c.fh(n, 0, data, length, n->callbacks.firmware_c.data)) {
+    memset(data, 0, sizeof(data));
+    memcpy(data, p->data.filetn.data, (size_t)payload_bytes);
+    if (n->callbacks.firmware_c.fh(n, 0, data, payload_words, n->callbacks.firmware_c.data) == 0) {
       code = ARTNET_FIRMWARE_ALLGOOD;
     }
   } else {
@@ -1129,7 +1585,7 @@ void handle_media(node n, artnet_packet p) {
  * @param p The received Art-Net packet.
  */
 void handle_media_control_reply(node n, artnet_packet p) {
-  check_callback(n, p, n->callbacks.mediacontrol);
+  check_callback(n, p, n->callbacks.mediacontrol_reply);
 }
 
 /**
@@ -1144,7 +1600,9 @@ void handle_media_control_reply(node n, artnet_packet p) {
 // THIS NEEDS TO BE CHECKED FOR BUFFER OVERFLOWS
 // IMPORTANT!!!!
 int handle_firmware(node n, artnet_packet p) {
-  int length = 0, offset = 0, block_length = 0, total_blocks = 0, block_id = 0;
+  int length = 0, offset_words = 0, offset_bytes = 0, block_length = 0, total_blocks = 0, block_id = 0;
+  int payload_bytes = 0;
+  int max_payload_bytes = ARTNET_FIRMWARE_SIZE * (int)sizeof(uint16_t);
   artnet_firmware_status_code response_code = ARTNET_FIRMWARE_FAIL;
 
   // run callback if defined
@@ -1165,8 +1623,12 @@ int handle_firmware(node n, artnet_packet p) {
       // these are 2 byte words, so we get a total of 1k of data per packet
       length = artnet_misc_nbytes_to_32( p->data.firmware.length ) *
         sizeof(p->data.firmware.data[0]);
+      payload_bytes = p->length - ((int)sizeof(artnet_firmware_t) -
+                                   ARTNET_FIRMWARE_SIZE * (int)sizeof(uint16_t));
+      payload_bytes = min(payload_bytes, max_payload_bytes);
 
-      if (length <= 0) {
+      if (length <= 0 || payload_bytes <= 0 ||
+          (payload_bytes % (int)sizeof(uint16_t)) != 0) {
         return artnet_tx_firmware_reply(n, p->from.s_addr, ARTNET_FIRMWARE_FAIL);
       }
 
@@ -1190,10 +1652,13 @@ int handle_firmware(node n, artnet_packet p) {
       }
 
       // take the minimum of the total length and the max packet size
-      block_length = min((unsigned int) length, ARTNET_FIRMWARE_SIZE *
-        sizeof(p->data.firmware.data[0]));
+      block_length = min(length, payload_bytes);
 
-      memcpy(n->firmware.data, p->data.firmware.data, block_length);
+      if (payload_bytes < block_length) {
+        return artnet_tx_firmware_reply(n, p->from.s_addr, ARTNET_FIRMWARE_FAIL);
+      }
+
+      memcpy(n->firmware.data, p->data.firmware.data, (size_t)block_length);
       n->firmware.bytes_current = block_length;
 
       if (block_length == length) {
@@ -1207,7 +1672,7 @@ int handle_firmware(node n, artnet_packet p) {
           n->callbacks.firmware_c.fh(n,
                                      n->firmware.ubea,
                                      n->firmware.data,
-                                     n->firmware.bytes_total,
+                                     n->firmware.bytes_total / (int)sizeof(uint16_t),
                                      n->callbacks.firmware_c.data);
         }
 
@@ -1230,11 +1695,15 @@ int handle_firmware(node n, artnet_packet p) {
     // continued transfer
     length = artnet_misc_nbytes_to_32(p->data.firmware.length) *
       sizeof(p->data.firmware.data[0]);
-    if (length <= 0) {
+    payload_bytes = p->length - ((int)sizeof(artnet_firmware_t) -
+                                 ARTNET_FIRMWARE_SIZE * (int)sizeof(uint16_t));
+    payload_bytes = min(payload_bytes, max_payload_bytes);
+    if (length <= 0 || payload_bytes <= 0 ||
+        (payload_bytes % (int)sizeof(uint16_t)) != 0) {
       return artnet_tx_firmware_reply(n, p->from.s_addr, ARTNET_FIRMWARE_FAIL);
     }
     total_blocks = length / ARTNET_FIRMWARE_SIZE / 2 + 1;
-    block_length = ARTNET_FIRMWARE_SIZE * sizeof(uint16_t);
+    block_length = max_payload_bytes;
     block_id = p->data.firmware.blockId;
 
     // ok the blockid field is only 1 byte, so it wraps back to 0x00 we
@@ -1244,15 +1713,19 @@ int handle_firmware(node n, artnet_packet p) {
 
       block_id = n->firmware.expected_block;
     }
-    offset = block_id * ARTNET_FIRMWARE_SIZE;
+    offset_words = block_id * ARTNET_FIRMWARE_SIZE;
+    offset_bytes = offset_words * (int)sizeof(uint16_t);
 
     if (n->firmware.peer.s_addr == p->from.s_addr &&
         length == n->firmware.bytes_total &&
         block_id < total_blocks-1 &&
-        offset >= 0 &&
-        offset + block_length <= n->firmware.bytes_total) {
+        offset_bytes >= 0 &&
+        offset_bytes + block_length <= n->firmware.bytes_total &&
+        payload_bytes >= block_length) {
 
-      memcpy(n->firmware.data + offset, p->data.firmware.data, block_length);
+      memcpy(((uint8_t *)n->firmware.data) + offset_bytes,
+             p->data.firmware.data,
+             (size_t)block_length);
       n->firmware.bytes_current += block_length;
       n->firmware.expected_block++;
 
@@ -1270,7 +1743,11 @@ int handle_firmware(node n, artnet_packet p) {
              p->data.firmware.type == ARTNET_FIRMWARE_UBEALAST) {
     length = artnet_misc_nbytes_to_32( p->data.firmware.length) *
       sizeof(p->data.firmware.data[0]);
-    if (length <= 0) {
+    payload_bytes = p->length - ((int)sizeof(artnet_firmware_t) -
+                                 ARTNET_FIRMWARE_SIZE * (int)sizeof(uint16_t));
+    payload_bytes = min(payload_bytes, max_payload_bytes);
+    if (length <= 0 || payload_bytes <= 0 ||
+        (payload_bytes % (int)sizeof(uint16_t)) != 0) {
       return artnet_tx_firmware_reply(n, p->from.s_addr, ARTNET_FIRMWARE_FAIL);
     }
     total_blocks = length / ARTNET_FIRMWARE_SIZE / 2 + 1;
@@ -1279,6 +1756,9 @@ int handle_firmware(node n, artnet_packet p) {
     block_length = n->firmware.bytes_total % (ARTNET_FIRMWARE_SIZE * sizeof(uint16_t));
     if (block_length == 0) {
       block_length = ARTNET_FIRMWARE_SIZE * (int)sizeof(uint16_t);
+    }
+    if (payload_bytes < block_length) {
+      return artnet_tx_firmware_reply(n, p->from.s_addr, ARTNET_FIRMWARE_FAIL);
     }
     block_id = p->data.firmware.blockId;
 
@@ -1289,16 +1769,19 @@ int handle_firmware(node n, artnet_packet p) {
 
       block_id = n->firmware.expected_block;
     }
-    offset = block_id * ARTNET_FIRMWARE_SIZE;
+    offset_words = block_id * ARTNET_FIRMWARE_SIZE;
+    offset_bytes = offset_words * (int)sizeof(uint16_t);
 
     if (n->firmware.peer.s_addr == p->from.s_addr &&
         length == n->firmware.bytes_total &&
         block_id == total_blocks-1 &&
-        offset >= 0 &&
-        offset + block_length <= n->firmware.bytes_total) {
+        offset_bytes >= 0 &&
+        offset_bytes + block_length <= n->firmware.bytes_total) {
 
       // all the checks work out
-      memcpy(n->firmware.data + offset, p->data.firmware.data, block_length);
+      memcpy(((uint8_t *)n->firmware.data) + offset_bytes,
+             p->data.firmware.data,
+             (size_t)block_length);
       n->firmware.bytes_current += block_length;
 
       // do the callback here
@@ -1528,6 +2011,16 @@ int handle(node n, artnet_packet p) {
     return 0;
   }
 
+  if (!packet_length_is_valid(p)) {
+    n->state.report_code = ARTNET_RC_PARSE_FAIL;
+    return 0;
+  }
+
+  if (!packet_fields_are_valid(p)) {
+    n->state.report_code = ARTNET_RC_PARSE_FAIL;
+    return 0;
+  }
+
   switch (p->type) {
     case ARTNET_POLL:
       handle_poll(n, p);
@@ -1732,10 +2225,16 @@ void merge(node n, int port_id, int length, uint8_t *latest) {
 
   if (port->merge_mode == ARTNET_MERGE_HTP) {
     for (i=0; i< length; i++) {
-      port->data[i] = max(port->dataA[i], port->dataB[i]);
+      port->sync_data[i] = max(port->dataA[i], port->dataB[i]);
     }
   } else {
-    memcpy(port->data, latest, length);
+    memcpy(port->sync_data, latest, length);
+  }
+  port->sync_length = length;
+  port->sync_pending = TRUE;
+
+  if (!n->state.sync_mode) {
+    flush_sync_output(n, port_id);
   }
 }
 

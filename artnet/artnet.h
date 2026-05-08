@@ -415,6 +415,7 @@ typedef enum {
   ARTNET_MEDIAPATCH_HANDLER,      /**< Called on receipt of an ArtMediaPatch packet */
   ARTNET_MEDIA_HANDLER,           /**< Called on receipt of an ArtMedia packet */
   ARTNET_MEDIACONTROL_HANDLER,    /**< Called on receipt of an ArtMediaControl packet */
+  ARTNET_MEDIACONTROL_REPLY_HANDLER, /**< Called on receipt of an ArtMediaControlReply packet */
   ARTNET_DATAREQUEST_HANDLER,     /**< Called on receipt of an ArtDataRequest packet */
   ARTNET_DATAREPLY_HANDLER,       /**< Called on receipt of an ArtDataReply packet */
 } artnet_handler_name_t;
@@ -600,7 +601,7 @@ EXTERN int artnet_set_program_handler(artnet_node vn,
 /**
  * @brief Register a firmware transfer handler.
  * @param vn   The artnet_node
- * @param fh   Callback invoked with (node, ubea, data, length, user_data)
+ * @param fh   Callback invoked with (node, ubea, data, length_words, user_data)
  * @param data User data passed to the callback
  * @return ARTNET_EOK on success, or a negative error code
  */
@@ -881,6 +882,16 @@ EXTERN int artnet_send_trigger(artnet_node vn, uint8_t oem_hi, uint8_t oem_lo,
   uint8_t key, uint8_t sub_key, const uint8_t *data, int16_t length);
 
 /**
+ * @brief Send an ArtDataRequest.
+ * @param vn           The artnet_node
+ * @param ip           Target IP address
+ * @param request_code The request code to query
+ * @return ARTNET_EOK on success, or a negative error code
+ */
+EXTERN int artnet_send_data_request(artnet_node vn, const char *ip,
+  uint16_t request_code);
+
+/**
  * @brief Send an ArtDataReply.
  * @param vn           The artnet_node
  * @param ip           Target IP address
@@ -1053,6 +1064,14 @@ EXTERN int artnet_set_status2(artnet_node vn, uint8_t status2);
  * @return ARTNET_EOK on success, or a negative error code
  */
 EXTERN int artnet_set_status3(artnet_node vn, uint8_t status3);
+
+/**
+ * @brief Set the ArtPollReply RefreshRate field (Art-Net 4).
+ * @param vn           The artnet_node
+ * @param refresh_rate Maximum accepted ArtDmx refresh rate in Hz. Values 0-44 encode standard DMX512 capability.
+ * @return ARTNET_EOK on success, or a negative error code
+ */
+EXTERN int artnet_set_refresh_rate(artnet_node vn, uint16_t refresh_rate);
 
 /**
  * @brief Set the short name for this node.

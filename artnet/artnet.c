@@ -128,6 +128,7 @@ artnet_node artnet_new(const char *ip, int verbose) {
   n->state.status3 = ARTNET_STATUS3_FAILOVER | ARTNET_STATUS3_PORT_DIRECTION;
   n->state.acn_priority = 0xFF;  // 0xFF = no change
   n->state.diag_priority = 0xFF;  // accept all until first ArtPoll sets a threshold
+  n->state.refresh_rate = 0;  // 0-44 encodes standard DMX512 max refresh rate
   memset(n->state.default_resp_uid, 0, ARTNET_RDM_UID_WIDTH);
 
   // set all ports to MERGE HTP mode and disable
@@ -137,7 +138,10 @@ artnet_node artnet_new(const char *ip, int verbose) {
     n->ports.out[i].last_dmx_time = 0;
     n->ports.out[i].failsafe_triggered = FALSE;
     n->ports.out[i].failsafe_length = 0;
+    n->ports.out[i].sync_length = 0;
+    n->ports.out[i].sync_pending = FALSE;
     memset(n->ports.out[i].failsafe_data, 0, ARTNET_DMX_LENGTH);
+    memset(n->ports.out[i].sync_data, 0, ARTNET_DMX_LENGTH);
     n->ports.in[i].port_enabled = FALSE;
     n->ports.in[i].last_dmx_send_time = 0;
     n->ports.in[i].last_dmx_length = 0;
@@ -539,6 +543,9 @@ int artnet_set_handler(artnet_node vn,
       break;
     case ARTNET_MEDIACONTROL_HANDLER:
       callback = &n->callbacks.mediacontrol;
+      break;
+    case ARTNET_MEDIACONTROL_REPLY_HANDLER:
+      callback = &n->callbacks.mediacontrol_reply;
       break;
     case ARTNET_DATAREQUEST_HANDLER:
       callback = &n->callbacks.datareq;
@@ -1350,6 +1357,22 @@ int artnet_send_trigger(artnet_node vn, uint8_t oem_hi, uint8_t oem_lo,
 
 
 /**
+ * Send an ArtDataRequest packet (Art-Net 4).
+ *
+ * @param vn           the artnet_node
+ * @param ip           target IP address
+ * @param request_code the request code to query
+ * @return ARTNET_EOK on success, or a negative error code
+ */
+int artnet_send_data_request(artnet_node vn, const char *ip,
+                             uint16_t request_code) {
+  node n = (node) vn;
+  check_nullnode(vn);
+
+  return artnet_tx_data_request(n, ip, request_code);
+}
+
+/**
  * Send an ArtDataReply packet (Art-Net 4).
  *
  * @param vn           the artnet_node
@@ -1767,6 +1790,14 @@ int artnet_set_status3(artnet_node vn, uint8_t status3) {
   check_nullnode(vn);
 
   n->state.status3 = status3;
+  return ARTNET_EOK;
+}
+
+int artnet_set_refresh_rate(artnet_node vn, uint16_t refresh_rate) {
+  node n = (node) vn;
+  check_nullnode(vn);
+
+  n->state.refresh_rate = refresh_rate;
   return ARTNET_EOK;
 }
 
@@ -2542,6 +2573,16 @@ void check_timeouts(node n) {
 
   // ArtSync timeout: revert to non-sync mode after ARTSYNC_TIMEOUT_MS without ArtSync
   if (n->state.sync_mode && artnet_is_timeout(now, n->state.last_sync_time, ARTSYNC_TIMEOUT_MS)) {
+    for (i = 0; i < ARTNET_MAX_PORTS; i++) {
+      if (n->ports.out[i].sync_pending) {
+        memcpy(n->ports.out[i].data, n->ports.out[i].sync_data, n->ports.out[i].sync_length);
+        n->ports.out[i].length = n->ports.out[i].sync_length;
+        n->ports.out[i].sync_pending = FALSE;
+        if (n->callbacks.dmx_c.fh != NULL) {
+          n->callbacks.dmx_c.fh(n, i, n->callbacks.dmx_c.data);
+        }
+      }
+    }
     n->state.sync_mode = 0;
   }
 

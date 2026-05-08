@@ -24,6 +24,8 @@
 #include <string.h>
 #include <signal.h>
 #include <time.h>
+#include <stdint.h>
+#include <arpa/inet.h>
 #include <artnet/artnet.h>
 #include <artnet/packets.h>
 #include <artnet/common.h>
@@ -35,6 +37,55 @@
 
 static volatile int running = 1;
 
+typedef struct {
+  const char *name;
+  const uint8_t *data;
+  size_t length;
+} mem_file_t;
+
+static const uint8_t k_full_node_log[] =
+  "boot=ok\n"
+  "dmx=enabled\n"
+  "rdm=enabled\n";
+
+static const uint8_t k_scene_a_dmx[] = {
+  0x7F, 0x40, 0x20, 0x10, 0x00, 0xFF, 0xAA, 0x55
+};
+
+static const uint8_t k_product_note[] =
+  "libartnet full_node in-memory file\n";
+
+static const mem_file_t k_mem_files[] = {
+  {"full_node.log", k_full_node_log, sizeof(k_full_node_log) - 1},
+  {"scene_A.dmx",   k_scene_a_dmx,   sizeof(k_scene_a_dmx)},
+  {"readme.txt",    k_product_note,  sizeof(k_product_note) - 1},
+};
+
+static int build_directory_blob(uint8_t *buf, size_t cap) {
+  size_t used = 0;
+  size_t i = 0;
+
+  for (i = 0; i < sizeof(k_mem_files) / sizeof(k_mem_files[0]); i++) {
+    size_t name_len = strlen(k_mem_files[i].name) + 1;
+    if (used + name_len > cap) {
+      break;
+    }
+    memcpy(buf + used, k_mem_files[i].name, name_len);
+    used += name_len;
+  }
+  return (int)used;
+}
+
+static const mem_file_t *find_mem_file(const char *name) {
+  size_t i = 0;
+  for (i = 0; i < sizeof(k_mem_files) / sizeof(k_mem_files[0]); i++) {
+    if (strcmp(k_mem_files[i].name, name) == 0) {
+      return &k_mem_files[i];
+    }
+  }
+  return NULL;
+}
+
 /* ---- Packet handlers ---- */
 
 static int dmx_handler(artnet_node n, int port, void *data) {
@@ -42,8 +93,10 @@ static int dmx_handler(artnet_node n, int port, void *data) {
   int length;
   uint8_t *dmx = artnet_read_dmx(n, port, &length);
   if (dmx && length > 0) {
+    int ch2 = (length > 1) ? dmx[1] : -1;
+    int ch3 = (length > 2) ? dmx[2] : -1;
     printf("[DMX] Port %d, %d ch: ch1=%d ch2=%d ch3=%d ... ch%d=%d\n",
-           port, length, dmx[0], dmx[1], dmx[2], length, dmx[length - 1]);
+           port, length, dmx[0], ch2, ch3, length, dmx[length - 1]);
   }
   return 0;
 }
@@ -81,10 +134,8 @@ static int reply_handler(artnet_node n, void *pp, void *data) {
 }
 
 static int tod_request_handler(artnet_node n, void *pp, void *data) {
-  (void)pp; (void)data;
-  printf("[TOD] ArtTodRequest received, sending TOD data\n");
-  for (int i = 0; i < NUM_PORTS; i++)
-    artnet_send_tod_data(n, i);
+  (void)n; (void)pp; (void)data;
+  printf("[TOD] ArtTodRequest received\n");
   return 0;
 }
 
@@ -185,6 +236,82 @@ static int input_handler(artnet_node n, void *pp, void *data) {
   (void)n; (void)pp; (void)data;
   printf("[Input] ArtInput received (port enable/disable)\n");
   return 0;
+}
+
+static int data_request_handler(artnet_node n, void *pp, void *data) {
+  (void)data;
+  artnet_packet packet = (artnet_packet)pp;
+  uint16_t request_code = (uint16_t)((packet->data.datareq.requestHi << 8) |
+                                     packet->data.datareq.requestLo);
+  static const char k_product_url[] = "https://example.invalid/libartnet/full_node";
+  static const char k_user_guide_url[] = "https://example.invalid/libartnet/docs";
+  static const char k_support_url[] = "https://example.invalid/libartnet/support";
+  char ip_buf[16];
+  const char *ip_txt = inet_ntoa(packet->from);
+  snprintf(ip_buf, sizeof(ip_buf), "%s", ip_txt ? ip_txt : "0.0.0.0");
+
+  printf("[DataRequest] code=0x%04X from %s\n", request_code, ip_buf);
+
+  switch (request_code) {
+    case ARTNET_DR_POLL:
+      artnet_send_data_reply(n, ip_buf, request_code, "", 1);
+      break;
+    case ARTNET_DR_URL_PRODUCT:
+      artnet_send_data_reply(n, ip_buf, request_code, k_product_url,
+                             (int16_t)(strlen(k_product_url) + 1));
+      break;
+    case ARTNET_DR_URL_USER_GUIDE:
+      artnet_send_data_reply(n, ip_buf, request_code, k_user_guide_url,
+                             (int16_t)(strlen(k_user_guide_url) + 1));
+      break;
+    case ARTNET_DR_URL_SUPPORT:
+      artnet_send_data_reply(n, ip_buf, request_code, k_support_url,
+                             (int16_t)(strlen(k_support_url) + 1));
+      break;
+    default:
+      artnet_send_data_reply(n, ip_buf, request_code, "", 1);
+      break;
+  }
+  return 0;
+}
+
+static int directory_handler(artnet_node n, void *pp, void *data) {
+  uint8_t dir_blob[256];
+  int len = 0;
+  (void)pp; (void)data;
+  printf("[Directory] ArtDirectory received\n");
+  len = build_directory_blob(dir_blob, sizeof(dir_blob));
+  artnet_send_directory_reply(n,
+                              dir_blob,
+                              len,
+                              (int)(sizeof(k_mem_files) / sizeof(k_mem_files[0])));
+  return 1;
+}
+
+static int file_fn_master_handler(artnet_node n, void *pp, void *data) {
+  (void)data;
+  artnet_packet packet = (artnet_packet)pp;
+  const mem_file_t *file = find_mem_file((const char *)packet->data.filefn.filename);
+  int block_bytes = ARTNET_FIRMWARE_SIZE * (int)sizeof(uint16_t);
+  int total = 0;
+  int block_id = 0;
+  printf("[FileFnMaster] request received for %.256s\n", (char *)packet->data.filefn.filename);
+  if (!file) {
+    static const uint8_t not_found[] = "NOT_FOUND";
+    artnet_send_file_fn_reply(n, 0, (uint16_t)(sizeof(not_found) - 1),
+                              (uint8_t *)not_found, (int)(sizeof(not_found) - 1));
+    return 1;
+  }
+  total = (int)file->length;
+  while (block_id * block_bytes < total) {
+    int offset = block_id * block_bytes;
+    int remaining = total - offset;
+    int send_len = remaining > block_bytes ? block_bytes : remaining;
+    artnet_send_file_fn_reply(n, (uint8_t)block_id, (uint16_t)total,
+                              (uint8_t *)(file->data + offset), send_len);
+    block_id++;
+  }
+  return 1;
 }
 
 /* ---- Helpers ---- */
@@ -292,6 +419,9 @@ int main(int argc, char *argv[]) {
   artnet_set_handler(node, ARTNET_DIAGDATA_HANDLER, diag_handler, NULL);
   artnet_set_handler(node, ARTNET_ADDRESS_HANDLER, address_handler, NULL);
   artnet_set_handler(node, ARTNET_INPUT_HANDLER, input_handler, NULL);
+  artnet_set_handler(node, ARTNET_DATAREQUEST_HANDLER, data_request_handler, NULL);
+  artnet_set_handler(node, ARTNET_DIRECTORY_HANDLER, directory_handler, NULL);
+  artnet_set_handler(node, ARTNET_FILE_FN_MASTER_HANDLER, file_fn_master_handler, NULL);
   artnet_set_program_handler(node, program_handler, NULL);
   artnet_set_firmware_handler(node, firmware_handler, NULL);
 
@@ -303,7 +433,13 @@ int main(int argc, char *argv[]) {
 
   printf("\nFull node started, all handlers active. (Ctrl+C to stop)\n");
   printf("Supported: DMX, RDM, TOD, Sync, TimeCode, TimeSync, Trigger,\n");
-  printf("           Nzs, Firmware, Diagnostics, Remote Programming\n\n");
+  printf("           Nzs, Firmware, Diagnostics, Remote Programming,\n");
+  printf("           DataRequest, Directory, FileFnMaster\n");
+  printf("Files:     ");
+  for (i = 0; i < (int)(sizeof(k_mem_files) / sizeof(k_mem_files[0])); i++) {
+    printf("%s%s", k_mem_files[i].name,
+           (i + 1 < (int)(sizeof(k_mem_files) / sizeof(k_mem_files[0]))) ? ", " : "\n\n");
+  }
 
   signal(SIGINT, signal_handler);
 #ifdef WIN32

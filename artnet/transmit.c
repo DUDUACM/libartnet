@@ -665,6 +665,43 @@ int artnet_tx_nzs(node n, int port_id, uint8_t start_code,
 
 
 /**
+ * Send an ArtDataRequest packet (Art-Net 4)
+ *
+ * @param n            the node
+ * @param ip           the ip address to send to
+ * @param request_code the request code
+ * @return ARTNET_EOK on success, or a negative error code
+ */
+int artnet_tx_data_request(node n, const char *ip, uint16_t request_code) {
+  artnet_packet_t p = {0};
+
+  if (n->state.mode != ARTNET_ON) {
+    return ARTNET_EACTION;
+  }
+
+  memset(&p, 0x00, sizeof(p));
+  if (!ip || artnet_net_inet_aton(ip, &p.to) != 0) {
+    return ARTNET_EARG;
+  }
+
+  p.type = ARTNET_DATAREQUEST;
+  p.length = sizeof(artnet_data_request_t);
+
+  memcpy(&p.data.datareq.id, ARTNET_STRING, ARTNET_STRING_SIZE);
+  p.data.datareq.opCode = htols(ARTNET_DATAREQUEST);
+  p.data.datareq.verH = 0;
+  p.data.datareq.ver = ARTNET_VERSION;
+  p.data.datareq.estaManHi = n->state.esta_hi;
+  p.data.datareq.estaManLo = (uint8_t)n->state.esta_lo;
+  p.data.datareq.oemHi = n->state.oem_hi;
+  p.data.datareq.oemLo = n->state.oem_lo;
+  p.data.datareq.requestHi = short_get_high_byte(request_code);
+  p.data.datareq.requestLo = short_get_low_byte(request_code);
+
+  return artnet_net_send(n, &p);
+}
+
+/**
  * Send an ArtDataReply packet (Art-Net 4)
  *
  * @param n            the node
@@ -1102,6 +1139,8 @@ int artnet_tx_file_fn_reply(node n, uint8_t blockId, uint16_t totalLength,
  */
 int artnet_tx_build_art_poll_reply(node n) {
   int i = 0;
+  uint8_t prog_auth = 0x10;
+  int network_programmed = 0;
 
   // shorten the amount we have to type
   artnet_reply_t *ar = &n->ar_temp;
@@ -1122,8 +1161,8 @@ int artnet_tx_build_art_poll_reply(node n) {
   // ar->status - recalc every time
 
   // ESTA Manufacturer ID
-  ar->estaMan[0] = n->state.esta_hi;
-  ar->estaMan[1] = n->state.esta_lo;
+  ar->estaMan[0] = n->state.esta_lo;
+  ar->estaMan[1] = n->state.esta_hi;
 
   memcpy(&ar->shortName, &n->state.shortName, sizeof(n->state.shortName));
   memcpy(&ar->longName, &n->state.longName, sizeof(n->state.longName));
@@ -1168,8 +1207,19 @@ int artnet_tx_build_art_poll_reply(node n) {
   // bind IP: root device IP address
   memcpy(&ar->bindIp, &n->state.ip_addr.s_addr, 4);
 
+  network_programmed = n->state.netSwitch_net_ctl || n->state.subSwitch_net_ctl;
+  if (!network_programmed) {
+    for (i = 0; i < ARTNET_MAX_PORTS; i++) {
+      if (n->ports.in[i].port_net_ctl || n->ports.out[i].port_net_ctl) {
+        network_programmed = 1;
+        break;
+      }
+    }
+  }
+  prog_auth = network_programmed ? 0x20 : 0x10;
+
   // Status1: LED state in bits 7-6, bits 5-4 = port address programming (0b10 = network), bit 2 = ROM boot, bit 1 = RDM support, bit 0 = UBEA
-  ar->status = (n->state.led_state << 6) | 0x20 | 0x02;
+  ar->status = (n->state.led_state << 6) | prog_auth | 0x02;
 
   // Status3: fail-safe mode in bits 7-6, remaining bits from configurable status3 field
   ar->status3 = n->state.failsafe_mode | n->state.status3;
@@ -1186,6 +1236,12 @@ int artnet_tx_build_art_poll_reply(node n) {
     if (n->ports.out[i].output_style) {
       ar->goodOutputB[i] |= ARTNET_GOODB_STYLE_CONSTANT;
     }
+    if (n->ports.out[i].rdm_enabled) {
+      ar->goodOutputB[i] |= ARTNET_GOODB_DISCOVERY_IDLE;
+      if (n->state.bqp_policy == ARTNET_BQP_DISABLED) {
+        ar->goodOutputB[i] |= ARTNET_GOODB_BG_DISCOVERY_DISABLED;
+      }
+    }
   }
 
   // DefaultRespUID: RDMnet & LLRP default responder UID
@@ -1194,8 +1250,8 @@ int artnet_tx_build_art_poll_reply(node n) {
   // Art-Net 4: user data and refresh rate
   ar->userHi = 0;
   ar->userLo = 0;
-  ar->refreshRateHi = 0;
-  ar->refreshRateLo = 0;  // 0 = max DMX512 rate (44Hz)
+  ar->refreshRateHi = short_get_high_byte(n->state.refresh_rate);
+  ar->refreshRateLo = short_get_low_byte(n->state.refresh_rate);
   ar->bgQueuePolicy = n->state.bqp_policy;
 
   return ARTNET_EOK;
