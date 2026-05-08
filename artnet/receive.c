@@ -339,7 +339,9 @@ void handle_dmx(node n, artnet_packet p) {
  * @return ARTNET_EOK on success, or an error code from the transmit functions.
  */
 int handle_address(node n, artnet_packet p) {
-  int i = 0, old_subnet = 0;
+  int i = 0;
+  uint8_t old_net = 0;
+  uint8_t old_subnet = 0;
   int addr[ARTNET_MAX_PORTS] = {0};
   int ret = 0;
 
@@ -367,12 +369,13 @@ int handle_address(node n, artnet_packet p) {
 
   // first of all store existing port addresses
   // then we can work out if they change
+  old_net = n->state.netSwitch;
+  old_subnet = n->state.subSwitch;
   for (i=0; i< ARTNET_MAX_PORTS; i++) {
     addr[i] = n->ports.in[i].port_addr;
   }
 
   // program subnet
-  old_subnet = p->data.addr.subSwitch & 0x0F;
   if (p->data.addr.subSwitch == PROGRAM_DEFAULTS) {
     // reset to defaults
     n->state.subSwitch = n->state.default_subSwitch;
@@ -392,9 +395,8 @@ int handle_address(node n, artnet_packet p) {
     n->state.netSwitch_net_ctl = TRUE;
   }
 
-  // check if subnet has actually changed
-  if (old_subnet != n->state.subSwitch) {
-    // if it does we need to change all port addresses
+  // if net or subnet changed we need to rebuild all current port addresses
+  if (old_net != n->state.netSwitch || old_subnet != n->state.subSwitch) {
     for(i=0; i< ARTNET_MAX_PORTS; i++) {
       n->ports.in[i].port_addr = make_addr(n->state.netSwitch, n->state.subSwitch, addr_port(n->ports.in[i].port_addr));
       n->ports.out[i].port_addr = make_addr(n->state.netSwitch, n->state.subSwitch, addr_port(n->ports.out[i].port_addr));
@@ -664,10 +666,10 @@ int _artnet_handle_input(node n, artnet_packet p) {
   ports = min( p->data.ainput.numbports, ARTNET_MAX_PORTS);
   for (i =0; i < ports; i++) {
     if (p->data.ainput.input[i] & PORT_DISABLE_MASK) {
-      // disable
+      // disable the logical input while preserving the configured address.
       n->ports.in[i].port_status = n->ports.in[i].port_status | PORT_STATUS_INPUT_DISABLED;
     } else {
-      // enable
+      // enable the logical input while preserving the configured address.
       n->ports.in[i].port_status = n->ports.in[i].port_status & ~PORT_STATUS_INPUT_DISABLED;
     }
   }
@@ -1164,6 +1166,10 @@ int handle_firmware(node n, artnet_packet p) {
       length = artnet_misc_nbytes_to_32( p->data.firmware.length ) *
         sizeof(p->data.firmware.data[0]);
 
+      if (length <= 0) {
+        return artnet_tx_firmware_reply(n, p->from.s_addr, ARTNET_FIRMWARE_FAIL);
+      }
+
       // set parameters
       n->firmware.peer.s_addr = p->from.s_addr;
       n->firmware.data = malloc(length);
@@ -1224,6 +1230,9 @@ int handle_firmware(node n, artnet_packet p) {
     // continued transfer
     length = artnet_misc_nbytes_to_32(p->data.firmware.length) *
       sizeof(p->data.firmware.data[0]);
+    if (length <= 0) {
+      return artnet_tx_firmware_reply(n, p->from.s_addr, ARTNET_FIRMWARE_FAIL);
+    }
     total_blocks = length / ARTNET_FIRMWARE_SIZE / 2 + 1;
     block_length = ARTNET_FIRMWARE_SIZE * sizeof(uint16_t);
     block_id = p->data.firmware.blockId;
@@ -1239,7 +1248,9 @@ int handle_firmware(node n, artnet_packet p) {
 
     if (n->firmware.peer.s_addr == p->from.s_addr &&
         length == n->firmware.bytes_total &&
-        block_id < total_blocks-1) {
+        block_id < total_blocks-1 &&
+        offset >= 0 &&
+        offset + block_length <= n->firmware.bytes_total) {
 
       memcpy(n->firmware.data + offset, p->data.firmware.data, block_length);
       n->firmware.bytes_current += block_length;
@@ -1259,10 +1270,16 @@ int handle_firmware(node n, artnet_packet p) {
              p->data.firmware.type == ARTNET_FIRMWARE_UBEALAST) {
     length = artnet_misc_nbytes_to_32( p->data.firmware.length) *
       sizeof(p->data.firmware.data[0]);
+    if (length <= 0) {
+      return artnet_tx_firmware_reply(n, p->from.s_addr, ARTNET_FIRMWARE_FAIL);
+    }
     total_blocks = length / ARTNET_FIRMWARE_SIZE / 2 + 1;
 
     // length should be the remaining data
     block_length = n->firmware.bytes_total % (ARTNET_FIRMWARE_SIZE * sizeof(uint16_t));
+    if (block_length == 0) {
+      block_length = ARTNET_FIRMWARE_SIZE * (int)sizeof(uint16_t);
+    }
     block_id = p->data.firmware.blockId;
 
     // ok the blockid field is only 1 byte, so it wraps back to 0x00 we
@@ -1276,7 +1293,9 @@ int handle_firmware(node n, artnet_packet p) {
 
     if (n->firmware.peer.s_addr == p->from.s_addr &&
         length == n->firmware.bytes_total &&
-        block_id == total_blocks-1) {
+        block_id == total_blocks-1 &&
+        offset >= 0 &&
+        offset + block_length <= n->firmware.bytes_total) {
 
       // all the checks work out
       memcpy(n->firmware.data + offset, p->data.firmware.data, block_length);

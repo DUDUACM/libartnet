@@ -538,6 +538,8 @@ node_entry_private_t *find_private_entry( node n, artnet_node_entry e);
 void check_timeouts(node n);
 /** @brief Find a node entry by its IP address. */
 node_entry_private_t *find_entry_from_ip(node_list_t *nl, SI ip);
+/** @brief Find a node entry by IP address and first output port value. */
+node_entry_private_t *find_entry_from_ip_and_swout0(node_list_t *nl, SI ip, uint8_t swout0);
 /** @brief Update the node list from an ArtPollReply packet. */
 int artnet_nl_update(node n, node_list_t *nl, artnet_packet reply);
 /** @brief Find all nodes subscribed to a universe address. */

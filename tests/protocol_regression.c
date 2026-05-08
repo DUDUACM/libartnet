@@ -421,6 +421,41 @@ static void test_address_programming_updates_node_state_and_replies(void) {
   stop_sendable_node(&n);
 }
 
+static void test_address_programming_recomputes_ports_when_only_net_changes(void) {
+  artnet_node_t n;
+  artnet_packet_t p;
+  struct in_addr requester = ip4("127.0.0.133");
+
+  init_test_node(&n);
+  start_sendable_node(&n);
+  n.state.reply_addr = requester;
+  n.state.default_netSwitch = 0;
+  n.state.default_subSwitch = 2;
+  n.state.netSwitch = 0;
+  n.state.subSwitch = 2;
+  n.ports.in[0].port_addr = make_addr(0, 2, 1);
+  n.ports.out[0].port_addr = make_addr(0, 2, 2);
+
+  init_packet(&p, ARTNET_ADDRESS, requester);
+  memset(p.data.addr.shortName, PROGRAM_NO_CHANGE, ARTNET_SHORT_NAME_LENGTH);
+  memset(p.data.addr.longName, PROGRAM_NO_CHANGE, ARTNET_LONG_NAME_LENGTH);
+  memset(p.data.addr.swIn, PROGRAM_NO_CHANGE, ARTNET_MAX_PORTS);
+  memset(p.data.addr.swOut, PROGRAM_NO_CHANGE, ARTNET_MAX_PORTS);
+  p.data.addr.netSwitch = 0x80 | 0x05;
+  p.data.addr.subSwitch = PROGRAM_NO_CHANGE;
+  p.data.addr.acnPriority = 0xFF;
+  p.data.addr.command = ARTNET_PC_NONE;
+
+  ASSERT_TRUE(handle_address(&n, &p) == ARTNET_EOK,
+              "handle_address should accept net-only reprogramming");
+  ASSERT_TRUE(n.ports.in[0].port_addr == make_addr(0x05, 0x02, 0x01),
+              "net-only reprogramming should rebuild input port addresses");
+  ASSERT_TRUE(n.ports.out[0].port_addr == make_addr(0x05, 0x02, 0x02),
+              "net-only reprogramming should rebuild output port addresses");
+
+  stop_sendable_node(&n);
+}
+
 static void test_address_rdm_and_bqp_commands_update_state(void) {
   artnet_node_t n;
   artnet_packet_t p;
@@ -828,6 +863,30 @@ static void test_firmware_single_block_upload_completes_and_replies_allgood(void
   stop_sendable_node(&n);
 }
 
+static void test_firmware_first_block_with_zero_length_fails(void) {
+  artnet_node_t n;
+  artnet_packet_t p;
+  send_capture_t send_capture = {0};
+
+  init_test_node(&n);
+  start_sendable_node(&n);
+  n.callbacks.send.fh = send_capture_handler;
+  n.callbacks.send.data = &send_capture;
+
+  init_packet(&p, ARTNET_FIRMWAREMASTER, ip4("127.0.0.149"));
+  p.data.firmware.type = ARTNET_FIRMWARE_FIRMFIRST;
+  artnet_misc_int_to_bytes(0, p.data.firmware.length);
+
+  ASSERT_TRUE(handle_firmware(&n, &p) == ARTNET_EOK,
+              "zero-length firmware first block should be handled");
+  ASSERT_TRUE(send_capture.called == 1 &&
+              send_capture.type == ARTNET_FIRMWAREREPLY &&
+              send_capture.data.firmwarer.type == ARTNET_FIRMWARE_FAIL,
+              "zero-length firmware first block should reply with FAIL");
+
+  stop_sendable_node(&n);
+}
+
 static void test_firmware_multi_block_upload_completes_after_last_block(void) {
   artnet_node_t n;
   artnet_packet_t first;
@@ -973,6 +1032,34 @@ static void test_node_list_update_and_timeout_cleanup(void) {
   check_timeouts(&n);
   ASSERT_TRUE(artnet_nl_get_length(nl) == 0,
               "check_timeouts should remove stale node list entries");
+}
+
+static void test_node_list_same_ip_and_same_first_port_updates_same_entry(void) {
+  artnet_node_t n;
+  artnet_packet_t reply;
+  node_entry_private_t *first_private = NULL;
+
+  init_test_node(&n);
+  n.state.mode = ARTNET_ON;
+
+  init_packet(&reply, ARTNET_REPLY, ip4("127.0.0.161"));
+  reply.data.ar.netSwitch = 1;
+  reply.data.ar.subSwitch = 2;
+  reply.data.ar.numbports = 1;
+  reply.data.ar.swOut[0] = 3;
+  memcpy(reply.data.ar.shortName, "Alpha", 6);
+  memcpy(reply.data.ar.ip, &reply.from.s_addr, 4);
+
+  ASSERT_TRUE(artnet_nl_update(&n, &n.node_list, &reply) == ARTNET_EOK,
+              "first reply should create a node list entry");
+  first_private = n.node_list.first;
+
+  memcpy(reply.data.ar.shortName, "Alpha-2", 8);
+  ASSERT_TRUE(artnet_nl_update(&n, &n.node_list, &reply) == ARTNET_EOK,
+              "second reply with same IP and same first port should update the existing entry");
+  ASSERT_TRUE(n.node_list.first == first_private &&
+              n.node_list.length == 1,
+              "same IP and same first port should resolve to the same node list entry");
 }
 
 static void test_diag_unicast_then_broadcast_with_multiple_controllers(void) {
@@ -1140,6 +1227,47 @@ static void test_firmware_continuation_from_wrong_sender_fails(void) {
               send_capture.type == ARTNET_FIRMWAREREPLY &&
               send_capture.data.firmwarer.type == ARTNET_FIRMWARE_FAIL,
               "continuation block from a different sender should be rejected with FAIL");
+
+  stop_sendable_node(&n);
+}
+
+static void test_firmware_last_block_out_of_range_fails(void) {
+  artnet_node_t n;
+  artnet_packet_t first;
+  artnet_packet_t last;
+  send_capture_t send_capture = {0};
+  uint16_t words[514];
+  int i = 0;
+
+  for (i = 0; i < 514; i++) {
+    words[i] = (uint16_t)(0x3000 + i);
+  }
+
+  init_test_node(&n);
+  start_sendable_node(&n);
+  n.callbacks.send.fh = send_capture_handler;
+  n.callbacks.send.data = &send_capture;
+
+  init_packet(&first, ARTNET_FIRMWAREMASTER, ip4("127.0.0.175"));
+  first.data.firmware.type = ARTNET_FIRMWARE_FIRMFIRST;
+  artnet_misc_int_to_bytes(514, first.data.firmware.length);
+  memcpy(first.data.firmware.data, words, ARTNET_FIRMWARE_SIZE * sizeof(uint16_t));
+  ASSERT_TRUE(handle_firmware(&n, &first) == ARTNET_EOK,
+              "first block should initialize firmware transfer state");
+
+  send_capture.called = 0;
+  init_packet(&last, ARTNET_FIRMWAREMASTER, ip4("127.0.0.175"));
+  last.data.firmware.type = ARTNET_FIRMWARE_FIRMLAST;
+  last.data.firmware.blockId = 9;
+  artnet_misc_int_to_bytes(514, last.data.firmware.length);
+  memcpy(last.data.firmware.data, &words[ARTNET_FIRMWARE_SIZE], 2 * sizeof(uint16_t));
+
+  ASSERT_TRUE(handle_firmware(&n, &last) == ARTNET_EOK,
+              "out-of-range last block should still be handled");
+  ASSERT_TRUE(send_capture.called == 1 &&
+              send_capture.type == ARTNET_FIRMWAREREPLY &&
+              send_capture.data.firmwarer.type == ARTNET_FIRMWARE_FAIL,
+              "out-of-range last block should reply with FAIL");
 
   stop_sendable_node(&n);
 }
@@ -1426,6 +1554,7 @@ int main(void) {
   test_poll_schedules_unicast_reply_and_reply_on_change_flag();
   test_poll_target_mode_filters_non_matching_node();
   test_address_programming_updates_node_state_and_replies();
+  test_address_programming_recomputes_ports_when_only_net_changes();
   test_address_rdm_and_bqp_commands_update_state();
   test_input_disable_and_enable_updates_port_status_and_reply();
   test_poll_reply_build_populates_artnet4_fields();
@@ -1438,9 +1567,12 @@ int main(void) {
   test_failsafe_zero_full_and_scene_modes();
   test_dmx_merge_htp_ltp_and_timeout_cleanup();
   test_firmware_single_block_upload_completes_and_replies_allgood();
+  test_firmware_first_block_with_zero_length_fails();
   test_firmware_multi_block_upload_completes_after_last_block();
   test_firmware_reply_blockgood_sends_next_packet();
+  test_firmware_last_block_out_of_range_fails();
   test_node_list_update_and_timeout_cleanup();
+  test_node_list_same_ip_and_same_first_port_updates_same_entry();
   test_diag_unicast_then_broadcast_with_multiple_controllers();
   test_sync_timeout_and_dmx_keepalive_retransmission();
   test_firmware_reply_callbacks_for_allgood_and_fail();

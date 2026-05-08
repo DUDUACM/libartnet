@@ -2321,18 +2321,7 @@ int artnet_nl_update(node n, node_list_t *nl, artnet_packet reply) {
   NL_WRITE_BEGIN(n);
 
   // find entry matching both IP and first port address (joined nodes share IP)
-  entry = find_entry_from_ip(nl, reply->from);
-  if (entry && entry->pub.swOut[0] != swOut0) {
-    // same IP but different port set, look for matching port
-    node_entry_private_t *tmp = NULL;
-    for (tmp = nl->first; tmp; tmp = tmp->next) {
-      if (tmp->ip.s_addr == reply->from.s_addr && tmp->pub.swOut[0] == swOut0) {
-        entry = tmp;
-        break;
-      }
-      entry = NULL;
-    }
-  }
+  entry = find_entry_from_ip_and_swout0(nl, reply->from, swOut0);
 
   if (!entry) {
     // add to list
@@ -2384,6 +2373,18 @@ node_entry_private_t *find_entry_from_ip(node_list_t *nl, SI ip) {
     }
   }
   return tmp;
+}
+
+node_entry_private_t *find_entry_from_ip_and_swout0(node_list_t *nl, SI ip, uint8_t swout0) {
+  node_entry_private_t *tmp = NULL;
+
+  for (tmp = nl->first; tmp; tmp = tmp->next) {
+    if (ip.s_addr == tmp->ip.s_addr && tmp->pub.swOut[0] == swout0) {
+      return tmp;
+    }
+  }
+
+  return NULL;
 }
 
 
