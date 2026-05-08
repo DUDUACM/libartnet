@@ -248,7 +248,7 @@ int artnet_tx_tod_data(node n, int id) {
   remaining = n->ports.out[id].port_tod.length;
   bloc = 0;
 
-  while (remaining > 0) {
+  do {
     memset(&tod.data.toddata.tod,0x00, ARTNET_MAX_UID_COUNT * ARTNET_RDM_UID_WIDTH);
     lim = min(ARTNET_MAX_UID_COUNT, remaining);
     tod.data.toddata.blockCount = (uint8_t)bloc++;
@@ -263,7 +263,7 @@ int artnet_tx_tod_data(node n, int id) {
 
     ret = ret || artnet_net_send(n, &tod);
     remaining = remaining - lim;
-  }
+  } while (remaining > 0);
   return ret;
 }
 

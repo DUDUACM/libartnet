@@ -900,14 +900,14 @@ void handle_nzs(node n, artnet_packet p) {
 void handle_command(node n, artnet_packet p) {
   uint16_t esta = 0;
 
-  if (check_callback(n, p, n->callbacks.command)) {
-    return;
-  }
-
   // ArtCommand carries ESTA manufacturer code, not OEM code.
   esta = (p->data.cmd.estaManHi << 8) | p->data.cmd.estaManLo;
   if (esta != 0xFFFF &&
       esta != ((n->state.esta_hi << 8) | (uint8_t)n->state.esta_lo)) {
+    return;
+  }
+
+  if (check_callback(n, p, n->callbacks.command)) {
     return;
   }
 }
@@ -946,13 +946,13 @@ void handle_timesync(node n, artnet_packet p) {
 void handle_trigger(node n, artnet_packet p) {
   uint16_t oem = 0;
 
-  if (check_callback(n, p, n->callbacks.trigger)) {
-    return;
-  }
-
   oem = (p->data.trigger.oemCodeHi << 8) | p->data.trigger.oemCodeLo;
   if (oem != 0xFFFF &&
       oem != ((n->state.oem_hi << 8) | n->state.oem_lo)) {
+    return;
+  }
+
+  if (check_callback(n, p, n->callbacks.trigger)) {
     return;
   }
 }
@@ -1434,8 +1434,10 @@ void handle_ipprog(node n, artnet_packet p) {
     // Program IP address (bit 2)
     if (cmd & 0x04) {
       struct in_addr new_ip;
-      new_ip.s_addr = (p->data.aip.ProgIpHi << 24) | (p->data.aip.ProgIp2 << 16) |
-                      (p->data.aip.ProgIp1 << 8) | p->data.aip.ProgIpLo;
+      new_ip.s_addr = htonl(((uint32_t)p->data.aip.ProgIpHi << 24) |
+                            ((uint32_t)p->data.aip.ProgIp2 << 16) |
+                            ((uint32_t)p->data.aip.ProgIp1 << 8) |
+                            (uint32_t)p->data.aip.ProgIpLo);
       n->state.ip_addr = new_ip;
       n->state.bcast_addr.s_addr =
           (new_ip.s_addr & n->state.subnet_mask.s_addr) | (~n->state.subnet_mask.s_addr);
@@ -1449,8 +1451,10 @@ void handle_ipprog(node n, artnet_packet p) {
     // Program subnet mask (bit 1)
     if (cmd & 0x02) {
       struct in_addr new_mask;
-      new_mask.s_addr = (p->data.aip.ProgSmHi << 24) | (p->data.aip.ProgSm2 << 16) |
-                        (p->data.aip.ProgSm1 << 8) | p->data.aip.ProgSmLo;
+      new_mask.s_addr = htonl(((uint32_t)p->data.aip.ProgSmHi << 24) |
+                              ((uint32_t)p->data.aip.ProgSm2 << 16) |
+                              ((uint32_t)p->data.aip.ProgSm1 << 8) |
+                              (uint32_t)p->data.aip.ProgSmLo);
       n->state.subnet_mask = new_mask;
       n->state.bcast_addr.s_addr =
           (n->state.ip_addr.s_addr & new_mask.s_addr) | (~new_mask.s_addr);
@@ -1464,8 +1468,10 @@ void handle_ipprog(node n, artnet_packet p) {
     // Program default gateway (bit 4)
     if (cmd & 0x10) {
       struct in_addr new_gw;
-      new_gw.s_addr = (p->data.aip.ProgDgHi << 24) | (p->data.aip.ProgDg2 << 16) |
-                      (p->data.aip.ProgDg1 << 8) | p->data.aip.ProgDgLo;
+      new_gw.s_addr = htonl(((uint32_t)p->data.aip.ProgDgHi << 24) |
+                            ((uint32_t)p->data.aip.ProgDg2 << 16) |
+                            ((uint32_t)p->data.aip.ProgDg1 << 8) |
+                            (uint32_t)p->data.aip.ProgDgLo);
       n->state.gateway = new_gw;
       n->state.report_code = ARTNET_RC_DEBUG;
       snprintf(n->state.report, ARTNET_REPORT_LENGTH,
