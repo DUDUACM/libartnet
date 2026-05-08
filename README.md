@@ -46,6 +46,7 @@ make
 | `BUILD_SHARED_LIBS` | `ON` | Build shared library (.so/.dylib/.dll); set `OFF` for static (.a/.lib) |
 | `ENABLE_IPV6` | `ON` | Enable IPv6 support |
 | `BUILD_EXAMPLES` | `ON` | Build example programs |
+| `BUILD_TESTS` | `OFF` | Build protocol regression tests and enable `ctest` |
 | `BUILD_WERROR` | `OFF` | Treat compiler warnings as errors |
 
 ### Static Library
@@ -53,6 +54,32 @@ make
 ```bash
 cmake .. -DBUILD_SHARED_LIBS=OFF
 ```
+
+## Testing
+
+Build and run the protocol regression suite with:
+
+```bash
+cmake -B build-test -DBUILD_TESTS=ON -DBUILD_EXAMPLES=OFF
+cmake --build build-test --config Release
+ctest --test-dir build-test --output-on-failure
+```
+
+The regression suite uses a stubbed network backend to validate protocol behavior without requiring a live Art-Net network. Current coverage includes:
+
+- `ArtPoll` / `ArtPollReply`
+- `ArtAddress` / `ArtInput`
+- `ArtDmx` / `ArtNzs` / `ArtSync`
+- `ArtIpProg` / `ArtIpProgReply`
+- `ArtDirectory` / `ArtDirectoryReply`
+- `ArtFileFnMaster` / `ArtFileFnReply`
+- `ArtTodRequest` / `ArtTodControl` / `ArtTodData`
+- `ArtRdm` / `ArtRdmSub`
+- Firmware upload / reply state machine
+- Node list update and timeout cleanup
+- Fail-safe, merge, keepalive, and diagnostic controller edge cases
+
+CI runs this suite as a required gate before packaging and release on both GitHub Actions and GitLab CI.
 
 ### Cross-Platform Notes
 
