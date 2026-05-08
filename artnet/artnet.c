@@ -1406,6 +1406,10 @@ int artnet_send_directory_reply(artnet_node vn,
     return ARTNET_EACTION;
   }
 
+  if (n->state.reply_addr.s_addr == 0) {
+    return ARTNET_EACTION;
+  }
+
   len = entry_count > 2048 ? 2048 : entry_count;
 
   memset(&p, 0x00, sizeof(p));

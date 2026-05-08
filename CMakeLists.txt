@@ -15,6 +15,7 @@ include(GNUInstallDirs)
 option(BUILD_SHARED_LIBS "Build shared libraries" ON)
 option(ENABLE_IPV6 "Enable IPv6 support" ON)
 option(BUILD_EXAMPLES "Build example programs" ON)
+option(BUILD_TESTS "Build protocol regression tests" OFF)
 option(BUILD_WERROR "Treat compiler warnings as errors" OFF)
 
 # Platform-specific settings
@@ -91,6 +92,12 @@ add_subdirectory(artnet)
 # Add examples
 if(BUILD_EXAMPLES)
     add_subdirectory(examples)
+endif()
+
+# Add tests
+if(BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
 endif()
 
 # Generate pkg-config file

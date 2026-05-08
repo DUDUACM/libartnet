@@ -11,8 +11,9 @@ build:linux-amd64:
     - apt-get update && apt-get install -y cmake gcc make
   script:
     - VERSION="${CI_COMMIT_TAG#v}"
-    - cmake -B build -DBUILD_SHARED_LIBS=ON -DBUILD_EXAMPLES=OFF -DCMAKE_INSTALL_PREFIX=install
+    - cmake -B build -DBUILD_SHARED_LIBS=ON -DBUILD_EXAMPLES=OFF -DBUILD_TESTS=ON -DCMAKE_INSTALL_PREFIX=install
     - cmake --build build --config Release
+    - ctest --test-dir build --output-on-failure
     - cmake --install build --config Release --prefix install
     - PKGNAME="libartnet-${VERSION}-linux-amd64"
     - mv install "${PKGNAME}"

@@ -879,6 +879,14 @@ int artnet_tx_directory(node n) {
 int artnet_tx_directory_reply(node n) {
   artnet_packet_t p = {0};
 
+  if (n->state.mode != ARTNET_ON) {
+    return ARTNET_EACTION;
+  }
+
+  if (n->state.reply_addr.s_addr == 0) {
+    return ARTNET_EACTION;
+  }
+
   memset(&p, 0x00, sizeof(p));
   p.to = n->state.reply_addr;
   p.type = ARTNET_DIRECTORYREPLY;
@@ -903,6 +911,10 @@ int artnet_tx_ipprog_reply(node n) {
   artnet_packet_t p = {0};
 
   if (n->state.mode != ARTNET_ON) {
+    return ARTNET_EACTION;
+  }
+
+  if (n->state.reply_addr.s_addr == 0) {
     return ARTNET_EACTION;
   }
 
@@ -1051,6 +1063,14 @@ int artnet_tx_file_fn_reply(node n, uint8_t blockId, uint16_t totalLength,
                             uint8_t *data, int dataLen) {
   artnet_packet_t p = {0};
   int len = 0;
+
+  if (n->state.mode != ARTNET_ON) {
+    return ARTNET_EACTION;
+  }
+
+  if (n->state.reply_addr.s_addr == 0) {
+    return ARTNET_EACTION;
+  }
 
   memset(&p, 0x00, sizeof(p));
   p.to = n->state.reply_addr;

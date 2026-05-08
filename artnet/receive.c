@@ -898,15 +898,16 @@ void handle_nzs(node n, artnet_packet p) {
  * @param p The received Art-Net packet.
  */
 void handle_command(node n, artnet_packet p) {
-  uint16_t oem = 0;
+  uint16_t esta = 0;
 
   if (check_callback(n, p, n->callbacks.command)) {
     return;
   }
 
-  oem = (p->data.cmd.estaManHi << 8) | p->data.cmd.estaManLo;
-  if (oem != 0xFFFF &&
-      oem != ((n->state.oem_hi << 8) | n->state.oem_lo)) {
+  // ArtCommand carries ESTA manufacturer code, not OEM code.
+  esta = (p->data.cmd.estaManHi << 8) | p->data.cmd.estaManLo;
+  if (esta != 0xFFFF &&
+      esta != ((n->state.esta_hi << 8) | (uint8_t)n->state.esta_lo)) {
     return;
   }
 }
@@ -964,6 +965,9 @@ void handle_trigger(node n, artnet_packet p) {
  * @param p The received Art-Net packet.
  */
 void handle_directory(node n, artnet_packet p) {
+  // ArtDirectoryReply must be unicast back to this request source.
+  n->state.reply_addr = p->from;
+
   if (check_callback(n, p, n->callbacks.directory)) {
     return;
   }
@@ -1020,6 +1024,9 @@ int handle_file_tn_master(node n, artnet_packet p) {
  * @param p The received Art-Net packet.
  */
 void handle_file_fn_master(node n, artnet_packet p) {
+  // ArtFileFnReply must be unicast back to this request source.
+  n->state.reply_addr = p->from;
+
   if (check_callback(n, p, n->callbacks.file_fn_master)) {
     return;
   }
@@ -1386,6 +1393,9 @@ int handle_firmware_reply(node n, artnet_packet p) {
 void handle_ipprog(node n, artnet_packet p) {
   uint8_t cmd = p->data.aip.Command;
 
+  // ArtIpProgReply (and any immediate PollReply we emit here) should target this requester.
+  n->state.reply_addr = p->from;
+
   if (check_callback(n, p, n->callbacks.ipprog)) {
     return;
   }
@@ -1427,7 +1437,6 @@ void handle_ipprog(node n, artnet_packet p) {
       new_ip.s_addr = (p->data.aip.ProgIpHi << 24) | (p->data.aip.ProgIp2 << 16) |
                       (p->data.aip.ProgIp1 << 8) | p->data.aip.ProgIpLo;
       n->state.ip_addr = new_ip;
-      n->state.reply_addr = new_ip;
       n->state.bcast_addr.s_addr =
           (new_ip.s_addr & n->state.subnet_mask.s_addr) | (~n->state.subnet_mask.s_addr);
       n->state.report_code = ARTNET_RC_DEBUG;
