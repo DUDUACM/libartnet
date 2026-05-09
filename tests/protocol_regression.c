@@ -79,6 +79,7 @@ static node_entry_private_t *add_stub_node_entry(node n,
   entry->pub.numbports = 1;
   entry->pub.netSwitch = net;
   entry->pub.subSwitch = subnet;
+  entry->pub.portTypes[0] = (uint8_t)((uint8_t)ARTNET_ENABLE_OUTPUT | (uint8_t)ARTNET_PORT_DMX);
   entry->pub.swOut[0] = port;
   entry->last_seen = artnet_gettime_ms();
   entry->next = NULL;
@@ -114,6 +115,8 @@ static struct in_addr ip4(const char *text) {
 }
 
 static void init_test_node(artnet_node_t *n) {
+  int i = 0;
+
   memset(n, 0, sizeof(*n));
   n->state.mode = ARTNET_STANDBY;
   n->state.ip_addr = ip4("10.0.0.2");
@@ -126,6 +129,10 @@ static void init_test_node(artnet_node_t *n) {
   n->state.oem_lo = 0x78;
   n->state.node_type = ARTNET_NODE;
   n->state.diag_priority = 0xFF;
+  n->state.bind_index = 1;
+  for (i = 0; i < ARTNET_MAX_PORTS; i++) {
+    n->ports.in[i].seq = 1;
+  }
 }
 
 static void start_sendable_node(artnet_node_t *n) {
@@ -176,6 +183,15 @@ static int send_capture_handler(artnet_node vn, void *pp, void *data) {
   capture->to = p->to;
   memcpy(&capture->data, &p->data, sizeof(capture->data));
   return 0;
+}
+
+static void set_vlc_magic(uint8_t *data, int payload_length) {
+  memset(data, 0, ARTNET_VLC_MIN_LENGTH + payload_length);
+  data[0] = 0x41;
+  data[1] = 0x4c;
+  data[2] = 0x45;
+  data[8] = short_get_high_byte(payload_length);
+  data[9] = short_get_low_byte(payload_length);
 }
 
 static int simple_packet_handler(artnet_node vn, void *pp, void *data) {
@@ -264,6 +280,65 @@ static void test_poll_schedules_unicast_reply_and_reply_on_change_flag(void) {
   stop_sendable_node(&n);
 }
 
+static void test_legacy_14_byte_poll_is_accepted(void) {
+  artnet_node_t n;
+  artnet_packet_t p;
+  struct in_addr requester = ip4("127.0.0.112");
+
+  init_test_node(&n);
+  init_packet(&p, ARTNET_POLL, requester);
+  p.length = 14;
+
+  handle(&n, &p);
+
+  ASSERT_TRUE(n.state.reply_addr.s_addr == requester.s_addr,
+              "handle should accept legacy 14-byte ArtPoll packets");
+  ASSERT_TRUE(n.state.apr_pending == TRUE,
+              "legacy 14-byte ArtPoll should schedule an ArtPollReply");
+  ASSERT_TRUE(n.state.report_code != ARTNET_RC_PARSE_FAIL,
+              "legacy 14-byte ArtPoll should not be reported as parse failure");
+}
+
+static void test_poll_vlc_disable_flag_controls_vlc_sends(void) {
+  artnet_node_t n;
+  artnet_packet_t p;
+  send_capture_t send_capture = {0};
+  uint8_t vlc[ARTNET_VLC_MIN_LENGTH + 1];
+
+  init_test_node(&n);
+  n.state.node_type = ARTNET_SRV;
+  start_sendable_node(&n);
+  n.callbacks.send.fh = send_capture_handler;
+  n.callbacks.send.data = &send_capture;
+  n.ports.in[0].port_enabled = TRUE;
+  n.ports.in[0].port_addr = make_addr(1, 2, 6);
+  add_stub_node_entry(&n, "192.168.1.14", 1, 2, 6);
+  set_vlc_magic(vlc, 1);
+  vlc[ARTNET_VLC_MIN_LENGTH] = 0x44;
+
+  init_packet(&p, ARTNET_POLL, ip4("127.0.0.113"));
+  p.data.ap.flags = ARTNET_POLL_FLAG_VLC_DISABLE;
+  handle_poll(&n, &p);
+
+  ASSERT_TRUE(n.state.vlc_disabled == TRUE,
+              "ArtPoll Flags bit 4 should disable VLC transmission");
+  ASSERT_TRUE(artnet_send_vlc((artnet_node)&n, make_addr(1, 2, 6),
+                              (int16_t)sizeof(vlc), vlc) == ARTNET_EACTION,
+              "artnet_send_vlc should refuse sends while VLC transmission is disabled");
+
+  p.data.ap.flags = 0;
+  handle_poll(&n, &p);
+  ASSERT_TRUE(n.state.vlc_disabled == FALSE,
+              "ArtPoll with VLC enabled should clear the VLC disable flag");
+  ASSERT_TRUE(artnet_send_vlc((artnet_node)&n, make_addr(1, 2, 6),
+                              (int16_t)sizeof(vlc), vlc) == ARTNET_EOK,
+              "artnet_send_vlc should send after VLC transmission is re-enabled");
+  ASSERT_TRUE(send_capture.called == 1 && send_capture.type == ARTNET_NZS,
+              "ArtVlc should be sent as an ArtNzs packet");
+
+  stop_sendable_node(&n);
+}
+
 static void test_poll_target_mode_filters_non_matching_node(void) {
   artnet_node_t n;
   artnet_packet_t p;
@@ -321,6 +396,48 @@ static void test_tod_request_unicasts_tod_data_to_requester(void) {
               "ArtTodData should include the single discovered UID");
   ASSERT_TRUE(memcmp(send_capture.data.toddata.tod[0], uid, ARTNET_RDM_UID_WIDTH) == 0,
               "ArtTodData should include the configured UID");
+
+  stop_sendable_node(&n);
+}
+
+static void test_tod_updates_are_sent_to_all_previous_requesters(void) {
+  artnet_node_t n;
+  artnet_packet_t p;
+  send_capture_t send_capture = {0};
+  struct in_addr requester1 = ip4("127.0.0.122");
+  struct in_addr requester2 = ip4("127.0.0.123");
+  uint8_t uid1[ARTNET_RDM_UID_WIDTH] = {0x21, 0x22, 0x23, 0x24, 0x25, 0x26};
+  uint8_t uid2[ARTNET_RDM_UID_WIDTH] = {0x31, 0x32, 0x33, 0x34, 0x35, 0x36};
+
+  init_test_node(&n);
+  start_sendable_node(&n);
+  n.callbacks.send.fh = send_capture_handler;
+  n.callbacks.send.data = &send_capture;
+  n.ports.out[0].port_enabled = TRUE;
+  n.ports.out[0].port_addr = make_addr(0x01, 0x02, 0x03);
+  add_tod_uid(&n.ports.out[0].port_tod, uid1);
+
+  init_packet(&p, ARTNET_TODREQUEST, requester1);
+  p.data.todreq.command = ARTNET_TOD_FULL;
+  p.data.todreq.net = 0x01;
+  p.data.todreq.adCount = 1;
+  p.data.todreq.address[0] = 0x23;
+  ASSERT_TRUE(handle_tod_request(&n, &p) == ARTNET_EOK,
+              "first ArtTodRequest should succeed");
+
+  p.from = requester2;
+  ASSERT_TRUE(handle_tod_request(&n, &p) == ARTNET_EOK,
+              "second ArtTodRequest should succeed");
+  ASSERT_TRUE(n.state.tod_requester_count == 2,
+              "TOD requester list should retain distinct previous requesters");
+
+  send_capture.called = 0;
+  ASSERT_TRUE(artnet_add_rdm_device((artnet_node)&n, 0, uid2) == ARTNET_EOK,
+              "adding an RDM device should send TOD updates");
+  ASSERT_TRUE(send_capture.called == 2,
+              "TOD updates should be unicast to all previous TOD requesters");
+  ASSERT_TRUE(send_capture.to.s_addr == requester2.s_addr,
+              "last TOD update should target the last remembered requester");
 
   stop_sendable_node(&n);
 }
@@ -397,6 +514,7 @@ static void test_address_programming_updates_node_state_and_replies(void) {
   memcpy(p.data.addr.swIn, in_addrs, ARTNET_MAX_PORTS);
   memcpy(p.data.addr.swOut, out_addrs, ARTNET_MAX_PORTS);
   p.data.addr.netSwitch = 0x80 | 0x05;
+  p.data.addr.bindIndex = 1;
   p.data.addr.subSwitch = 0x80 | 0x03;
   p.data.addr.swOut[0] = 0x80 | 0x07;
   p.data.addr.acnPriority = 100;
@@ -426,6 +544,47 @@ static void test_address_programming_updates_node_state_and_replies(void) {
   stop_sendable_node(&n);
 }
 
+static void test_address_bind_index_filters_other_bound_pages(void) {
+  artnet_node_t n;
+  artnet_packet_t p;
+  send_capture_t send_capture = {0};
+  struct in_addr requester = ip4("127.0.0.134");
+
+  init_test_node(&n);
+  start_sendable_node(&n);
+  n.callbacks.send.fh = send_capture_handler;
+  n.callbacks.send.data = &send_capture;
+  n.state.bind_index = 2;
+  n.state.acn_priority = 0xFF;
+
+  init_packet(&p, ARTNET_ADDRESS, requester);
+  memset(p.data.addr.shortName, PROGRAM_NO_CHANGE, ARTNET_SHORT_NAME_LENGTH);
+  memset(p.data.addr.longName, PROGRAM_NO_CHANGE, ARTNET_LONG_NAME_LENGTH);
+  memset(p.data.addr.swIn, PROGRAM_NO_CHANGE, ARTNET_MAX_PORTS);
+  memset(p.data.addr.swOut, PROGRAM_NO_CHANGE, ARTNET_MAX_PORTS);
+  p.data.addr.bindIndex = 1;
+  p.data.addr.netSwitch = PROGRAM_NO_CHANGE;
+  p.data.addr.subSwitch = PROGRAM_NO_CHANGE;
+  p.data.addr.acnPriority = 100;
+
+  ASSERT_TRUE(handle_address(&n, &p) == ARTNET_EOK,
+              "ArtAddress with non-matching BindIndex should be ignored cleanly");
+  ASSERT_TRUE(n.state.acn_priority == 0xFF,
+              "ArtAddress should not reprogram state for a different BindIndex");
+  ASSERT_TRUE(send_capture.called == 0,
+              "ArtAddress should not reply for a different BindIndex");
+
+  p.data.addr.bindIndex = 2;
+  ASSERT_TRUE(handle_address(&n, &p) == ARTNET_EOK,
+              "ArtAddress with matching BindIndex should be processed");
+  ASSERT_TRUE(n.state.acn_priority == 100,
+              "ArtAddress should reprogram state for the matching BindIndex");
+  ASSERT_TRUE(send_capture.called == 1,
+              "ArtAddress should reply for the matching BindIndex");
+
+  stop_sendable_node(&n);
+}
+
 static void test_address_programming_recomputes_ports_when_only_net_changes(void) {
   artnet_node_t n;
   artnet_packet_t p;
@@ -447,6 +606,7 @@ static void test_address_programming_recomputes_ports_when_only_net_changes(void
   memset(p.data.addr.swIn, PROGRAM_NO_CHANGE, ARTNET_MAX_PORTS);
   memset(p.data.addr.swOut, PROGRAM_NO_CHANGE, ARTNET_MAX_PORTS);
   p.data.addr.netSwitch = 0x80 | 0x05;
+  p.data.addr.bindIndex = 1;
   p.data.addr.subSwitch = PROGRAM_NO_CHANGE;
   p.data.addr.acnPriority = 0xFF;
   p.data.addr.command = ARTNET_PC_NONE;
@@ -478,6 +638,7 @@ static void test_address_rdm_and_bqp_commands_update_state(void) {
   memset(p.data.addr.swIn, PROGRAM_NO_CHANGE, ARTNET_MAX_PORTS);
   memset(p.data.addr.swOut, PROGRAM_NO_CHANGE, ARTNET_MAX_PORTS);
   p.data.addr.netSwitch = PROGRAM_NO_CHANGE;
+  p.data.addr.bindIndex = 1;
   p.data.addr.subSwitch = PROGRAM_NO_CHANGE;
   p.data.addr.acnPriority = 0xFF;
 
@@ -509,6 +670,7 @@ static void test_input_disable_and_enable_updates_port_status_and_reply(void) {
   n.state.reply_addr = ip4("127.0.0.198");
 
   init_packet(&p, ARTNET_INPUT, requester);
+  p.data.ainput.bindIndex = 1;
   p.data.ainput.numbports = 1;
   p.data.ainput.input[0] = PORT_DISABLE_MASK;
 
@@ -535,6 +697,41 @@ static void test_input_disable_and_enable_updates_port_status_and_reply(void) {
   stop_sendable_node(&n);
 }
 
+static void test_input_bind_index_filters_other_bound_pages(void) {
+  artnet_node_t n;
+  artnet_packet_t p;
+  send_capture_t send_capture = {0};
+  struct in_addr requester = ip4("127.0.0.135");
+
+  init_test_node(&n);
+  start_sendable_node(&n);
+  n.callbacks.send.fh = send_capture_handler;
+  n.callbacks.send.data = &send_capture;
+  n.state.bind_index = 2;
+
+  init_packet(&p, ARTNET_INPUT, requester);
+  p.data.ainput.bindIndex = 1;
+  p.data.ainput.numbports = 1;
+  p.data.ainput.input[0] = PORT_DISABLE_MASK;
+
+  ASSERT_TRUE(_artnet_handle_input(&n, &p) == ARTNET_EOK,
+              "ArtInput with non-matching BindIndex should be ignored cleanly");
+  ASSERT_TRUE((n.ports.in[0].port_status & PORT_STATUS_INPUT_DISABLED) == 0,
+              "ArtInput should not change input state for a different BindIndex");
+  ASSERT_TRUE(send_capture.called == 0,
+              "ArtInput should not reply for a different BindIndex");
+
+  p.data.ainput.bindIndex = 2;
+  ASSERT_TRUE(_artnet_handle_input(&n, &p) == ARTNET_EOK,
+              "ArtInput with matching BindIndex should be processed");
+  ASSERT_TRUE((n.ports.in[0].port_status & PORT_STATUS_INPUT_DISABLED) != 0,
+              "ArtInput should change input state for the matching BindIndex");
+  ASSERT_TRUE(send_capture.called == 1,
+              "ArtInput should reply for the matching BindIndex");
+
+  stop_sendable_node(&n);
+}
+
 static void test_poll_reply_build_populates_artnet4_fields(void) {
   artnet_node_t n;
   artnet_reply_t *reply = NULL;
@@ -549,6 +746,7 @@ static void test_poll_reply_build_populates_artnet4_fields(void) {
   n.state.failsafe_mode = ARTNET_FAILSAFE_SCENE;
   n.state.bqp_policy = ARTNET_BQP_WARNING;
   n.state.refresh_rate = 44;
+  n.state.bind_index = 3;
   memcpy(n.state.default_resp_uid, uid, sizeof(uid));
   n.ports.types[0] = (uint8_t)((uint8_t)ARTNET_ENABLE_OUTPUT | (uint8_t)ARTNET_PORT_DMX);
   n.ports.out[0].port_enabled = TRUE;
@@ -562,8 +760,8 @@ static void test_poll_reply_build_populates_artnet4_fields(void) {
   reply = &n.ar_temp;
   ASSERT_TRUE(reply->acnPriority == 123,
               "PollReply should carry configured sACN priority");
-  ASSERT_TRUE(reply->bindIndex == 1,
-              "PollReply should mark root device bind index");
+  ASSERT_TRUE(reply->bindIndex == 3,
+              "PollReply should carry configured BindIndex");
   ASSERT_TRUE(memcmp(reply->bindIp, &n.state.ip_addr.s_addr, ARTNET_IP_SIZE) == 0,
               "PollReply should publish bind IP equal to node IP");
   ASSERT_TRUE(reply->estaMan[0] == 0x34 && reply->estaMan[1] == 0x12,
@@ -637,11 +835,98 @@ static void test_send_dmx_unicasts_to_matching_subscribers_only(void) {
               "artnet_send_dmx should encode the correct payload length");
   ASSERT_TRUE(memcmp(send_capture.data.admx.data, data, 4) == 0,
               "artnet_send_dmx should copy DMX payload");
-  ASSERT_TRUE(n.ports.in[0].seq == 1,
+  ASSERT_TRUE(send_capture.data.admx.sequence == 1,
+              "artnet_send_dmx should send a non-zero sequence number");
+  ASSERT_TRUE(n.ports.in[0].seq == 2,
               "artnet_send_dmx should advance sequence number");
   ASSERT_TRUE(n.ports.in[0].last_dmx_length == 4 &&
               memcmp(n.ports.in[0].last_dmx_data, data, 4) == 0,
               "artnet_send_dmx should store keepalive payload");
+
+  stop_sendable_node(&n);
+}
+
+static void test_send_dmx_matches_swin_subscribers_and_wraps_sequence(void) {
+  artnet_node_t n;
+  send_capture_t send_capture = {0};
+  node_entry_private_t *entry = NULL;
+  uint8_t data[2] = {9, 10};
+
+  init_test_node(&n);
+  n.state.node_type = ARTNET_SRV;
+  start_sendable_node(&n);
+  n.callbacks.send.fh = send_capture_handler;
+  n.callbacks.send.data = &send_capture;
+  n.ports.in[0].port_enabled = TRUE;
+  n.ports.in[0].port_addr = make_addr(1, 2, 3);
+  n.ports.in[0].seq = 255;
+
+  entry = add_stub_node_entry(&n, "192.168.1.15", 1, 2, 4);
+  entry->pub.portTypes[0] = (uint8_t)((uint8_t)ARTNET_ENABLE_INPUT | (uint8_t)ARTNET_PORT_DMX);
+  entry->pub.swIn[0] = 3;
+
+  ASSERT_TRUE(artnet_send_dmx((artnet_node)&n, 0, 2, data) == ARTNET_EOK,
+              "artnet_send_dmx should succeed for SwIn subscribers");
+  ASSERT_TRUE(send_capture.called == 1,
+              "artnet_send_dmx should unicast to SwIn subscribers");
+  ASSERT_TRUE(send_capture.to.s_addr == ip4("192.168.1.15").s_addr,
+              "artnet_send_dmx should target a matching SwIn subscriber");
+  ASSERT_TRUE(send_capture.data.admx.sequence == 255,
+              "artnet_send_dmx should send the current 255 sequence value");
+  ASSERT_TRUE(n.ports.in[0].seq == 1,
+              "artnet_send_dmx should wrap sequence from 255 to 1");
+
+  stop_sendable_node(&n);
+}
+
+static void test_send_dmx_rejects_invalid_lengths(void) {
+  artnet_node_t n;
+  uint8_t data[4] = {1, 2, 3, 4};
+
+  init_test_node(&n);
+  n.state.node_type = ARTNET_SRV;
+  start_sendable_node(&n);
+  n.ports.in[0].port_enabled = TRUE;
+  n.ports.in[0].port_addr = make_addr(1, 2, 3);
+
+  ASSERT_TRUE(artnet_send_dmx((artnet_node)&n, 0, 1, data) == ARTNET_EARG,
+              "artnet_send_dmx should reject length 1");
+  ASSERT_TRUE(artnet_send_dmx((artnet_node)&n, 0, 3, data) == ARTNET_EARG,
+              "artnet_send_dmx should reject odd ArtDmx lengths");
+
+  stop_sendable_node(&n);
+}
+
+static void test_raw_send_dmx_unicasts_to_subscribers_only(void) {
+  artnet_node_t n;
+  send_capture_t send_capture = {0};
+  uint8_t data[2] = {1, 2};
+
+  init_test_node(&n);
+  n.state.node_type = ARTNET_RAW;
+  start_sendable_node(&n);
+  n.callbacks.send.fh = send_capture_handler;
+  n.callbacks.send.data = &send_capture;
+
+  add_stub_node_entry(&n, "192.168.1.16", 1, 2, 3);
+  add_stub_node_entry(&n, "192.168.1.17", 1, 2, 4);
+
+  ASSERT_TRUE(artnet_raw_send_dmx((artnet_node)&n, make_addr(1, 2, 3), 2, data) == ARTNET_EOK,
+              "artnet_raw_send_dmx should succeed with a matching subscriber");
+  ASSERT_TRUE(send_capture.called == 1,
+              "artnet_raw_send_dmx should unicast to exactly one matching subscriber");
+  ASSERT_TRUE(send_capture.to.s_addr == ip4("192.168.1.16").s_addr,
+              "artnet_raw_send_dmx should target the matching subscriber");
+
+  send_capture.called = 0;
+  ASSERT_TRUE(artnet_raw_send_dmx((artnet_node)&n, make_addr(1, 2, 8), 2, data) == ARTNET_EOK,
+              "artnet_raw_send_dmx should succeed even when no subscriber exists");
+  ASSERT_TRUE(send_capture.called == 0,
+              "artnet_raw_send_dmx should not broadcast when no subscriber exists");
+  ASSERT_TRUE(artnet_raw_send_dmx((artnet_node)&n, make_addr(1, 2, 3), 1, data) == ARTNET_EARG,
+              "artnet_raw_send_dmx should reject length 1");
+  ASSERT_TRUE(artnet_raw_send_dmx((artnet_node)&n, make_addr(1, 2, 3), 3, data) == ARTNET_EARG,
+              "artnet_raw_send_dmx should reject odd ArtDmx lengths");
 
   stop_sendable_node(&n);
 }
@@ -675,6 +960,76 @@ static void test_send_nzs_unicasts_and_preserves_start_code(void) {
               "artnet_send_nzs should encode the correct payload length");
   ASSERT_TRUE(memcmp(send_capture.data.nzs.data, data, 3) == 0,
               "artnet_send_nzs should copy NZS payload");
+
+  stop_sendable_node(&n);
+}
+
+static void test_send_nzs_raw_unicasts_to_subscribers_only(void) {
+  artnet_node_t n;
+  send_capture_t send_capture = {0};
+  uint8_t data[3] = {1, 2, 3};
+
+  init_test_node(&n);
+  n.state.node_type = ARTNET_RAW;
+  start_sendable_node(&n);
+  n.callbacks.send.fh = send_capture_handler;
+  n.callbacks.send.data = &send_capture;
+
+  add_stub_node_entry(&n, "192.168.1.18", 1, 2, 7);
+
+  ASSERT_TRUE(artnet_send_nzs((artnet_node)&n, make_addr(1, 2, 7), 0xCF, 3, data) == ARTNET_EOK,
+              "artnet_send_nzs should succeed in raw mode with a matching subscriber");
+  ASSERT_TRUE(send_capture.called == 1,
+              "raw ArtNzs should unicast to matching subscribers");
+  ASSERT_TRUE(send_capture.to.s_addr == ip4("192.168.1.18").s_addr,
+              "raw ArtNzs should target the matching subscriber");
+
+  send_capture.called = 0;
+  ASSERT_TRUE(artnet_send_nzs((artnet_node)&n, make_addr(1, 2, 8), 0xCF, 3, data) == ARTNET_EOK,
+              "raw ArtNzs should succeed when no subscriber exists");
+  ASSERT_TRUE(send_capture.called == 0,
+              "raw ArtNzs should not broadcast when no subscriber exists");
+
+  stop_sendable_node(&n);
+}
+
+static void test_send_vlc_validates_magic_and_payload_count(void) {
+  artnet_node_t n;
+  send_capture_t send_capture = {0};
+  uint8_t vlc[ARTNET_VLC_MIN_LENGTH + 2];
+
+  init_test_node(&n);
+  n.state.node_type = ARTNET_SRV;
+  start_sendable_node(&n);
+  n.callbacks.send.fh = send_capture_handler;
+  n.callbacks.send.data = &send_capture;
+  n.ports.in[0].port_enabled = TRUE;
+  n.ports.in[0].port_addr = make_addr(1, 2, 6);
+  add_stub_node_entry(&n, "192.168.1.19", 1, 2, 6);
+
+  set_vlc_magic(vlc, 2);
+  vlc[ARTNET_VLC_MIN_LENGTH] = 0xab;
+  vlc[ARTNET_VLC_MIN_LENGTH + 1] = 0xcd;
+
+  ASSERT_TRUE(artnet_send_vlc((artnet_node)&n, make_addr(1, 2, 6),
+                              (int16_t)sizeof(vlc), vlc) == ARTNET_EOK,
+              "artnet_send_vlc should accept valid VLC payloads");
+  ASSERT_TRUE(send_capture.called == 1 && send_capture.type == ARTNET_NZS,
+              "artnet_send_vlc should emit ArtNzs");
+  ASSERT_TRUE(send_capture.data.nzs.startCode == ARTNET_VLC_START_CODE,
+              "artnet_send_vlc should encode VLC start code");
+  ASSERT_TRUE(send_capture.data.nzs.length == sizeof(vlc),
+              "artnet_send_vlc should encode VLC payload length");
+
+  vlc[0] = 0x00;
+  ASSERT_TRUE(artnet_send_vlc((artnet_node)&n, make_addr(1, 2, 6),
+                              (int16_t)sizeof(vlc), vlc) == ARTNET_EARG,
+              "artnet_send_vlc should reject missing VLC magic");
+
+  set_vlc_magic(vlc, 1);
+  ASSERT_TRUE(artnet_send_vlc((artnet_node)&n, make_addr(1, 2, 6),
+                              (int16_t)sizeof(vlc), vlc) == ARTNET_EARG,
+              "artnet_send_vlc should reject mismatched payload count");
 
   stop_sendable_node(&n);
 }
@@ -786,6 +1141,8 @@ static void test_send_address_accepts_null_fields_as_no_change(void) {
   ASSERT_TRUE(send_capture.data.addr.netSwitch == PROGRAM_NO_CHANGE &&
               send_capture.data.addr.subSwitch == PROGRAM_NO_CHANGE,
               "artnet_send_address should preserve no-change net and subnet sentinels");
+  ASSERT_TRUE(send_capture.data.addr.bindIndex == 1,
+              "artnet_send_address should encode the target node BindIndex");
 
   stop_sendable_node(&n);
 }
@@ -981,7 +1338,9 @@ static void test_sync_only_accepts_matching_last_dmx_source(void) {
   init_packet(&sync_packet, ARTNET_SYNC, ip4("10.9.9.9"));
 
   n.state.sync_mode = 0;
-  n.state.last_dmx_source = ip4("10.8.8.8");
+  n.ports.out[0].port_enabled = TRUE;
+  n.ports.out[0].port_addr = make_addr(1, 2, 3);
+  n.ports.out[0].last_dmx_source = ip4("10.8.8.8");
   handle_sync(&n, &sync_packet);
   ASSERT_TRUE(n.state.sync_mode == 0,
               "handle_sync should ignore ArtSync from a different source than the last ArtDmx");
@@ -1663,10 +2022,11 @@ static void test_sync_timeout_and_dmx_keepalive_retransmission(void) {
 
   n.ports.in[0].port_enabled = TRUE;
   n.ports.in[0].port_addr = make_addr(1, 2, 6);
-  n.ports.in[0].last_dmx_length = 3;
+  n.ports.in[0].last_dmx_length = 4;
   n.ports.in[0].last_dmx_data[0] = 7;
   n.ports.in[0].last_dmx_data[1] = 8;
   n.ports.in[0].last_dmx_data[2] = 9;
+  n.ports.in[0].last_dmx_data[3] = 10;
   n.ports.in[0].last_dmx_send_time = 1;
   add_stub_node_entry(&n, "192.168.1.20", 1, 2, 6);
 
@@ -2170,6 +2530,51 @@ static void test_handle_ignores_invalid_dmx_length_packet(void) {
               "invalid ArtDmx packets should update the node report to parse failure");
 }
 
+static void test_handle_ignores_invalid_vlc_packets(void) {
+  artnet_node_t n;
+  artnet_packet_t p;
+  simple_capture_t capture = {0};
+
+  init_test_node(&n);
+  n.callbacks.nzs.fh = simple_packet_handler;
+  n.callbacks.nzs.data = &capture;
+
+  init_packet(&p, ARTNET_NZS, ip4("127.0.0.234"));
+  p.length = (int)(sizeof(artnet_nzs_t) - ARTNET_DMX_LENGTH + ARTNET_VLC_MIN_LENGTH);
+  p.data.nzs.startCode = ARTNET_VLC_START_CODE;
+  p.data.nzs.universe = htols(make_addr(1, 2, 3));
+  p.data.nzs.lengthHi = short_get_high_byte(ARTNET_VLC_MIN_LENGTH);
+  p.data.nzs.length = short_get_low_byte(ARTNET_VLC_MIN_LENGTH);
+  set_vlc_magic(p.data.nzs.data, 1);
+
+  handle(&n, &p);
+
+  ASSERT_TRUE(capture.called == 0,
+              "handle should ignore ArtVlc packets with mismatched payload count");
+  ASSERT_TRUE(n.state.report_code == ARTNET_RC_PARSE_FAIL,
+              "invalid ArtVlc packets should update the node report to parse failure");
+
+  init_test_node(&n);
+  n.callbacks.nzs.fh = simple_packet_handler;
+  n.callbacks.nzs.data = &capture;
+  capture.called = 0;
+  init_packet(&p, ARTNET_NZS, ip4("127.0.0.235"));
+  p.length = (int)(sizeof(artnet_nzs_t) - ARTNET_DMX_LENGTH + ARTNET_VLC_MIN_LENGTH);
+  p.data.nzs.startCode = ARTNET_VLC_START_CODE;
+  p.data.nzs.universe = htols(make_addr(1, 2, 3));
+  p.data.nzs.lengthHi = short_get_high_byte(ARTNET_VLC_MIN_LENGTH);
+  p.data.nzs.length = short_get_low_byte(ARTNET_VLC_MIN_LENGTH);
+  set_vlc_magic(p.data.nzs.data, 0);
+  p.data.nzs.data[0] = 0x00;
+
+  handle(&n, &p);
+
+  ASSERT_TRUE(capture.called == 0,
+              "handle should ignore ArtVlc packets with invalid magic bytes");
+  ASSERT_TRUE(n.state.report_code == ARTNET_RC_PARSE_FAIL,
+              "invalid ArtVlc magic should update the node report to parse failure");
+}
+
 static void test_handle_ignores_invalid_address_acn_priority(void) {
   artnet_node_t n;
   artnet_packet_t p;
@@ -2566,15 +2971,24 @@ static void test_handle_ignores_truncated_toddata_payload(void) {
 
 int main(void) {
   test_poll_schedules_unicast_reply_and_reply_on_change_flag();
+  test_legacy_14_byte_poll_is_accepted();
+  test_poll_vlc_disable_flag_controls_vlc_sends();
   test_poll_target_mode_filters_non_matching_node();
   test_address_programming_updates_node_state_and_replies();
+  test_address_bind_index_filters_other_bound_pages();
   test_address_programming_recomputes_ports_when_only_net_changes();
   test_address_rdm_and_bqp_commands_update_state();
   test_input_disable_and_enable_updates_port_status_and_reply();
+  test_input_bind_index_filters_other_bound_pages();
   test_poll_reply_build_populates_artnet4_fields();
   test_poll_reply_build_marks_network_programming_and_bg_discovery_state();
   test_send_dmx_unicasts_to_matching_subscribers_only();
+  test_send_dmx_matches_swin_subscribers_and_wraps_sequence();
+  test_send_dmx_rejects_invalid_lengths();
+  test_raw_send_dmx_unicasts_to_subscribers_only();
   test_send_nzs_unicasts_and_preserves_start_code();
+  test_send_nzs_raw_unicasts_to_subscribers_only();
+  test_send_vlc_validates_magic_and_payload_count();
   test_send_data_request_encodes_target_and_request_code();
   test_send_data_reply_encodes_target_and_payload();
   test_send_address_accepts_null_fields_as_no_change();
@@ -2605,6 +3019,7 @@ int main(void) {
   test_firmware_continuation_from_wrong_sender_fails();
   test_node_list_allows_same_ip_with_different_first_port();
   test_tod_request_unicasts_tod_data_to_requester();
+  test_tod_updates_are_sent_to_all_previous_requesters();
   test_tod_control_flush_triggers_discovery_and_empty_tod_reply();
   test_directory_updates_reply_target_and_unicasts_reply();
   test_file_fn_master_updates_reply_target_and_reply_target_is_used();
@@ -2618,6 +3033,7 @@ int main(void) {
   test_handle_ignores_short_address_packet();
   test_handle_ignores_legacy_protocol_version_packet();
   test_handle_ignores_invalid_dmx_length_packet();
+  test_handle_ignores_invalid_vlc_packets();
   test_handle_ignores_invalid_address_acn_priority();
   test_media_control_reply_uses_dedicated_handler();
   test_handle_ignores_command_with_truncated_text_payload();

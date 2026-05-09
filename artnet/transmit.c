@@ -253,6 +253,9 @@ int artnet_tx_tod_data(node n, int id) {
   // may need to send more than one datagram
 
   // Art-Net 4: TodData must be unicast to the requester
+  if (n->state.tod_reply_addr.s_addr == 0) {
+    return ARTNET_EACTION;
+  }
   tod.to = n->state.tod_reply_addr;
   tod.type = ARTNET_TODDATA;
   tod.length = sizeof(artnet_toddata_t);
@@ -266,7 +269,7 @@ int artnet_tx_tod_data(node n, int id) {
   tod.data.toddata.ver = ARTNET_VERSION;
   tod.data.toddata.rdmVer = ARTNET_RDM_VERSION;
   tod.data.toddata.port = (uint8_t)(id + 1);
-  tod.data.toddata.bindIndex = 1;
+  tod.data.toddata.bindIndex = n->state.bind_index ? n->state.bind_index : 1;
 
   // this is interesting, the spec mentions TOD_ADD and TOD_SUBTRACT, but the
   // codes aren't given. The windows drivers don't have these either....
@@ -296,6 +299,28 @@ int artnet_tx_tod_data(node n, int id) {
     ret = ret || artnet_net_send(n, &tod);
     remaining = remaining - lim;
   } while (remaining > 0);
+  return ret;
+}
+
+int artnet_tx_tod_data_to_requesters(node n, int id) {
+  SI original_reply_addr = n->state.tod_reply_addr;
+  int i = 0;
+  int ret = ARTNET_EOK;
+
+  if (n->state.tod_requester_count <= 0) {
+    return artnet_tx_tod_data(n, id);
+  }
+
+  for (i = 0; i < n->state.tod_requester_count; i++) {
+    int tx_ret = ARTNET_EOK;
+    n->state.tod_reply_addr = n->state.tod_requester_ips[i];
+    tx_ret = artnet_tx_tod_data(n, id);
+    if (tx_ret != ARTNET_EOK) {
+      ret = tx_ret;
+    }
+  }
+
+  n->state.tod_reply_addr = original_reply_addr;
   return ret;
 }
 
@@ -692,6 +717,9 @@ int artnet_tx_nzs(node n, int port_id, uint8_t start_code,
   free(ips);
 
   port->seq++;
+  if (port->seq == 0) {
+    port->seq = 1;
+  }
   return ARTNET_EOK;
 }
 
@@ -1429,7 +1457,7 @@ int artnet_tx_build_art_poll_reply(node n) {
   memcpy(&ar->mac, &n->state.hw_addr, ARTNET_MAC_SIZE);
 
   // bind index: 1 = root device
-  ar->bindIndex = 1;
+  ar->bindIndex = n->state.bind_index ? n->state.bind_index : 1;
 
   // bind IP: root device IP address
   memcpy(&ar->bindIp, &n->state.ip_addr.s_addr, 4);

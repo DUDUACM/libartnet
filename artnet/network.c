@@ -716,6 +716,8 @@ int artnet_net_recv(node n, artnet_packet p, int delay) {
   // need a check here for the amount of data read
   // should prob allow an extra byte after data, and pass the size as sizeof(Data) +1
   // then check the size read and if equal to size(data)+1 we have an error
+  memset(&p->data, 0x00, sizeof(p->data));
+
   len = recvfrom(n->sd,
                  (char*) &(p->data), // char* for win32
                  sizeof(p->data),
@@ -967,4 +969,3 @@ const char *artnet_net_last_error() {
   return strerror(errno);
 #endif
 }
-

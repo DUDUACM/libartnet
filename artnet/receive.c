@@ -27,6 +27,8 @@ static void stage_output_data(node n, int port_id, const uint8_t *data, int leng
 static void flush_sync_output(node n, int port_id);
 static int packet_length_is_valid(artnet_packet p);
 static int packet_fields_are_valid(artnet_packet p);
+static int bind_index_matches(node n, uint8_t bind_index);
+static void remember_tod_requester(node n, SI requester);
 
 /**
  * Checks if the callback is defined, if so call it passing the packet and
@@ -72,6 +74,8 @@ int handle_poll(node n, artnet_packet p) {
     } else {
       n->state.send_apr_on_change = FALSE;
     }
+
+    n->state.vlc_disabled = ((p->data.ap.flags & ARTNET_POLL_FLAG_VLC_DISABLE) != 0);
 
     // Art-Net 4: Target Mode filtering
     if (p->data.ap.flags & ARTNET_POLL_FLAG_TARGET_MODE) {
@@ -199,7 +203,7 @@ static int packet_length_is_valid(artnet_packet p) {
 
   switch (p->type) {
     case ARTNET_POLL:
-      min_len = (int)sizeof(artnet_poll_t);
+      min_len = 14;  // Art-Net requires consumers to accept legacy 14-byte ArtPoll
       break;
     case ARTNET_REPLY:
       min_len = 207;  // Art-Net 4 minimum valid ArtPollReply length
@@ -340,6 +344,15 @@ static int packet_fields_are_valid(artnet_packet p) {
         return FALSE;
       }
       if (p->data.nzs.startCode == 0x00 || p->data.nzs.startCode == 0xCC) {
+        return FALSE;
+      }
+      if (p->data.nzs.startCode == ARTNET_VLC_START_CODE &&
+          (payload_length < ARTNET_VLC_MIN_LENGTH ||
+           bytes_to_short(p->data.nzs.data[8], p->data.nzs.data[9]) !=
+             payload_length - ARTNET_VLC_MIN_LENGTH ||
+           p->data.nzs.data[0] != 0x41 ||
+           p->data.nzs.data[1] != 0x4c ||
+           p->data.nzs.data[2] != 0x45)) {
         return FALSE;
       }
       break;
@@ -537,6 +550,30 @@ static int packet_fields_are_valid(artnet_packet p) {
   return TRUE;
 }
 
+static int bind_index_matches(node n, uint8_t bind_index) {
+  uint8_t local_bind_index = n->state.bind_index ? n->state.bind_index : 1;
+  return bind_index == local_bind_index;
+}
+
+static void remember_tod_requester(node n, SI requester) {
+  int i = 0;
+
+  if (requester.s_addr == 0) {
+    return;
+  }
+
+  for (i = 0; i < n->state.tod_requester_count; i++) {
+    if (n->state.tod_requester_ips[i].s_addr == requester.s_addr) {
+      return;
+    }
+  }
+
+  if (n->state.tod_requester_count < (int)(sizeof(n->state.tod_requester_ips) /
+                                           sizeof(n->state.tod_requester_ips[0]))) {
+    n->state.tod_requester_ips[n->state.tod_requester_count++] = requester;
+  }
+}
+
 /**
  * handle an art poll reply
  *
@@ -592,6 +629,7 @@ void handle_dmx(node n, artnet_packet p) {
       // ok packet matches this port
       n->ports.out[i].port_status = n->ports.out[i].port_status | PORT_STATUS_ACT_MASK;
       n->ports.out[i].nzs_start_code = 0;  // ArtDmx has zero start code
+      n->ports.out[i].last_dmx_source = p->from;
 
       /**
        * 9 cases for merging depending on what the stored ips are.
@@ -765,6 +803,10 @@ int handle_address(node n, artnet_packet p) {
     return ARTNET_EOK;
   }
 
+  if (!bind_index_matches(n, p->data.addr.bindIndex)) {
+    return ARTNET_EOK;
+  }
+
   n->state.reply_addr = p->from;
 
   // reprogram shortName if required
@@ -850,7 +892,7 @@ int handle_address(node n, artnet_packet p) {
   // reset sequence numbers if the addresses change
   for (i=0; i< ARTNET_MAX_PORTS; i++) {
     if (addr[i] != n->ports.in[i].port_addr) {
-      n->ports.in[i].seq = 0;
+      n->ports.in[i].seq = 1;
     }
   }
 
@@ -1080,6 +1122,10 @@ int _artnet_handle_input(node n, artnet_packet p) {
     return ARTNET_EOK;
   }
 
+  if (!bind_index_matches(n, p->data.ainput.bindIndex)) {
+    return ARTNET_EOK;
+  }
+
   n->state.reply_addr = p->from;
 
   ports = min( p->data.ainput.numbports, ARTNET_MAX_PORTS);
@@ -1112,6 +1158,7 @@ int handle_tod_request(node n, artnet_packet p) {
 
   // Art-Net 4: store requester IP for unicast TodData replies
   n->state.tod_reply_addr = p->from;
+  remember_tod_requester(n, p->from);
 
   if (check_callback(n, p, n->callbacks.todrequest)) {
     return ARTNET_EOK;
@@ -1183,6 +1230,7 @@ int handle_tod_control(node n, artnet_packet p) {
 
   // Art-Net 4: store requester IP for unicast TodData replies
   n->state.tod_reply_addr = p->from;
+  remember_tod_requester(n, p->from);
 
   for (i=0; i < ARTNET_MAX_PORTS; i++) {
     if (n->ports.out[i].port_addr == make_addr(p->data.todcontrol.net, (p->data.todcontrol.address >> 4) & 0x0F, p->data.todcontrol.address & 0x0F) &&
@@ -1261,14 +1309,9 @@ void handle_rdm(node n, artnet_packet p) {
  */
 void handle_sync(node n, artnet_packet p) {
   int i = 0;
+  int accepted = FALSE;
 
   if (check_callback(n, p, n->callbacks.sync)) {
-    return;
-  }
-
-  // Art-Net 4: ignore ArtSync if source IP doesn't match last ArtDmx source
-  if (n->state.last_dmx_source.s_addr != 0 &&
-      n->state.last_dmx_source.s_addr != p->from.s_addr) {
     return;
   }
 
@@ -1283,12 +1326,19 @@ void handle_sync(node n, artnet_packet p) {
         port->ipA.s_addr != port->ipB.s_addr) {
       continue;
     }
+    if (port->last_dmx_source.s_addr != 0 &&
+        port->last_dmx_source.s_addr != p->from.s_addr) {
+      continue;
+    }
 
+    accepted = TRUE;
     flush_sync_output(n, i);
   }
 
-  n->state.sync_mode = 1;
-  n->state.last_sync_time = artnet_gettime_ms();
+  if (accepted) {
+    n->state.sync_mode = 1;
+    n->state.last_sync_time = artnet_gettime_ms();
+  }
 }
 
 /**

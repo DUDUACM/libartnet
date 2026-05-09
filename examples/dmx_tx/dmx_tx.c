@@ -114,9 +114,10 @@ int main(int argc, char *argv[]) {
     printf("Error: port address must be 0-15\n");
     return 1;
   }
-  if (channels < 1) channels = 1;
-  if (channels > ARTNET_DMX_LENGTH) channels = ARTNET_DMX_LENGTH;
   if (start_code < 0 || start_code > 255) start_code = 0;
+  if (channels < 2) channels = 2;
+  if (channels > ARTNET_DMX_LENGTH) channels = ARTNET_DMX_LENGTH;
+  if (!start_code && (channels & 0x01)) channels++;
 
   const char *mode = start_code ? "ArtNzs" : "ArtDmx";
   printf("Art-Net 4 DMX Transmitter (%d universes, %s%s)\n",
@@ -145,9 +146,9 @@ int main(int argc, char *argv[]) {
 
   for (i = 0; i < NUM_PORTS; i++) {
     uint16_t addr = (uint16_t)((net << 8) | (subnet << 4) | (universe + i));
-    artnet_set_port_type(node, i, ARTNET_ENABLE_OUTPUT, ARTNET_PORT_DMX);
-    artnet_set_port_addr(node, i, ARTNET_OUTPUT_PORT, (uint8_t)(universe + i));
-    printf("  Port %d -> 0x%04X (Net %d Sub %d Port %d) [OUT]\n",
+    artnet_set_port_type(node, i, ARTNET_ENABLE_INPUT, ARTNET_PORT_DMX);
+    artnet_set_port_addr(node, i, ARTNET_INPUT_PORT, (uint8_t)(universe + i));
+    printf("  Port %d -> 0x%04X (Net %d Sub %d Port %d) [IN]\n",
            i, addr, (addr >> 8) & 0x7F, (addr >> 4) & 0x0F, addr & 0x0F);
   }
 

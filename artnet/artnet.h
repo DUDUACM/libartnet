@@ -714,8 +714,8 @@ EXTERN int artnet_raw_send_dmx(artnet_node vn,
  * @brief Send an ArtNzs packet (non-zero start code DMX).
  *
  * For ARTNET_SRV nodes, sends through the input port bound to the given
- * universe (unicast to subscribers). For ARTNET_RAW nodes, sends directly
- * to the broadcast address.
+ * universe (unicast to subscribers). For ARTNET_RAW nodes, sends to matching
+ * subscribers from the discovered node list.
  *
  * @param vn          The artnet_node
  * @param uni         The 15-bit universe address (0-32767)
@@ -727,6 +727,23 @@ EXTERN int artnet_raw_send_dmx(artnet_node vn,
 EXTERN int artnet_send_nzs(artnet_node vn,
   uint16_t uni,
   uint8_t start_code,
+  int16_t length,
+  const uint8_t *data);
+
+/**
+ * @brief Send an ArtVlc packet (Art-Net 4 VLC payload carried by ArtNzs).
+ *
+ * ArtVlc is OpNzs with StartCode 0x91 and the Artistic Licence VLC magic bytes
+ * at the start of the payload.
+ *
+ * @param vn     The artnet_node
+ * @param uni    The 15-bit universe address (0-32767)
+ * @param length Length of VLC payload (22-512)
+ * @param data   Pointer to VLC payload data
+ * @return ARTNET_EOK on success, or a negative error code
+ */
+EXTERN int artnet_send_vlc(artnet_node vn,
+  uint16_t uni,
   int16_t length,
   const uint8_t *data);
 
@@ -1171,6 +1188,14 @@ EXTERN int artnet_set_status3(artnet_node vn, uint8_t status3);
  * @return ARTNET_EOK on success, or a negative error code
  */
 EXTERN int artnet_set_refresh_rate(artnet_node vn, uint16_t refresh_rate);
+
+/**
+ * @brief Set this node's Art-Net 4 BindIndex.
+ * @param vn         The artnet_node
+ * @param bind_index BindIndex value (1=root, 2+ bound pages)
+ * @return ARTNET_EOK on success, or a negative error code
+ */
+EXTERN int artnet_set_bind_index(artnet_node vn, uint8_t bind_index);
 
 /**
  * @brief Set the short name for this node.

@@ -25,6 +25,7 @@ int ARTNET_PORT = 6454;
 int ARTNET_STRING_SIZE = 8;
 char ARTNET_STRING[] = "Art-Net";
 uint8_t ARTNET_VERSION = 14;
+static const uint8_t ARTNET_VLC_MAGIC[3] = {0x41, 0x4c, 0x45};
 uint8_t OEM_HI = 0x04;
 uint8_t OEM_LO = 0x30;
 char ESTA_HI = 'z';
@@ -129,6 +130,8 @@ artnet_node artnet_new(const char *ip, int verbose) {
   n->state.acn_priority = 0xFF;  // 0xFF = no change
   n->state.diag_priority = 0xFF;  // accept all until first ArtPoll sets a threshold
   n->state.refresh_rate = 0;  // 0-44 encodes standard DMX512 max refresh rate
+  n->state.bind_index = 1;
+  n->state.vlc_disabled = FALSE;
   memset(n->state.default_resp_uid, 0, ARTNET_RDM_UID_WIDTH);
 
   // set all ports to MERGE HTP mode and disable
@@ -136,6 +139,7 @@ artnet_node artnet_new(const char *ip, int verbose) {
     n->ports.out[i].merge_mode = ARTNET_MERGE_HTP;
     n->ports.out[i].port_enabled = FALSE;
     n->ports.out[i].last_dmx_time = 0;
+    n->ports.out[i].last_dmx_source.s_addr = 0;
     n->ports.out[i].failsafe_triggered = FALSE;
     n->ports.out[i].failsafe_length = 0;
     n->ports.out[i].sync_length = 0;
@@ -143,6 +147,7 @@ artnet_node artnet_new(const char *ip, int verbose) {
     memset(n->ports.out[i].failsafe_data, 0, ARTNET_DMX_LENGTH);
     memset(n->ports.out[i].sync_data, 0, ARTNET_DMX_LENGTH);
     n->ports.in[i].port_enabled = FALSE;
+    n->ports.in[i].seq = 1;
     n->ports.in[i].last_dmx_send_time = 0;
     n->ports.in[i].last_dmx_length = 0;
     memset(n->ports.in[i].last_dmx_data, 0, ARTNET_DMX_LENGTH);
@@ -377,7 +382,7 @@ int artnet_read(artnet_node vn, int timeout) {
       check_timeouts(tmp);
     }
 
-    if (p.length > MIN_PACKET_SIZE && get_type(&p)) {
+    if (p.length >= MIN_PACKET_SIZE && get_type(&p)) {
       handle(n, &p);
       for (tmp = n->peering.peer; tmp != NULL && tmp != n; tmp = tmp->peering.peer) {
         handle(tmp, &p);
@@ -817,8 +822,8 @@ int artnet_send_dmx(artnet_node vn,
   }
   port = &n->ports.in[port_id];
 
-  if (length < 2 || length > ARTNET_DMX_LENGTH) {
-    artnet_error("%s : Length of dmx data out of bounds (%i < 2 || %i > ARTNET_MAX_DMX)", __FUNCTION__, length);
+  if (length < 2 || length > ARTNET_DMX_LENGTH || (length & 0x01)) {
+    artnet_error("%s : Length of dmx data out of bounds or odd (%i)", __FUNCTION__, length);
     return ARTNET_EARG;
   }
 
@@ -890,6 +895,9 @@ int artnet_send_dmx(artnet_node vn,
     free(ips);
   }
   port->seq++;
+  if (port->seq == 0) {
+    port->seq = 1;
+  }
 
   // Store data for input keepalive retransmission (Art-Net 4)
   memcpy(port->last_dmx_data, data, length);
@@ -930,13 +938,10 @@ int artnet_raw_send_dmx(artnet_node vn,
 
   uni &= 0x7FFF; // mask to valid 15-bit universe address
 
-  if ( length < 1 || length > ARTNET_DMX_LENGTH) {
-    artnet_error("%s : Length of dmx data out of bounds (%i < 1 || %i > ARTNET_MAX_DMX)", __FUNCTION__, length);
+  if (length < 2 || length > ARTNET_DMX_LENGTH || (length & 0x01)) {
+    artnet_error("%s : Length of dmx data out of bounds or odd (%i)", __FUNCTION__, length);
     return ARTNET_EARG;
   }
-
-  // set dst addr and length
-  p.to.s_addr = n->state.bcast_addr.s_addr;
 
   p.length = sizeof(artnet_dmx_t) - (ARTNET_DMX_LENGTH - length);
 
@@ -954,12 +959,32 @@ int artnet_raw_send_dmx(artnet_node vn,
   p.data.admx.length = short_get_low_byte(length);
   memcpy(&p.data.admx.data, data, length);
 
-  return artnet_net_send(n, &p);
+  {
+    int nodes = 0, i = 0;
+    int limit = n->state.bcast_limit > 0 ? n->state.bcast_limit : (n->node_list.length ? n->node_list.length : 1);
+    SI *ips = malloc(sizeof(SI) * limit);
+    int ret = ARTNET_EOK;
+
+    if (!ips) {
+      return ARTNET_EACTION;
+    }
+
+    nodes = find_nodes_from_uni(n, &n->node_list, uni, ips, limit);
+    for (i = 0; i < nodes; i++) {
+      p.to = ips[i];
+      ret = artnet_net_send(n, &p);
+      if (ret != ARTNET_EOK) {
+        break;
+      }
+    }
+    free(ips);
+    return ret;
+  }
 }
 /**
  * Send an ArtNzs (Art-Net non-zero start code) packet with a custom start code.
  * For ARTNET_SRV nodes, sends through the matching input port (unicast to subscribers).
- * For ARTNET_RAW nodes, sends directly to the broadcast address.
+ * For ARTNET_RAW nodes, sends to matching subscribers from the node list.
  *
  * @param vn          the artnet_node
  * @param uni         the 15-bit universe address
@@ -1005,15 +1030,18 @@ int artnet_send_nzs(artnet_node vn,
     return ARTNET_EARG;
   }
 
-  // ARTNET_RAW: send directly to broadcast address
+  // ARTNET_RAW: send to matching subscribers from the node list.
   if (n->state.node_type != ARTNET_RAW) {
     return ARTNET_ESTATE;
   }
 
   {
     artnet_packet_t p = {0};
+    int nodes = 0;
+    int limit = n->state.bcast_limit > 0 ? n->state.bcast_limit : (n->node_list.length ? n->node_list.length : 1);
+    SI *ips = NULL;
+    int ret = ARTNET_EOK;
 
-    p.to.s_addr = n->state.bcast_addr.s_addr;
     p.length = sizeof(artnet_nzs_t) - (ARTNET_DMX_LENGTH - length);
 
     memcpy(&p.data.nzs.id, ARTNET_STRING, ARTNET_STRING_SIZE);
@@ -1027,9 +1055,51 @@ int artnet_send_nzs(artnet_node vn,
     p.data.nzs.length = short_get_low_byte(length);
     memcpy(&p.data.nzs.data, data, length);
 
-    return artnet_net_send(n, &p);
+    ips = malloc(sizeof(SI) * limit);
+    if (!ips) {
+      return ARTNET_EACTION;
+    }
+
+    nodes = find_nodes_from_uni(n, &n->node_list, uni, ips, limit);
+    for (i = 0; i < nodes; i++) {
+      p.to = ips[i];
+      ret = artnet_net_send(n, &p);
+      if (ret != ARTNET_EOK) {
+        break;
+      }
+    }
+    free(ips);
+    return ret;
   }
 }
+
+int artnet_send_vlc(artnet_node vn,
+                    uint16_t uni,
+                    int16_t length,
+                    const uint8_t *data) {
+  node n = (node) vn;
+  uint16_t payload_count = 0;
+
+  check_nullnode(vn);
+
+  if (n->state.vlc_disabled) {
+    return ARTNET_EACTION;
+  }
+
+  if (!data || length < ARTNET_VLC_MIN_LENGTH || length > ARTNET_DMX_LENGTH ||
+      memcmp(data, ARTNET_VLC_MAGIC, sizeof(ARTNET_VLC_MAGIC)) != 0) {
+    return ARTNET_EARG;
+  }
+
+  payload_count = bytes_to_short(data[8], data[9]);
+  if ((int)payload_count != length - ARTNET_VLC_MIN_LENGTH ||
+      payload_count > (ARTNET_DMX_LENGTH - ARTNET_VLC_MIN_LENGTH)) {
+    return ARTNET_EARG;
+  }
+
+  return artnet_send_nzs(vn, uni, ARTNET_VLC_START_CODE, length, data);
+}
+
 /**
  * Send an ArtAddress packet to reprogram a remote node.
  *
@@ -1791,8 +1861,8 @@ int artnet_add_rdm_device(artnet_node vn,
   // add uid to tod for this port
   add_tod_uid(&n->ports.out[port].port_tod, uid);
 
-  // notify everyone our tod changed
-  return artnet_tx_tod_data(n, port);
+  // notify all controllers that have requested TOD data.
+  return artnet_tx_tod_data_to_requesters(n, port);
 }
 
 
@@ -1825,8 +1895,8 @@ int artnet_add_rdm_devices(artnet_node vn, int port, uint8_t *uid, int count) {
     add_tod_uid(&n->ports.out[port].port_tod, uid);
     uid += ARTNET_RDM_UID_WIDTH;
   }
-  // notify everyone  our tod changed
-  return artnet_tx_tod_data(n, port);
+  // notify all controllers that have requested TOD data.
+  return artnet_tx_tod_data_to_requesters(n, port);
 
 }
 
@@ -1853,8 +1923,8 @@ int artnet_remove_rdm_device(artnet_node vn,
   // remove uid to tod for this port
   remove_tod_uid(&n->ports.out[port].port_tod, uid);
 
-  // notify everyone our tod changed
-  return artnet_tx_tod_data(n, port);
+  // notify all controllers that have requested TOD data.
+  return artnet_tx_tod_data_to_requesters(n, port);
 }
 
 
@@ -1982,6 +2052,27 @@ int artnet_set_refresh_rate(artnet_node vn, uint16_t refresh_rate) {
   return ARTNET_EOK;
 }
 
+int artnet_set_bind_index(artnet_node vn, uint8_t bind_index) {
+  node n = (node) vn;
+  int ret = 0;
+
+  check_nullnode(vn);
+
+  if (bind_index == 0) {
+    return ARTNET_EARG;
+  }
+
+  n->state.bind_index = bind_index;
+  if (n->state.mode == ARTNET_ON) {
+    if ((ret = artnet_tx_build_art_poll_reply(n)) != 0) {
+      return ret;
+    }
+    return artnet_tx_poll_reply(n);
+  }
+
+  return ARTNET_EOK;
+}
+
 
 /**
  * Sets the net address of the node.
@@ -2058,7 +2149,7 @@ int artnet_set_subnet_addr(artnet_node vn, uint8_t subnet) {
     for (i =0; i < ARTNET_MAX_PORTS; i++) {
       n->ports.in[i].port_addr = make_addr(n->state.netSwitch, subnet, addr_port(n->ports.in[i].port_addr));
       // reset dmx sequence number
-      n->ports.in[i].seq = 0;
+      n->ports.in[i].seq = 1;
 
       n->ports.out[i].port_addr = make_addr(n->state.netSwitch, subnet, addr_port(n->ports.out[i].port_addr));
     }
@@ -2262,7 +2353,7 @@ int artnet_set_port_addr(artnet_node vn,
 
     // reset seq if input port
     if (dir == ARTNET_INPUT_PORT) {
-      n->ports.in[id].seq = 0;
+      n->ports.in[id].seq = 1;
     }
 
     if (n->state.mode == ARTNET_ON) {
@@ -2436,6 +2527,9 @@ artnet_node_entry artnet_nl_first(artnet_node_list vnl) {
   }
 
   nl->current = nl->first;
+  if (!nl->current) {
+    return NULL;
+  }
   return &nl->current->pub;
 }
 
@@ -2454,7 +2548,13 @@ artnet_node_entry artnet_nl_next(artnet_node_list vnl) {
     return NULL;
   }
 
+  if (!nl->current) {
+    return NULL;
+  }
   nl->current = nl->current->next;
+  if (!nl->current) {
+    return NULL;
+  }
   return &nl->current->pub;
 }
 
@@ -2646,8 +2746,19 @@ int find_nodes_from_uni(node n, node_list_t *nl, uint16_t uni, SI *ips, int size
     for (tmp = nl->first; tmp; tmp = tmp->next) {
       int added = FALSE;
       for (i = 0; i < tmp->pub.numbports; i++) {
-        uint16_t entry_uni = make_addr(tmp->pub.netSwitch, tmp->pub.subSwitch & 0x0F, tmp->pub.swOut[i] & 0x0F);
-        if (entry_uni == uni && ips) {
+        int output_enabled = (tmp->pub.portTypes[i] & ARTNET_ENABLE_OUTPUT) != 0;
+        int input_enabled = (tmp->pub.portTypes[i] & ARTNET_ENABLE_INPUT) != 0;
+        int matches = FALSE;
+
+        if (output_enabled) {
+          uint16_t out_uni = make_addr(tmp->pub.netSwitch, tmp->pub.subSwitch & 0x0F, tmp->pub.swOut[i] & 0x0F);
+          matches = (out_uni == uni);
+        }
+        if (!matches && input_enabled) {
+          uint16_t in_uni = make_addr(tmp->pub.netSwitch, tmp->pub.subSwitch & 0x0F, tmp->pub.swIn[i] & 0x0F);
+          matches = (in_uni == uni);
+        }
+        if (matches && ips) {
           if (j < size && !added) {
             ips[j++] = tmp->ip;
             added = TRUE;

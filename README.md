@@ -22,7 +22,7 @@ Art-Net 4 Protocol Specification: [art-net4.md](art-net4.md)
 
 The library exposes two classes of Art-Net functionality:
 
-- Built-in protocol behavior: libartnet maintains state machines and default protocol actions for `ArtPoll` / `ArtPollReply`, `ArtDmx` / `ArtNzs`, `ArtSync`, `ArtAddress`, `ArtInput`, `ArtIpProg` query/program handling, `ArtTodRequest` / `ArtTodControl` / `ArtTodData`, `ArtRdm`, `ArtRdmSub`, firmware upload, directory reply, node list maintenance, merge, keepalive, and fail-safe handling.
+- Built-in protocol behavior: libartnet maintains state machines and default protocol actions for `ArtPoll` / `ArtPollReply`, `ArtDmx` / `ArtNzs` / `ArtVlc`, `ArtSync`, `ArtAddress`, `ArtInput`, `ArtIpProg` query/program handling, `ArtTodRequest` / `ArtTodControl` / `ArtTodData`, `ArtRdm`, `ArtRdmSub`, firmware upload, directory reply, node list maintenance, merge, keepalive, and fail-safe handling.
 - Packet transport plus callbacks: libartnet also parses, validates, and dispatches many other opcodes to application handlers. For these packets, the library provides wire-format support and callback delivery, but application-specific behavior remains the responsibility of the embedding program. This includes `ArtCommand`, `ArtTimeCode`, `ArtTimeSync`, `ArtTrigger`, `ArtDiagData`, `ArtDataRequest`, `ArtDataReply`, `ArtFileFnMaster`, `ArtFileFnReply`, `ArtMedia`, `ArtMediaPatch`, and `ArtMediaControl` / `ArtMediaControlReply`. `ArtMedia` remains receive-only in the public API.
 
 ## Building
@@ -270,6 +270,7 @@ Command groups:
 | ArtDataReply | 0x2800 | TX/RX | Validated packet transport and callback dispatch |
 | ArtDmx | 0x5000 | TX/RX | Built-in DMX buffering, merge, keepalive, fail-safe, and sync interaction |
 | ArtNzs | 0x5100 | TX/RX | Built-in receive state update and transmit support |
+| ArtVlc | 0x5100 | TX/RX | Art-Net 4 VLC payload support carried by `ArtNzs` start code `0x91` |
 | ArtSync | 0x5200 | TX/RX | Built-in sync buffering and flush behavior |
 | ArtAddress | 0x6000 | TX/RX | Built-in remote programming and `ArtPollReply` update |
 | ArtInput | 0x7000 | TX/RX | Built-in input enable/disable handling and `ArtPollReply` update |

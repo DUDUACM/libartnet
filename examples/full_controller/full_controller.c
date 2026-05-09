@@ -464,8 +464,9 @@ static void cmd_dmx_send(artnet_node n) {
   int subnet = read_int("  Subnet (0-15, default 0): ", 0);
   int universe = read_int("  Universe (0-15, default 0): ", 0);
   int channels = read_int("  Channels (1-512, default 10): ", 10);
-  if (channels < 1) channels = 1;
+  if (channels < 2) channels = 2;
   if (channels > ARTNET_DMX_LENGTH) channels = ARTNET_DMX_LENGTH;
+  if (channels & 0x01) channels++;
 
   uint8_t dmx_data[ARTNET_DMX_LENGTH];
   memset(dmx_data, 0, sizeof(dmx_data));

@@ -575,7 +575,8 @@ int main(int argc, char *argv[]) {
         dmx_data[0] = (uint8_t)((tick / 50 + i * 30) & 0xFF);
         dmx_data[1] = (uint8_t)((tick / 50 + i * 60) & 0xFF);
         dmx_data[2] = (uint8_t)((tick / 50 + i * 90) & 0xFF);
-        artnet_send_dmx(node, i, 3, dmx_data);
+        dmx_data[3] = 0;
+        artnet_send_dmx(node, i, 4, dmx_data);
       }
     }
   }

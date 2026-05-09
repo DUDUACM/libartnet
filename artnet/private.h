@@ -138,6 +138,9 @@ extern uint16_t HIGH_BYTE;
 
 #define bytes_to_short(h,l) ( ((h << 8) & 0xff00) | (l & 0x00FF) )
 
+#define ARTNET_VLC_START_CODE 0x91
+#define ARTNET_VLC_MIN_LENGTH 22
+
 /*
  * These are enums for fields in packets
  * Ordered by packets they appear in. Some of these appear in the public header file
@@ -371,6 +374,7 @@ typedef struct {
   int sync_length;         // buffered ArtDmx length pending ArtSync flush
   uint8_t sync_pending;    // whether buffered ArtDmx data is waiting for ArtSync flush
   uint8_t cancel_merge_pending; // AcCancelMerge received; next accepted ArtDmx ends merge mode
+  SI last_dmx_source;      // last ArtDmx source for per-port ArtSync validation
   SI ipA;
   SI ipB;
 } output_port_t;
@@ -492,10 +496,14 @@ typedef struct {
   SI tod_reply_addr;     // last TOD requester IP for unicast replies (Art-Net 4)
   uint8_t acn_priority;  // sACN priority for output ports (0-200, 0xFF=no change)
   uint8_t default_resp_uid[ARTNET_RDM_UID_WIDTH]; // RDMnet/LLRP default responder UID
+  uint8_t bind_index;     // Art-Net 4 BindIndex for this bound page (1=root)
+  int vlc_disabled;       // ArtPoll Flags bit 4 disables ArtVlc transmission
   int diag_enabled;       // whether to send diagnostics (ArtPoll Flags bit 2)
   int diag_unicast;       // unicast diagnostics to poller (ArtPoll Flags bit 3)
   int diag_controller_count; // number of distinct controllers requesting diagnostics
   SI diag_controller_ips[4]; // IPs of up to 4 diagnostic-requesting controllers
+  int tod_requester_count; // number of controllers that requested TOD data
+  SI tod_requester_ips[8]; // Art-Net 4 TOD update recipients
   uint8_t diag_priority;  // minimum diagnostic priority to send (from ArtPoll)
   uint8_t bqp_policy;     // BackgroundQueuePolicy (ArtAddress 0xe0-0xef)
   uint16_t refresh_rate;  // ArtPollReply RefreshRate in Hz (0-44 = DMX512 max, higher = non-DMX gateway)
@@ -575,6 +583,8 @@ int artnet_tx_poll_ex(node n, const char *ip, uint8_t flags, uint8_t diag_priori
 int artnet_tx_poll_reply(node n);
 /** @brief Build and send an ArtTodData packet. */
 int artnet_tx_tod_data(node n, int id);
+/** @brief Send ArtTodData to all controllers that requested TOD data. */
+int artnet_tx_tod_data_to_requesters(node n, int id);
 /** @brief Build and send an ArtFirmwareReply packet. */
 int artnet_tx_firmware_reply(node n, in_addr_t ip, artnet_firmware_status_code code);
 /** @brief Send the next firmware data block. */
