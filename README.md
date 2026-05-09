@@ -278,7 +278,7 @@ Command groups:
 | ArtTodData | 0x8100 | TX/RX | Built-in TOD packet generation plus validated callback dispatch |
 | ArtTodControl | 0x8200 | TX/RX | Built-in discovery control handling and TOD reply generation |
 | ArtRdm | 0x8300 | TX/RX | Built-in reply targeting plus application RDM callback delivery |
-| ArtRdmSub | 0x8400 | TX/RX | Built-in reply targeting plus validated callback dispatch |
+| ArtRdmSub | 0x8400 | TX/RX | Built-in reply targeting plus dedicated validated callback dispatch |
 | ArtMedia | 0x9000 | RX | Validated packet transport and callback dispatch |
 | ArtMediaPatch | 0x9100 | TX/RX | Validated packet transport and callback dispatch |
 | ArtMediaControl | 0x9200 | TX/RX | Validated packet transport and callback dispatch |
@@ -286,7 +286,7 @@ Command groups:
 | ArtTimeCode | 0x9700 | TX/RX | Validated packet transport and callback dispatch |
 | ArtTimeSync | 0x9800 | TX/RX | Validated packet transport and callback dispatch |
 | ArtTrigger | 0x9900 | TX/RX | Validated packet transport and callback dispatch |
-| ArtDirectory | 0x9A00 | TX/RX | Built-in request handling and empty directory reply generation |
+| ArtDirectory | 0x9A00 | TX/RX | Unicast requests to discovered nodes plus built-in empty directory reply generation |
 | ArtDirectoryReply | 0x9B00 | TX/RX | Built-in transmit support plus validated callback dispatch |
 | ArtFirmwareMaster | 0xF200 | TX/RX | Built-in firmware upload state machine |
 | ArtFirmwareReply | 0xF300 | TX/RX | Built-in firmware upload response state machine |
@@ -403,7 +403,7 @@ artnet_send_diagnostic(node, ARTNET_DIAG_LOW, port, "message");
 ### Directory & Data
 
 ```c
-artnet_send_directory(node);                          // query file listings
+artnet_send_directory(node);                         // query discovered nodes' file listings
 artnet_send_data_request(node, ip, request_code);    // query node metadata / URLs
 artnet_send_directory_reply(node, entries, count, total);
 artnet_send_data_reply(node, ip, request_code, payload, length);
@@ -444,7 +444,7 @@ artnet_set_firmware_handler(node, my_fw_callback, NULL);
 artnet_set_program_handler(node, my_prog_callback, NULL);
 ```
 
-All 32 handler types are available via `artnet_set_handler()`: `ARTNET_RECV_HANDLER`, `ARTNET_SEND_HANDLER`, `ARTNET_POLL_HANDLER`, `ARTNET_REPLY_HANDLER`, `ARTNET_DMX_HANDLER`, `ARTNET_ADDRESS_HANDLER`, `ARTNET_INPUT_HANDLER`, `ARTNET_SYNC_HANDLER`, `ARTNET_NZS_HANDLER`, `ARTNET_TOD_REQUEST_HANDLER`, `ARTNET_TOD_DATA_HANDLER`, `ARTNET_TOD_CONTROL_HANDLER`, `ARTNET_RDM_HANDLER`, `ARTNET_IPPROG_HANDLER`, `ARTNET_FIRMWARE_HANDLER`, `ARTNET_FIRMWARE_REPLY_HANDLER`, `ARTNET_DIAGDATA_HANDLER`, `ARTNET_COMMAND_HANDLER`, `ARTNET_TIMECODE_HANDLER`, `ARTNET_TIMESYNC_HANDLER`, `ARTNET_TRIGGER_HANDLER`, `ARTNET_DIRECTORY_HANDLER`, `ARTNET_DIRECTORY_REPLY_HANDLER`, `ARTNET_FILE_TN_MASTER_HANDLER`, `ARTNET_FILE_FN_MASTER_HANDLER`, `ARTNET_FILE_FN_REPLY_HANDLER`, `ARTNET_MEDIAPATCH_HANDLER`, `ARTNET_MEDIA_HANDLER`, `ARTNET_MEDIACONTROL_HANDLER`, `ARTNET_MEDIACONTROL_REPLY_HANDLER`, `ARTNET_DATAREQUEST_HANDLER`, `ARTNET_DATAREPLY_HANDLER`. See `artnet.h` for the complete list.
+All 33 handler types are available via `artnet_set_handler()`: `ARTNET_RECV_HANDLER`, `ARTNET_SEND_HANDLER`, `ARTNET_POLL_HANDLER`, `ARTNET_REPLY_HANDLER`, `ARTNET_DMX_HANDLER`, `ARTNET_ADDRESS_HANDLER`, `ARTNET_INPUT_HANDLER`, `ARTNET_SYNC_HANDLER`, `ARTNET_NZS_HANDLER`, `ARTNET_TOD_REQUEST_HANDLER`, `ARTNET_TOD_DATA_HANDLER`, `ARTNET_TOD_CONTROL_HANDLER`, `ARTNET_RDM_HANDLER`, `ARTNET_RDMSUB_HANDLER`, `ARTNET_IPPROG_HANDLER`, `ARTNET_FIRMWARE_HANDLER`, `ARTNET_FIRMWARE_REPLY_HANDLER`, `ARTNET_DIAGDATA_HANDLER`, `ARTNET_COMMAND_HANDLER`, `ARTNET_TIMECODE_HANDLER`, `ARTNET_TIMESYNC_HANDLER`, `ARTNET_TRIGGER_HANDLER`, `ARTNET_DIRECTORY_HANDLER`, `ARTNET_DIRECTORY_REPLY_HANDLER`, `ARTNET_FILE_TN_MASTER_HANDLER`, `ARTNET_FILE_FN_MASTER_HANDLER`, `ARTNET_FILE_FN_REPLY_HANDLER`, `ARTNET_MEDIAPATCH_HANDLER`, `ARTNET_MEDIA_HANDLER`, `ARTNET_MEDIACONTROL_HANDLER`, `ARTNET_MEDIACONTROL_REPLY_HANDLER`, `ARTNET_DATAREQUEST_HANDLER`, `ARTNET_DATAREPLY_HANDLER`. See `artnet.h` for the complete list.
 
 ## License
 

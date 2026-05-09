@@ -175,6 +175,20 @@ static int rdm_handler(artnet_node n, void *pp, void *data) {
   return 0;
 }
 
+static int rdmsub_handler(artnet_node n, void *pp, void *data) {
+  (void)n; (void)data;
+  artnet_packet packet = (artnet_packet)pp;
+  artnet_rdm_sub_t *rdmsub = &packet->data.rdmsub;
+  uint16_t param_id = (uint16_t)(((uint16_t)rdmsub->paramIdHi << 8) | rdmsub->paramId);
+  uint16_t sub_count = (uint16_t)(((uint16_t)rdmsub->subCountHi << 8) | rdmsub->subCount);
+
+  printf("[RDMSub] uid=%02X:%02X:%02X:%02X:%02X:%02X cc=0x%02X pid=0x%04X subCount=%u\n",
+         rdmsub->uid[0], rdmsub->uid[1], rdmsub->uid[2],
+         rdmsub->uid[3], rdmsub->uid[4], rdmsub->uid[5],
+         rdmsub->commandClass, param_id, sub_count);
+  return 0;
+}
+
 static int nzs_handler(artnet_node n, void *pp, void *data) {
   (void)n; (void)data;
   artnet_packet packet = (artnet_packet)pp;
@@ -520,6 +534,7 @@ int main(int argc, char *argv[]) {
   artnet_set_handler(node, ARTNET_TOD_DATA_HANDLER, tod_data_handler, NULL);
   artnet_set_handler(node, ARTNET_TOD_CONTROL_HANDLER, tod_control_handler, NULL);
   artnet_set_handler(node, ARTNET_RDM_HANDLER, rdm_handler, NULL);
+  artnet_set_handler(node, ARTNET_RDMSUB_HANDLER, rdmsub_handler, NULL);
   artnet_set_handler(node, ARTNET_NZS_HANDLER, nzs_handler, NULL);
   artnet_set_handler(node, ARTNET_TIMECODE_HANDLER, timecode_handler, NULL);
   artnet_set_handler(node, ARTNET_TIMESYNC_HANDLER, timesync_handler, NULL);

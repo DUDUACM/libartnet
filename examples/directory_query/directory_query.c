@@ -2,8 +2,8 @@
  * directory_query.c
  * Art-Net 4 directory query example
  *
- * Interactive controller that sends ArtDirectory to discover node file lists
- * and displays ArtDirectoryReply responses.
+ * Interactive controller that sends ArtDirectory to query discovered nodes'
+ * file lists and displays ArtDirectoryReply responses.
  *
  * Usage: directory_query [-i <bind_ip>]
  *   -i  IP address to bind to (default: first non-loopback interface)
@@ -72,7 +72,7 @@ static int dir_reply_handler(artnet_node n, void *pp, void *data) {
 static void print_menu(void) {
   printf("\n--- Directory Query ---\n");
   printf("  p) Poll network\n");
-  printf("  d) Send ArtDirectory (query file lists)\n");
+  printf("  d) Send ArtDirectory (query discovered nodes)\n");
   printf("  q) Quit\n");
   printf("  ?> ");
   fflush(stdout);

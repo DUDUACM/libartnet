@@ -495,6 +495,9 @@ int artnet_set_handler(artnet_node vn,
     case ARTNET_RDM_HANDLER:
       callback = &n->callbacks.rdm;
       break;
+    case ARTNET_RDMSUB_HANDLER:
+      callback = &n->callbacks.rdmsub;
+      break;
     case ARTNET_IPPROG_HANDLER:
       callback = &n->callbacks.ipprog;
       break;
@@ -1644,7 +1647,7 @@ int artnet_send_media_control_reply(artnet_node vn,
 
 
 /**
- * Send an ArtDirectory request (broadcast) to discover node file lists.
+ * Send an ArtDirectory request to discovered nodes.
  *
  * @param vn the artnet_node
  * @return ARTNET_EOK on success, or a negative error code

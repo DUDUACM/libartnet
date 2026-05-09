@@ -263,6 +263,7 @@ typedef struct {
   callback_t toddata;
   callback_t todcontrol;
   callback_t rdm;
+  callback_t rdmsub;
   callback_t ipprog;
   callback_t firmware;
   callback_t firmware_reply;

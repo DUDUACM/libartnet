@@ -467,9 +467,6 @@ static int packet_fields_are_valid(artnet_packet p) {
       }
       break;
     case ARTNET_SYNC:
-      if (p->data.asyn.aux1 != 0 || p->data.asyn.aux2 != 0) {
-        return FALSE;
-      }
       break;
     case ARTNET_TIMECODE:
       if (p->data.tc.type > ARTNET_TIMECODE_SMPTE ||
@@ -493,9 +490,6 @@ static int packet_fields_are_valid(artnet_packet p) {
       }
       break;
     case ARTNET_IPPROG:
-      if (p->data.aip.Filler1 != 0 || p->data.aip.Filler2 != 0 || p->data.aip.Filler4 != 0) {
-        return FALSE;
-      }
       break;
     case ARTNET_DIRECTORYREPLY:
       payload_length = bytes_to_short(p->data.dirr.dirCountHi, p->data.dirr.dirCountLo);
@@ -954,18 +948,12 @@ int handle_address(node n, artnet_packet p) {
       break;
 
     case ARTNET_PC_MERGE_LTP_0:
-    case ARTNET_PC_MERGE_LTP_1:
-    case ARTNET_PC_MERGE_LTP_2:
-    case ARTNET_PC_MERGE_LTP_3:
       port_idx = cmd & 0x03;
       n->ports.out[port_idx].merge_mode = ARTNET_MERGE_LTP;
       n->ports.out[port_idx].port_status |= PORT_STATUS_LPT_MODE;
       break;
 
     case ARTNET_PC_DIRECTION_TX_0:
-    case ARTNET_PC_DIRECTION_TX_1:
-    case ARTNET_PC_DIRECTION_TX_2:
-    case ARTNET_PC_DIRECTION_TX_3:
       port_idx = cmd & 0x03;
       n->ports.types[port_idx] |= ARTNET_ENABLE_OUTPUT;
       n->ports.types[port_idx] &= ~ARTNET_ENABLE_INPUT;
@@ -980,9 +968,6 @@ int handle_address(node n, artnet_packet p) {
       break;
 
     case ARTNET_PC_DIRECTION_RX_0:
-    case ARTNET_PC_DIRECTION_RX_1:
-    case ARTNET_PC_DIRECTION_RX_2:
-    case ARTNET_PC_DIRECTION_RX_3:
       port_idx = cmd & 0x03;
       n->ports.types[port_idx] |= ARTNET_ENABLE_INPUT;
       n->ports.types[port_idx] &= ~ARTNET_ENABLE_OUTPUT;
@@ -997,67 +982,43 @@ int handle_address(node n, artnet_packet p) {
       break;
 
     case ARTNET_PC_MERGE_HTP_0:
-    case ARTNET_PC_MERGE_HTP_1:
-    case ARTNET_PC_MERGE_HTP_2:
-    case ARTNET_PC_MERGE_HTP_3:
       port_idx = cmd & 0x03;
       n->ports.out[port_idx].merge_mode = ARTNET_MERGE_HTP;
       n->ports.out[port_idx].port_status &= ~PORT_STATUS_LPT_MODE;
       break;
 
     case ARTNET_PC_ARTNET_SEL_0:
-    case ARTNET_PC_ARTNET_SEL_1:
-    case ARTNET_PC_ARTNET_SEL_2:
-    case ARTNET_PC_ARTNET_SEL_3:
       port_idx = cmd & 0x03;
       n->ports.out[port_idx].proto_sel = 0;
       break;
 
     case ARTNET_PC_ACN_SEL_0:
-    case ARTNET_PC_ACN_SEL_1:
-    case ARTNET_PC_ACN_SEL_2:
-    case ARTNET_PC_ACN_SEL_3:
       port_idx = cmd & 0x03;
       n->ports.out[port_idx].proto_sel = 1;
       break;
 
     case ARTNET_PC_CLR_0:
-    case ARTNET_PC_CLR_1:
-    case ARTNET_PC_CLR_2:
-    case ARTNET_PC_CLR_3:
       port_idx = cmd & 0x03;
       memset(n->ports.out[port_idx].data, 0x00, ARTNET_DMX_LENGTH);
       n->ports.out[port_idx].length = 0;
       break;
 
     case ARTNET_PC_STYLE_DELTA_0:
-    case ARTNET_PC_STYLE_DELTA_1:
-    case ARTNET_PC_STYLE_DELTA_2:
-    case ARTNET_PC_STYLE_DELTA_3:
       port_idx = cmd & 0x03;
       n->ports.out[port_idx].output_style = 0;
       break;
 
     case ARTNET_PC_STYLE_CONST_0:
-    case ARTNET_PC_STYLE_CONST_1:
-    case ARTNET_PC_STYLE_CONST_2:
-    case ARTNET_PC_STYLE_CONST_3:
       port_idx = cmd & 0x03;
       n->ports.out[port_idx].output_style = 1;
       break;
 
     case ARTNET_PC_RDM_ENABLED_0:
-    case ARTNET_PC_RDM_ENABLED_1:
-    case ARTNET_PC_RDM_ENABLED_2:
-    case ARTNET_PC_RDM_ENABLED_3:
       port_idx = cmd & 0x03;
       n->ports.out[port_idx].rdm_enabled = 1;
       break;
 
     case ARTNET_PC_RDM_DISABLED_0:
-    case ARTNET_PC_RDM_DISABLED_1:
-    case ARTNET_PC_RDM_DISABLED_2:
-    case ARTNET_PC_RDM_DISABLED_3:
       port_idx = cmd & 0x03;
       n->ports.out[port_idx].rdm_enabled = 0;
       break;
@@ -1585,7 +1546,7 @@ void handle_media_control(node n, artnet_packet p) {
  */
 void handle_rdm_sub(node n, artnet_packet p) {
   n->state.rdm_reply_addr = p->from;
-  check_callback(n, p, n->callbacks.rdm);
+  check_callback(n, p, n->callbacks.rdmsub);
 }
 
 /**

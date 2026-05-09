@@ -23,6 +23,13 @@ typedef struct {
 
 typedef struct {
   int called;
+  artnet_packet_type_t types[8];
+  struct in_addr to[8];
+  artnet_packet_union_t data[8];
+} send_list_capture_t;
+
+typedef struct {
+  int called;
 } simple_capture_t;
 
 typedef struct {
@@ -182,6 +189,20 @@ static int send_capture_handler(artnet_node vn, void *pp, void *data) {
   capture->type = p->type;
   capture->to = p->to;
   memcpy(&capture->data, &p->data, sizeof(capture->data));
+  return 0;
+}
+
+static int send_list_capture_handler(artnet_node vn, void *pp, void *data) {
+  artnet_packet p = (artnet_packet)pp;
+  send_list_capture_t *capture = (send_list_capture_t *)data;
+
+  (void)vn;
+  if (capture->called < (int)(sizeof(capture->types) / sizeof(capture->types[0]))) {
+    capture->types[capture->called] = p->type;
+    capture->to[capture->called] = p->to;
+    memcpy(&capture->data[capture->called], &p->data, sizeof(capture->data[0]));
+  }
+  capture->called++;
   return 0;
 }
 
@@ -657,6 +678,49 @@ static void test_address_rdm_and_bqp_commands_update_state(void) {
   stop_sendable_node(&n);
 }
 
+static void test_address_ignores_deprecated_port_index_commands(void) {
+  artnet_node_t n;
+  artnet_packet_t p;
+
+  init_test_node(&n);
+  n.state.mode = ARTNET_ON;
+  n.state.node_type = ARTNET_NODE;
+
+  n.ports.out[1].rdm_enabled = 1;
+  n.ports.out[1].merge_mode = ARTNET_MERGE_HTP;
+  n.ports.out[1].port_status = 0;
+  n.ports.out[1].proto_sel = 0;
+
+  init_packet(&p, ARTNET_ADDRESS, ip4("127.0.0.143"));
+  memset(p.data.addr.shortName, PROGRAM_NO_CHANGE, ARTNET_SHORT_NAME_LENGTH);
+  memset(p.data.addr.longName, PROGRAM_NO_CHANGE, ARTNET_LONG_NAME_LENGTH);
+  memset(p.data.addr.swIn, PROGRAM_NO_CHANGE, ARTNET_MAX_PORTS);
+  memset(p.data.addr.swOut, PROGRAM_NO_CHANGE, ARTNET_MAX_PORTS);
+  p.data.addr.bindIndex = 1;
+  p.data.addr.netSwitch = PROGRAM_NO_CHANGE;
+  p.data.addr.subSwitch = PROGRAM_NO_CHANGE;
+  p.data.addr.acnPriority = 0xFF;
+
+  p.data.addr.command = ARTNET_PC_RDM_DISABLED_1;
+  ASSERT_TRUE(handle_address(&n, &p) == ARTNET_EOK,
+              "deprecated ArtAddress RDM disable command should be ignored cleanly");
+  ASSERT_TRUE(n.ports.out[1].rdm_enabled == 1,
+              "deprecated ArtAddress RDM disable command must not update port 1");
+
+  p.data.addr.command = ARTNET_PC_MERGE_LTP_1;
+  ASSERT_TRUE(handle_address(&n, &p) == ARTNET_EOK,
+              "deprecated ArtAddress merge command should be ignored cleanly");
+  ASSERT_TRUE(n.ports.out[1].merge_mode == ARTNET_MERGE_HTP &&
+              (n.ports.out[1].port_status & PORT_STATUS_LPT_MODE) == 0,
+              "deprecated ArtAddress merge command must not update port 1");
+
+  p.data.addr.command = ARTNET_PC_ACN_SEL_1;
+  ASSERT_TRUE(handle_address(&n, &p) == ARTNET_EOK,
+              "deprecated ArtAddress protocol command should be ignored cleanly");
+  ASSERT_TRUE(n.ports.out[1].proto_sel == 0,
+              "deprecated ArtAddress protocol command must not update port 1");
+}
+
 static void test_input_disable_and_enable_updates_port_status_and_reply(void) {
   artnet_node_t n;
   artnet_packet_t p;
@@ -1099,6 +1163,28 @@ static void test_send_data_reply_encodes_target_and_payload(void) {
   stop_sendable_node(&n);
 }
 
+static void test_send_data_reply_rejects_invalid_payload_arguments(void) {
+  artnet_node_t n;
+
+  init_test_node(&n);
+  start_sendable_node(&n);
+
+  ASSERT_TRUE(artnet_send_data_reply((artnet_node)&n,
+                                     "192.168.1.56",
+                                     ARTNET_DR_URL_PRODUCT,
+                                     NULL,
+                                     1) == ARTNET_EARG,
+              "artnet_send_data_reply should reject a NULL non-empty payload");
+  ASSERT_TRUE(artnet_send_data_reply((artnet_node)&n,
+                                     "192.168.1.56",
+                                     ARTNET_DR_URL_PRODUCT,
+                                     "",
+                                     -1) == ARTNET_EARG,
+              "artnet_send_data_reply should reject a negative payload length");
+
+  stop_sendable_node(&n);
+}
+
 static void test_send_address_accepts_null_fields_as_no_change(void) {
   artnet_node_t n;
   send_capture_t send_capture = {0};
@@ -1510,23 +1596,59 @@ static void test_send_rdm_and_rdmsub_unicast_to_last_requester(void) {
   stop_sendable_node(&n);
 }
 
+static void test_send_rdm_and_rdmsub_reject_missing_target_and_bad_payloads(void) {
+  artnet_node_t n;
+  uint8_t payload[2] = {0x11, 0x22};
+  uint8_t uid[ARTNET_RDM_UID_WIDTH] = {1, 2, 3, 4, 5, 6};
+
+  init_test_node(&n);
+  start_sendable_node(&n);
+
+  ASSERT_TRUE(artnet_send_rdm((artnet_node)&n, make_addr(0x01, 0x02, 0x03), payload, 2) == ARTNET_EACTION,
+              "artnet_send_rdm should reject sends before a requester target is known");
+  ASSERT_TRUE(artnet_send_rdmsub((artnet_node)&n, uid, 0x20, 0x1234, 0x0001, 0x0002, payload, 2) == ARTNET_EACTION,
+              "artnet_send_rdmsub should reject sends before a requester target is known");
+
+  n.state.rdm_reply_addr = ip4("127.0.0.141");
+
+  ASSERT_TRUE(artnet_send_rdm((artnet_node)&n, make_addr(0x01, 0x02, 0x03), NULL, 1) == ARTNET_EARG,
+              "artnet_send_rdm should reject a NULL non-empty payload");
+  ASSERT_TRUE(artnet_send_rdm((artnet_node)&n, make_addr(0x01, 0x02, 0x03), payload, -1) == ARTNET_EARG,
+              "artnet_send_rdm should reject negative payload lengths");
+  ASSERT_TRUE(artnet_send_rdmsub((artnet_node)&n, NULL, 0x20, 0x1234, 0x0001, 0x0002, payload, 2) == ARTNET_EARG,
+              "artnet_send_rdmsub should reject a NULL UID");
+  ASSERT_TRUE(artnet_send_rdmsub((artnet_node)&n, uid, 0x20, 0x1234, 0x0001, 0, payload, 2) == ARTNET_EARG,
+              "artnet_send_rdmsub should reject a zero SubCount");
+  ASSERT_TRUE(artnet_send_rdmsub((artnet_node)&n, uid, 0x20, 0x1234, 0x0001, 0x0002, NULL, 1) == ARTNET_EARG,
+              "artnet_send_rdmsub should reject a NULL non-empty payload");
+  ASSERT_TRUE(artnet_send_rdmsub((artnet_node)&n, uid, 0x20, 0x1234, 0x0001, 0x0002, payload, -1) == ARTNET_EARG,
+              "artnet_send_rdmsub should reject negative payload lengths");
+
+  stop_sendable_node(&n);
+}
+
 static void test_rdm_sub_updates_reply_target(void) {
   artnet_node_t n;
   artnet_packet_t p;
-  simple_capture_t capture = {0};
+  simple_capture_t rdm_capture = {0};
+  simple_capture_t rdmsub_capture = {0};
   struct in_addr requester = ip4("127.0.0.142");
 
   init_test_node(&n);
   n.callbacks.rdm.fh = simple_packet_handler;
-  n.callbacks.rdm.data = &capture;
+  n.callbacks.rdm.data = &rdm_capture;
+  n.callbacks.rdmsub.fh = simple_packet_handler;
+  n.callbacks.rdmsub.data = &rdmsub_capture;
 
   init_packet(&p, ARTNET_RDMSUB, requester);
   handle_rdm_sub(&n, &p);
 
   ASSERT_TRUE(n.state.rdm_reply_addr.s_addr == requester.s_addr,
               "handle_rdm_sub should store requester IP for compressed RDM replies");
-  ASSERT_TRUE(capture.called == 1,
-              "handle_rdm_sub should still invoke the packet callback");
+  ASSERT_TRUE(rdmsub_capture.called == 1,
+              "handle_rdm_sub should invoke the ArtRdmSub packet callback");
+  ASSERT_TRUE(rdm_capture.called == 0,
+              "handle_rdm_sub should not reuse the ArtRdm packet callback");
 }
 
 static void test_failsafe_zero_full_and_scene_modes(void) {
@@ -2226,6 +2348,37 @@ static void test_directory_updates_reply_target_and_unicasts_reply(void) {
   stop_sendable_node(&n);
 }
 
+static void test_send_directory_unicasts_to_discovered_nodes_only(void) {
+  artnet_node_t n;
+  send_list_capture_t send_capture = {0};
+
+  init_test_node(&n);
+  start_sendable_node(&n);
+  n.callbacks.send.fh = send_list_capture_handler;
+  n.callbacks.send.data = &send_capture;
+
+  ASSERT_TRUE(artnet_send_directory((artnet_node)&n) == ARTNET_EACTION,
+              "artnet_send_directory should not broadcast when no discovered target exists");
+  ASSERT_TRUE(send_capture.called == 0,
+              "artnet_send_directory should not emit a broadcast packet");
+
+  add_stub_node_entry(&n, "192.168.1.70", 1, 2, 3);
+  add_stub_node_entry(&n, "192.168.1.71", 1, 2, 4);
+
+  ASSERT_TRUE(artnet_send_directory((artnet_node)&n) == ARTNET_EOK,
+              "artnet_send_directory should query discovered nodes");
+  ASSERT_TRUE(send_capture.called == 2,
+              "artnet_send_directory should send one unicast request per discovered node");
+  ASSERT_TRUE(send_capture.types[0] == ARTNET_DIRECTORY &&
+              send_capture.to[0].s_addr == ip4("192.168.1.70").s_addr,
+              "first ArtDirectory request should target the first discovered node");
+  ASSERT_TRUE(send_capture.types[1] == ARTNET_DIRECTORY &&
+              send_capture.to[1].s_addr == ip4("192.168.1.71").s_addr,
+              "second ArtDirectory request should target the second discovered node");
+
+  stop_sendable_node(&n);
+}
+
 static void test_file_fn_master_updates_reply_target_and_reply_target_is_used(void) {
   artnet_node_t n;
   artnet_packet_t p;
@@ -2447,6 +2600,49 @@ static void test_reply_tx_requires_reply_target(void) {
               "artnet_tx_ipprog_reply should fail with EACTION when reply_addr is unset");
   ASSERT_TRUE(artnet_tx_file_fn_reply(&n, 0, 4, data, 4) == ARTNET_EACTION,
               "artnet_tx_file_fn_reply should fail with EACTION when reply_addr is unset");
+}
+
+static void test_tx_helpers_reject_invalid_arguments(void) {
+  artnet_node_t n;
+  uint8_t bytes[4] = {1, 2, 3, 4};
+  uint16_t words[2] = {0x0102, 0x0304};
+
+  init_test_node(&n);
+  n.state.mode = ARTNET_ON;
+  n.state.diag_enabled = 1;
+  n.state.diag_priority = ARTNET_DIAG_LOW;
+  n.state.diag_unicast = 1;
+  n.state.reply_addr.s_addr = 0;
+
+  ASSERT_TRUE(artnet_tx_diagdata(&n, ARTNET_DIAG_LOW, 0, NULL) == ARTNET_EARG,
+              "artnet_tx_diagdata should reject NULL text");
+  ASSERT_TRUE(artnet_tx_diagdata(&n, ARTNET_DIAG_LOW, 0, "diag") == ARTNET_EACTION,
+              "unicast ArtDiagData should require a reply target");
+
+  ASSERT_TRUE(artnet_tx_timecode(&n, 30, 0, 0, 0, ARTNET_TIMECODE_FILM, 0) == ARTNET_EARG,
+              "artnet_tx_timecode should reject invalid frames");
+  ASSERT_TRUE(artnet_tx_timecode(&n, 0, 60, 0, 0, ARTNET_TIMECODE_FILM, 0) == ARTNET_EARG,
+              "artnet_tx_timecode should reject invalid seconds");
+  ASSERT_TRUE(artnet_tx_timesync(&n, 0, 0, 24, 1, 0, 26) == ARTNET_EARG,
+              "artnet_tx_timesync should reject invalid hours");
+  ASSERT_TRUE(artnet_tx_timesync(&n, 0, 0, 0, 0, 0, 26) == ARTNET_EARG,
+              "artnet_tx_timesync should reject invalid day of month");
+
+  ASSERT_TRUE(artnet_tx_trigger(&n, 0x56, 0x78, ARTNET_TRIGGER_KEY_SHOW + 1, 0, NULL, 0) == ARTNET_EARG,
+              "artnet_tx_trigger should reject invalid trigger keys");
+  ASSERT_TRUE(artnet_tx_trigger(&n, 0x56, 0x78, ARTNET_TRIGGER_KEY_MACRO, 0, NULL, 1) == ARTNET_EARG,
+              "artnet_tx_trigger should reject NULL non-empty payloads");
+
+  ASSERT_TRUE(artnet_tx_file_tn_master(&n, ip4("192.168.1.80").s_addr, 0, 0, 4, NULL, 1) == ARTNET_EARG,
+              "artnet_tx_file_tn_master should reject NULL non-empty data");
+  ASSERT_TRUE(artnet_tx_file_tn_master(&n, ip4("192.168.1.80").s_addr, 0, 0, 4, words, -1) == ARTNET_EARG,
+              "artnet_tx_file_tn_master should reject negative data length");
+
+  n.state.reply_addr = ip4("127.0.0.81");
+  ASSERT_TRUE(artnet_tx_file_fn_reply(&n, 0, 4, NULL, 1) == ARTNET_EARG,
+              "artnet_tx_file_fn_reply should reject NULL non-empty data");
+  ASSERT_TRUE(artnet_tx_file_fn_reply(&n, 0, 4, bytes, -1) == ARTNET_EARG,
+              "artnet_tx_file_fn_reply should reject negative data length");
 }
 
 static void test_handle_ignores_short_address_packet(void) {
@@ -2978,6 +3174,7 @@ int main(void) {
   test_address_bind_index_filters_other_bound_pages();
   test_address_programming_recomputes_ports_when_only_net_changes();
   test_address_rdm_and_bqp_commands_update_state();
+  test_address_ignores_deprecated_port_index_commands();
   test_input_disable_and_enable_updates_port_status_and_reply();
   test_input_bind_index_filters_other_bound_pages();
   test_poll_reply_build_populates_artnet4_fields();
@@ -2991,6 +3188,7 @@ int main(void) {
   test_send_vlc_validates_magic_and_payload_count();
   test_send_data_request_encodes_target_and_request_code();
   test_send_data_reply_encodes_target_and_payload();
+  test_send_data_reply_rejects_invalid_payload_arguments();
   test_send_address_accepts_null_fields_as_no_change();
   test_send_ipprog_encodes_programming_fields();
   test_send_command_encodes_text_and_target();
@@ -3001,6 +3199,7 @@ int main(void) {
   test_sync_flushes_same_ip_different_physical_merge();
   test_rdm_request_updates_reply_target_and_callback_payload();
   test_send_rdm_and_rdmsub_unicast_to_last_requester();
+  test_send_rdm_and_rdmsub_reject_missing_target_and_bad_payloads();
   test_rdm_sub_updates_reply_target();
   test_failsafe_zero_full_and_scene_modes();
   test_dmx_merge_htp_ltp_and_timeout_cleanup();
@@ -3022,6 +3221,7 @@ int main(void) {
   test_tod_updates_are_sent_to_all_previous_requesters();
   test_tod_control_flush_triggers_discovery_and_empty_tod_reply();
   test_directory_updates_reply_target_and_unicasts_reply();
+  test_send_directory_unicasts_to_discovered_nodes_only();
   test_file_fn_master_updates_reply_target_and_reply_target_is_used();
   test_ipprog_query_updates_reply_target_and_sends_ipreply();
   test_ipprog_program_ip_keeps_requester_target_and_reports_network_order();
@@ -3030,6 +3230,7 @@ int main(void) {
   test_trigger_oem_filter_blocks_non_matching_callbacks();
   test_trigger_oem_filter_allows_matching_callbacks();
   test_reply_tx_requires_reply_target();
+  test_tx_helpers_reject_invalid_arguments();
   test_handle_ignores_short_address_packet();
   test_handle_ignores_legacy_protocol_version_packet();
   test_handle_ignores_invalid_dmx_length_packet();

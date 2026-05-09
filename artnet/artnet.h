@@ -416,6 +416,7 @@ typedef enum {
   ARTNET_MEDIACONTROL_REPLY_HANDLER, /**< Called on receipt of an ArtMediaControlReply packet */
   ARTNET_DATAREQUEST_HANDLER,     /**< Called on receipt of an ArtDataRequest packet */
   ARTNET_DATAREPLY_HANDLER,       /**< Called on receipt of an ArtDataReply packet */
+  ARTNET_RDMSUB_HANDLER,          /**< Called on receipt of an ArtRdmSub packet */
 } artnet_handler_name_t;
 
 
@@ -1020,7 +1021,7 @@ EXTERN int artnet_send_media_control_reply(artnet_node vn,
   int16_t length);
 
 /**
- * @brief Broadcast an ArtDirectory request.
+ * @brief Send an ArtDirectory request to discovered nodes.
  * @param vn The artnet_node
  * @return ARTNET_EOK on success, or a negative error code
  */

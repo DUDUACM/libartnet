@@ -368,6 +368,13 @@ int artnet_tx_rdm(node n, uint16_t address, uint8_t *data, int length) {
   artnet_packet_t rdm = {0};
   int len = 0;
 
+  if (n->state.rdm_reply_addr.s_addr == 0) {
+    return ARTNET_EACTION;
+  }
+  if (length < 0 || (length > 0 && data == NULL)) {
+    return ARTNET_EARG;
+  }
+
   // Art-Net 4: ArtRdm must always be unicast
   rdm.to = n->state.rdm_reply_addr;
   rdm.type = ARTNET_RDM;
@@ -416,6 +423,13 @@ int artnet_tx_rdmsub(node n,
   artnet_packet_t rdmsub = {0};
   int len = 0;
 
+  if (n->state.rdm_reply_addr.s_addr == 0) {
+    return ARTNET_EACTION;
+  }
+  if (uid == NULL || sub_count == 0 || length < 0 || (length > 0 && data == NULL)) {
+    return ARTNET_EARG;
+  }
+
   rdmsub.to = n->state.rdm_reply_addr;
   rdmsub.type = ARTNET_RDMSUB;
 
@@ -461,6 +475,9 @@ int artnet_tx_diagdata(node n, uint8_t priority, uint8_t logical_port,
   if (n->state.mode != ARTNET_ON) {
     return ARTNET_EACTION;
   }
+  if (text == NULL) {
+    return ARTNET_EARG;
+  }
 
   // Art-Net 4: only send if diagnostics are enabled
   if (!n->state.diag_enabled) {
@@ -494,6 +511,9 @@ int artnet_tx_diagdata(node n, uint8_t priority, uint8_t logical_port,
 
   // unicast or broadcast depending on ArtPoll Flags
   if (n->state.diag_unicast) {
+    if (n->state.reply_addr.s_addr == 0) {
+      return ARTNET_EACTION;
+    }
     diag.to = n->state.reply_addr;
   } else {
     diag.to.s_addr = n->state.bcast_addr.s_addr;
@@ -661,6 +681,7 @@ int artnet_tx_nzs(node n, int port_id, uint8_t start_code,
                   int16_t length, const uint8_t *data) {
   artnet_packet_t p = {0};
   input_port_t *port = NULL;
+  int ret = ARTNET_EOK;
 
   if (n->state.mode != ARTNET_ON) {
     return ARTNET_EACTION;
@@ -694,9 +715,6 @@ int artnet_tx_nzs(node n, int port_id, uint8_t start_code,
   p.data.nzs.length = short_get_low_byte(length);
   memcpy(&p.data.nzs.data, data, length);
 
-  // Art-Net 4: unicast to subscribers
-  p.to.s_addr = n->state.bcast_addr.s_addr;
-
   int nodes = 0, i = 0;
   int limit = n->state.bcast_limit > 0 ? n->state.bcast_limit : (n->node_list.length ? n->node_list.length : 1);
   SI *ips = malloc(sizeof(SI) * limit);
@@ -712,7 +730,11 @@ int artnet_tx_nzs(node n, int port_id, uint8_t start_code,
 
   for (i = 0; i < nodes; i++) {
     p.to = ips[i];
-    artnet_net_send(n, &p);
+    ret = artnet_net_send(n, &p);
+    if (ret != ARTNET_EOK) {
+      free(ips);
+      return ret;
+    }
   }
   free(ips);
 
@@ -847,6 +869,10 @@ int artnet_tx_data_reply(node n, const char *ip, uint16_t request_code,
     return ARTNET_EACTION;
   }
 
+  if (length < 0 || (length > 0 && payload == NULL)) {
+    return ARTNET_EARG;
+  }
+
   if (length > 512) {
     length = 512;
   }
@@ -946,6 +972,10 @@ int artnet_tx_timecode(node n, uint8_t frames, uint8_t seconds,
   if (n->state.mode != ARTNET_ON) {
     return ARTNET_EACTION;
   }
+  if (frames > 29 || seconds > 59 || minutes > 59 ||
+      hours > 23 || type > ARTNET_TIMECODE_SMPTE) {
+    return ARTNET_EARG;
+  }
 
   memset(&p, 0x00, sizeof(p));
   p.to.s_addr = n->state.bcast_addr.s_addr;
@@ -986,6 +1016,10 @@ int artnet_tx_timesync(node n, uint8_t tm_sec, uint8_t tm_min,
 
   if (n->state.mode != ARTNET_ON) {
     return ARTNET_EACTION;
+  }
+  if (tm_sec > 59 || tm_min > 59 || tm_hour > 23 ||
+      tm_mday < 1 || tm_mday > 31 || tm_mon > 11) {
+    return ARTNET_EARG;
   }
 
   memset(&p, 0x00, sizeof(p));
@@ -1029,7 +1063,9 @@ int artnet_tx_trigger(node n, uint8_t oem_hi, uint8_t oem_lo,
     return ARTNET_EACTION;
   }
 
-  if (length < 0 || length > ARTNET_DMX_LENGTH) {
+  if (key > ARTNET_TRIGGER_KEY_SHOW ||
+      length < 0 || length > ARTNET_DMX_LENGTH ||
+      (length > 0 && data == NULL)) {
     return ARTNET_EARG;
   }
 
@@ -1056,20 +1092,25 @@ int artnet_tx_trigger(node n, uint8_t oem_hi, uint8_t oem_lo,
 
 
 /**
- * Send an ArtDirectory request packet (broadcast)
+ * Send an ArtDirectory request packet to discovered nodes.
  *
  * @param n the node
  * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_tx_directory(node n) {
   artnet_packet_t p = {0};
+  node_entry_private_t *entry = NULL;
+  int ret = ARTNET_EOK;
+  int sent = 0;
 
   if (n->state.mode != ARTNET_ON) {
     return ARTNET_EACTION;
   }
+  if (n->node_list.length == 0 || n->node_list.first == NULL) {
+    return ARTNET_EACTION;
+  }
 
   memset(&p, 0x00, sizeof(p));
-  p.to.s_addr = n->state.bcast_addr.s_addr;
   p.type = ARTNET_DIRECTORY;
   p.length = sizeof(artnet_directory_t);
 
@@ -1078,7 +1119,19 @@ int artnet_tx_directory(node n) {
   p.data.dir.verH = 0;
   p.data.dir.ver = ARTNET_VERSION;
 
-  return artnet_net_send(n, &p);
+  for (entry = n->node_list.first; entry != NULL; entry = entry->next) {
+    if (entry->ip.s_addr == 0) {
+      continue;
+    }
+    p.to = entry->ip;
+    ret = artnet_net_send(n, &p);
+    if (ret != ARTNET_EOK) {
+      return ret;
+    }
+    sent = 1;
+  }
+
+  return sent ? ARTNET_EOK : ARTNET_EACTION;
 }
 
 /**
@@ -1267,9 +1320,11 @@ int artnet_tx_file_tn_master(node n, in_addr_t ip, uint8_t type,
   if (n->state.mode != ARTNET_ON) {
     return ARTNET_EACTION;
   }
+  if (dataLen < 0 || (dataLen > 0 && data == NULL)) {
+    return ARTNET_EARG;
+  }
 
   len = min(dataLen, ARTNET_FIRMWARE_SIZE);
-  len = max(len, 0);
 
   memset(&p, 0x00, sizeof(p));
   p.to.s_addr = ip;
@@ -1362,6 +1417,9 @@ int artnet_tx_file_fn_reply(node n, uint8_t blockId, uint16_t totalLength,
 
   if (n->state.reply_addr.s_addr == 0) {
     return ARTNET_EACTION;
+  }
+  if (dataLen < 0 || (dataLen > 0 && data == NULL)) {
+    return ARTNET_EARG;
   }
 
   memset(&p, 0x00, sizeof(p));
