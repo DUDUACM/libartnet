@@ -25,7 +25,9 @@
 #include <signal.h>
 #include <time.h>
 #include <stdint.h>
+#if !defined(_WIN32) && !defined(_MSC_VER)
 #include <arpa/inet.h>
+#endif
 #include <artnet/artnet.h>
 #include <artnet/packets.h>
 #include <artnet/common.h>
@@ -61,6 +63,13 @@ static const mem_file_t k_mem_files[] = {
   {"readme.txt",    k_product_note,  sizeof(k_product_note) - 1},
 };
 
+/**
+ * Build a null-separated directory blob from the in-memory file table.
+ *
+ * @param buf output buffer
+ * @param cap output buffer capacity in bytes
+ * @return number of bytes written to buf
+ */
 static int build_directory_blob(uint8_t *buf, size_t cap) {
   size_t used = 0;
   size_t i = 0;
@@ -193,7 +202,7 @@ static int timesync_handler(artnet_node n, void *pp, void *data) {
   artnet_packet packet = (artnet_packet)pp;
   artnet_timesync_t *ts = &packet->data.tsync;
   printf("[TimeSync] %04d-%02d-%02d %02d:%02d:%02d\n",
-         ts->tm_year + 1900, ts->tm_mon, ts->tm_mday,
+         ts->tm_year + 1900, ts->tm_mon + 1, ts->tm_mday,
          ts->tm_hour, ts->tm_min, ts->tm_sec);
   return 0;
 }
@@ -235,6 +244,105 @@ static int address_handler(artnet_node n, void *pp, void *data) {
 static int input_handler(artnet_node n, void *pp, void *data) {
   (void)n; (void)pp; (void)data;
   printf("[Input] ArtInput received (port enable/disable)\n");
+  return 0;
+}
+
+/**
+ * Handle ArtIpProg packets by printing the requested settings.
+ *
+ * @param n    the artnet_node
+ * @param pp   pointer to the received packet
+ * @param data unused callback data
+ * @return always 0
+ */
+static int ipprog_handler(artnet_node n, void *pp, void *data) {
+  (void)n; (void)data;
+  artnet_packet packet = (artnet_packet)pp;
+  artnet_ipprog_t *ipg = &packet->data.aip;
+  printf("[IpProg] cmd=0x%02X ip=%d.%d.%d.%d mask=%d.%d.%d.%d gw=%d.%d.%d.%d\n",
+         ipg->Command,
+         ipg->ProgIpHi, ipg->ProgIp2, ipg->ProgIp1, ipg->ProgIpLo,
+         ipg->ProgSmHi, ipg->ProgSm2, ipg->ProgSm1, ipg->ProgSmLo,
+         ipg->ProgDgHi, ipg->ProgDg2, ipg->ProgDg1, ipg->ProgDgLo);
+  return 0;
+}
+
+/**
+ * Handle ArtCommand packets by printing the received command text.
+ *
+ * @param n    the artnet_node
+ * @param pp   pointer to the received packet
+ * @param data unused callback data
+ * @return always 0
+ */
+static int command_handler(artnet_node n, void *pp, void *data) {
+  (void)n; (void)data;
+  artnet_packet packet = (artnet_packet)pp;
+  artnet_command_t *cmd = &packet->data.cmd;
+  int len = ((int)cmd->lengthHi << 8) | cmd->lengthLo;
+  printf("[Command] esta=%02X%02X text=%.*s\n",
+         cmd->estaManHi, cmd->estaManLo,
+         len > 0 ? len - 1 : 0, (char *)cmd->data);
+  return 0;
+}
+
+/**
+ * Handle ArtMedia packets.
+ *
+ * @param n    the artnet_node
+ * @param pp   pointer to the received packet
+ * @param data unused callback data
+ * @return always 0
+ */
+static int media_handler(artnet_node n, void *pp, void *data) {
+  (void)n; (void)pp; (void)data;
+  printf("[Media] ArtMedia received\n");
+  return 0;
+}
+
+/**
+ * Handle ArtMediaPatch packets by printing basic routing information.
+ *
+ * @param n    the artnet_node
+ * @param pp   pointer to the received packet
+ * @param data unused callback data
+ * @return always 0
+ */
+static int media_patch_handler(artnet_node n, void *pp, void *data) {
+  (void)n; (void)data;
+  artnet_packet packet = (artnet_packet)pp;
+  artnet_media_patch_t *mp = &packet->data.mpatch;
+  int len = ((int)mp->lengthHi << 8) | mp->length;
+  printf("[MediaPatch] physical=%d universe=0x%04X len=%d\n",
+         mp->physical, mp->universe, len);
+  return 0;
+}
+
+/**
+ * Handle ArtMediaControl packets.
+ *
+ * @param n    the artnet_node
+ * @param pp   pointer to the received packet
+ * @param data unused callback data
+ * @return always 0
+ */
+static int media_control_handler(artnet_node n, void *pp, void *data) {
+  (void)n; (void)pp; (void)data;
+  printf("[MediaControl] ArtMediaControl received\n");
+  return 0;
+}
+
+/**
+ * Handle ArtMediaControlReply packets.
+ *
+ * @param n    the artnet_node
+ * @param pp   pointer to the received packet
+ * @param data unused callback data
+ * @return always 0
+ */
+static int media_control_reply_handler(artnet_node n, void *pp, void *data) {
+  (void)n; (void)pp; (void)data;
+  printf("[MediaControlReply] ArtMediaControlReply received\n");
   return 0;
 }
 
@@ -419,6 +527,12 @@ int main(int argc, char *argv[]) {
   artnet_set_handler(node, ARTNET_DIAGDATA_HANDLER, diag_handler, NULL);
   artnet_set_handler(node, ARTNET_ADDRESS_HANDLER, address_handler, NULL);
   artnet_set_handler(node, ARTNET_INPUT_HANDLER, input_handler, NULL);
+  artnet_set_handler(node, ARTNET_IPPROG_HANDLER, ipprog_handler, NULL);
+  artnet_set_handler(node, ARTNET_COMMAND_HANDLER, command_handler, NULL);
+  artnet_set_handler(node, ARTNET_MEDIA_HANDLER, media_handler, NULL);
+  artnet_set_handler(node, ARTNET_MEDIAPATCH_HANDLER, media_patch_handler, NULL);
+  artnet_set_handler(node, ARTNET_MEDIACONTROL_HANDLER, media_control_handler, NULL);
+  artnet_set_handler(node, ARTNET_MEDIACONTROL_REPLY_HANDLER, media_control_reply_handler, NULL);
   artnet_set_handler(node, ARTNET_DATAREQUEST_HANDLER, data_request_handler, NULL);
   artnet_set_handler(node, ARTNET_DIRECTORY_HANDLER, directory_handler, NULL);
   artnet_set_handler(node, ARTNET_FILE_FN_MASTER_HANDLER, file_fn_master_handler, NULL);
@@ -434,6 +548,7 @@ int main(int argc, char *argv[]) {
   printf("\nFull node started, all handlers active. (Ctrl+C to stop)\n");
   printf("Supported: DMX, RDM, TOD, Sync, TimeCode, TimeSync, Trigger,\n");
   printf("           Nzs, Firmware, Diagnostics, Remote Programming,\n");
+  printf("           IpProg, Command, MediaPatch, MediaControl,\n");
   printf("           DataRequest, Directory, FileFnMaster\n");
   printf("Files:     ");
   for (i = 0; i < (int)(sizeof(k_mem_files) / sizeof(k_mem_files[0])); i++) {

@@ -550,7 +550,7 @@ static void test_poll_reply_build_populates_artnet4_fields(void) {
   n.state.bqp_policy = ARTNET_BQP_WARNING;
   n.state.refresh_rate = 44;
   memcpy(n.state.default_resp_uid, uid, sizeof(uid));
-  n.ports.types[0] = ARTNET_ENABLE_OUTPUT | ARTNET_PORT_DMX;
+  n.ports.types[0] = (uint8_t)((uint8_t)ARTNET_ENABLE_OUTPUT | (uint8_t)ARTNET_PORT_DMX);
   n.ports.out[0].port_enabled = TRUE;
   n.ports.out[0].port_addr = make_addr(1, 2, 3);
   n.ports.out[0].output_style = 1;
@@ -592,7 +592,7 @@ static void test_poll_reply_build_marks_network_programming_and_bg_discovery_sta
   n.state.mode = ARTNET_ON;
   n.state.netSwitch_net_ctl = TRUE;
   n.state.bqp_policy = ARTNET_BQP_DISABLED;
-  n.ports.types[0] = ARTNET_ENABLE_OUTPUT | ARTNET_PORT_DMX;
+  n.ports.types[0] = (uint8_t)((uint8_t)ARTNET_ENABLE_OUTPUT | (uint8_t)ARTNET_PORT_DMX);
   n.ports.out[0].port_enabled = TRUE;
   n.ports.out[0].rdm_enabled = 1;
   n.ports.out[0].output_style = 0;
@@ -705,6 +705,270 @@ static void test_send_data_request_encodes_target_and_request_code(void) {
   ASSERT_TRUE(send_capture.data.datareq.oemHi == 0x56 &&
               send_capture.data.datareq.oemLo == 0x78,
               "artnet_send_data_request should include the node OEM code");
+
+  stop_sendable_node(&n);
+}
+
+static void test_send_data_reply_encodes_target_and_payload(void) {
+  artnet_node_t n;
+  send_capture_t send_capture = {0};
+  const char payload[] = "https://example.invalid/product";
+  int payload_len = (int)strlen(payload) + 1;
+
+  init_test_node(&n);
+  start_sendable_node(&n);
+  n.callbacks.send.fh = send_capture_handler;
+  n.callbacks.send.data = &send_capture;
+
+  ASSERT_TRUE(artnet_send_data_reply((artnet_node)&n,
+                                     "192.168.1.56",
+                                     ARTNET_DR_URL_PRODUCT,
+                                     payload,
+                                     (int16_t)payload_len) == ARTNET_EOK,
+              "artnet_send_data_reply should succeed for a valid target");
+  ASSERT_TRUE(send_capture.called == 1,
+              "artnet_send_data_reply should emit one outbound packet");
+  ASSERT_TRUE(send_capture.type == ARTNET_DATAREPLY,
+              "artnet_send_data_reply should send an ArtDataReply packet");
+  ASSERT_TRUE(send_capture.to.s_addr == ip4("192.168.1.56").s_addr,
+              "artnet_send_data_reply should target the requested IP address");
+  ASSERT_TRUE(send_capture.data.datarep.requestHi == 0x00 &&
+              send_capture.data.datarep.requestLo == 0x01,
+              "artnet_send_data_reply should encode the selected request code");
+  ASSERT_TRUE(send_capture.data.datarep.payLenHi == 0x00 &&
+              send_capture.data.datarep.payLenLo == (uint8_t)payload_len,
+              "artnet_send_data_reply should encode the payload length");
+  ASSERT_TRUE(memcmp(send_capture.data.datarep.payLoad, payload, (size_t)payload_len) == 0,
+              "artnet_send_data_reply should copy the payload bytes");
+
+  stop_sendable_node(&n);
+}
+
+static void test_send_address_accepts_null_fields_as_no_change(void) {
+  artnet_node_t n;
+  send_capture_t send_capture = {0};
+  uint8_t nochange[ARTNET_MAX_PORTS];
+  node_entry_private_t *entry = NULL;
+
+  init_test_node(&n);
+  n.state.node_type = ARTNET_SRV;
+  start_sendable_node(&n);
+  n.callbacks.send.fh = send_capture_handler;
+  n.callbacks.send.data = &send_capture;
+  memset(nochange, PROGRAM_NO_CHANGE, sizeof(nochange));
+  entry = add_stub_node_entry(&n, "192.168.1.60", 1, 2, 3);
+
+  ASSERT_TRUE(artnet_send_address((artnet_node)&n,
+                                  &entry->pub,
+                                  NULL,
+                                  NULL,
+                                  NULL,
+                                  NULL,
+                                  (uint8_t)ARTNET_ADDRESS_NO_CHANGE,
+                                  (uint8_t)ARTNET_ADDRESS_NO_CHANGE,
+                                  ARTNET_PC_NONE,
+                                  0xFF) == ARTNET_EOK,
+              "artnet_send_address should treat NULL fields as no-change sentinels");
+  ASSERT_TRUE(send_capture.called == 1,
+              "artnet_send_address should emit one outbound packet");
+  ASSERT_TRUE(send_capture.type == ARTNET_ADDRESS,
+              "artnet_send_address should send an ArtAddress packet");
+  ASSERT_TRUE(send_capture.to.s_addr == ip4("192.168.1.60").s_addr,
+              "artnet_send_address should target the selected node");
+  ASSERT_TRUE(send_capture.data.addr.shortName[0] == PROGRAM_NO_CHANGE,
+              "artnet_send_address should encode NULL short name as no-change");
+  ASSERT_TRUE(send_capture.data.addr.longName[0] == PROGRAM_NO_CHANGE,
+              "artnet_send_address should encode NULL long name as no-change");
+  ASSERT_TRUE(memcmp(send_capture.data.addr.swIn, nochange, sizeof(nochange)) == 0,
+              "artnet_send_address should encode NULL input addresses as no-change");
+  ASSERT_TRUE(memcmp(send_capture.data.addr.swOut, nochange, sizeof(nochange)) == 0,
+              "artnet_send_address should encode NULL output addresses as no-change");
+  ASSERT_TRUE(send_capture.data.addr.netSwitch == PROGRAM_NO_CHANGE &&
+              send_capture.data.addr.subSwitch == PROGRAM_NO_CHANGE,
+              "artnet_send_address should preserve no-change net and subnet sentinels");
+
+  stop_sendable_node(&n);
+}
+
+static void test_send_ipprog_encodes_programming_fields(void) {
+  artnet_node_t n;
+  send_capture_t send_capture = {0};
+  node_entry_private_t *entry = NULL;
+
+  init_test_node(&n);
+  start_sendable_node(&n);
+  n.callbacks.send.fh = send_capture_handler;
+  n.callbacks.send.data = &send_capture;
+  entry = add_stub_node_entry(&n, "192.168.1.61", 1, 2, 3);
+
+  ASSERT_TRUE(artnet_send_ipprog((artnet_node)&n,
+                                 &entry->pub,
+                                 0x96,
+                                 "10.77.66.55",
+                                 "255.255.254.0",
+                                 "10.77.66.1") == ARTNET_EOK,
+              "artnet_send_ipprog should succeed for valid programming parameters");
+  ASSERT_TRUE(send_capture.called == 1,
+              "artnet_send_ipprog should emit one outbound packet");
+  ASSERT_TRUE(send_capture.type == ARTNET_IPPROG,
+              "artnet_send_ipprog should send an ArtIpProg packet");
+  ASSERT_TRUE(send_capture.to.s_addr == ip4("192.168.1.61").s_addr,
+              "artnet_send_ipprog should target the selected node");
+  ASSERT_TRUE(send_capture.data.aip.Command == 0x96,
+              "artnet_send_ipprog should preserve the command bitfield");
+  ASSERT_TRUE(send_capture.data.aip.ProgIpHi == 10 &&
+              send_capture.data.aip.ProgIp2 == 77 &&
+              send_capture.data.aip.ProgIp1 == 66 &&
+              send_capture.data.aip.ProgIpLo == 55,
+              "artnet_send_ipprog should encode the requested IP address");
+  ASSERT_TRUE(send_capture.data.aip.ProgSmHi == 255 &&
+              send_capture.data.aip.ProgSm2 == 255 &&
+              send_capture.data.aip.ProgSm1 == 254 &&
+              send_capture.data.aip.ProgSmLo == 0,
+              "artnet_send_ipprog should encode the requested subnet mask");
+  ASSERT_TRUE(send_capture.data.aip.ProgDgHi == 10 &&
+              send_capture.data.aip.ProgDg2 == 77 &&
+              send_capture.data.aip.ProgDg1 == 66 &&
+              send_capture.data.aip.ProgDgLo == 1,
+              "artnet_send_ipprog should encode the requested gateway");
+
+  stop_sendable_node(&n);
+}
+
+static void test_send_command_encodes_text_and_target(void) {
+  artnet_node_t n;
+  send_capture_t send_capture = {0};
+  const char text[] = "SwoutText=Node";
+
+  init_test_node(&n);
+  start_sendable_node(&n);
+  n.callbacks.send.fh = send_capture_handler;
+  n.callbacks.send.data = &send_capture;
+
+  ASSERT_TRUE(artnet_send_command((artnet_node)&n,
+                                  0x1234,
+                                  text,
+                                  (int16_t)sizeof(text),
+                                  "192.168.1.62") == ARTNET_EOK,
+              "artnet_send_command should succeed for a valid target and payload");
+  ASSERT_TRUE(send_capture.called == 1,
+              "artnet_send_command should emit one outbound packet");
+  ASSERT_TRUE(send_capture.type == ARTNET_COMMAND,
+              "artnet_send_command should send an ArtCommand packet");
+  ASSERT_TRUE(send_capture.to.s_addr == ip4("192.168.1.62").s_addr,
+              "artnet_send_command should target the requested IP address");
+  ASSERT_TRUE(send_capture.data.cmd.estaManHi == 0x12 &&
+              send_capture.data.cmd.estaManLo == 0x34,
+              "artnet_send_command should encode the ESTA code");
+  ASSERT_TRUE(send_capture.data.cmd.lengthHi == 0x00 &&
+              send_capture.data.cmd.lengthLo == (uint8_t)sizeof(text),
+              "artnet_send_command should encode the payload length");
+  ASSERT_TRUE(memcmp(send_capture.data.cmd.data, text, sizeof(text)) == 0,
+              "artnet_send_command should copy the text payload");
+
+  stop_sendable_node(&n);
+}
+
+static void test_send_media_packets_encode_payloads_and_targets(void) {
+  artnet_node_t n;
+  send_capture_t send_capture = {0};
+  node_entry_private_t *entry = NULL;
+  uint8_t patch_data[3] = {1, 2, 3};
+  uint8_t control_data[4] = {4, 5, 6, 7};
+
+  init_test_node(&n);
+  start_sendable_node(&n);
+  n.callbacks.send.fh = send_capture_handler;
+  n.callbacks.send.data = &send_capture;
+  entry = add_stub_node_entry(&n, "192.168.1.63", 1, 2, 3);
+
+  ASSERT_TRUE(artnet_send_media_patch((artnet_node)&n,
+                                      &entry->pub,
+                                      2,
+                                      make_addr(1, 2, 3),
+                                      patch_data,
+                                      3) == ARTNET_EOK,
+              "artnet_send_media_patch should succeed for a valid target and payload");
+  ASSERT_TRUE(send_capture.called == 1 && send_capture.type == ARTNET_MEDIAPATCH,
+              "artnet_send_media_patch should emit an ArtMediaPatch packet");
+  ASSERT_TRUE(send_capture.to.s_addr == ip4("192.168.1.63").s_addr,
+              "artnet_send_media_patch should target the selected node");
+  ASSERT_TRUE(send_capture.data.mpatch.physical == 2,
+              "artnet_send_media_patch should encode the physical port");
+  ASSERT_TRUE(send_capture.data.mpatch.universe == htols(make_addr(1, 2, 3)),
+              "artnet_send_media_patch should encode the universe");
+  ASSERT_TRUE(memcmp(send_capture.data.mpatch.data, patch_data, sizeof(patch_data)) == 0,
+              "artnet_send_media_patch should copy the payload bytes");
+
+  send_capture.called = 0;
+  ASSERT_TRUE(artnet_send_media_control((artnet_node)&n,
+                                        &entry->pub,
+                                        control_data,
+                                        4) == ARTNET_EOK,
+              "artnet_send_media_control should succeed for a valid target and payload");
+  ASSERT_TRUE(send_capture.called == 1 && send_capture.type == ARTNET_MEDIACONTROL,
+              "artnet_send_media_control should emit an ArtMediaControl packet");
+  ASSERT_TRUE(memcmp(send_capture.data.mctrl.data, control_data, sizeof(control_data)) == 0,
+              "artnet_send_media_control should copy the payload bytes");
+
+  send_capture.called = 0;
+  ASSERT_TRUE(artnet_send_media_control_reply((artnet_node)&n,
+                                              &entry->pub,
+                                              control_data,
+                                              4) == ARTNET_EOK,
+              "artnet_send_media_control_reply should succeed for a valid target and payload");
+  ASSERT_TRUE(send_capture.called == 1 && send_capture.type == ARTNET_MEDIACONTROLREPLY,
+              "artnet_send_media_control_reply should emit an ArtMediaControlReply packet");
+  ASSERT_TRUE(memcmp(send_capture.data.mctrl.data, control_data, sizeof(control_data)) == 0,
+              "artnet_send_media_control_reply should copy the payload bytes");
+
+  stop_sendable_node(&n);
+}
+
+static void test_send_poll_flags_encodes_explicit_artnet4_fields(void) {
+  artnet_node_t n;
+  send_capture_t send_capture = {0};
+
+  init_test_node(&n);
+  n.state.node_type = ARTNET_SRV;
+  start_sendable_node(&n);
+  n.callbacks.send.fh = send_capture_handler;
+  n.callbacks.send.data = &send_capture;
+
+  ASSERT_TRUE(artnet_send_poll_flags((artnet_node)&n,
+                                     "192.168.1.64",
+                                     (uint8_t)(ARTNET_POLL_FLAG_REPLY_ON_CHANGE |
+                                               ARTNET_POLL_FLAG_DIAG_ENABLE |
+                                               ARTNET_POLL_FLAG_TARGET_MODE),
+                                     ARTNET_DIAG_HIGH,
+                                     0x1234,
+                                     0x1000,
+                                     0x1122,
+                                     0x3344) == ARTNET_EOK,
+              "artnet_send_poll_flags should succeed for a valid target");
+  ASSERT_TRUE(send_capture.called == 1,
+              "artnet_send_poll_flags should emit one outbound packet");
+  ASSERT_TRUE(send_capture.type == ARTNET_POLL,
+              "artnet_send_poll_flags should send an ArtPoll packet");
+  ASSERT_TRUE(send_capture.to.s_addr == ip4("192.168.1.64").s_addr,
+              "artnet_send_poll_flags should target the requested IP address");
+  ASSERT_TRUE(send_capture.data.ap.flags ==
+              (ARTNET_POLL_FLAG_REPLY_ON_CHANGE |
+               ARTNET_POLL_FLAG_DIAG_ENABLE |
+               ARTNET_POLL_FLAG_TARGET_MODE),
+              "artnet_send_poll_flags should preserve the explicit flags");
+  ASSERT_TRUE(send_capture.data.ap.diagPriority == ARTNET_DIAG_HIGH,
+              "artnet_send_poll_flags should encode the diagnostic priority");
+  ASSERT_TRUE(send_capture.data.ap.targetPortAddressTopHi == 0x12 &&
+              send_capture.data.ap.targetPortAddressTopLo == 0x34 &&
+              send_capture.data.ap.targetPortAddressBottomHi == 0x10 &&
+              send_capture.data.ap.targetPortAddressBottomLo == 0x00,
+              "artnet_send_poll_flags should encode the target Port-Address range");
+  ASSERT_TRUE(send_capture.data.ap.estaMan[0] == 0x11 &&
+              send_capture.data.ap.estaMan[1] == 0x22 &&
+              send_capture.data.ap.oem[0] == 0x33 &&
+              send_capture.data.ap.oem[1] == 0x44,
+              "artnet_send_poll_flags should encode explicit ESTA and OEM values");
 
   stop_sendable_node(&n);
 }
@@ -2312,6 +2576,12 @@ int main(void) {
   test_send_dmx_unicasts_to_matching_subscribers_only();
   test_send_nzs_unicasts_and_preserves_start_code();
   test_send_data_request_encodes_target_and_request_code();
+  test_send_data_reply_encodes_target_and_payload();
+  test_send_address_accepts_null_fields_as_no_change();
+  test_send_ipprog_encodes_programming_fields();
+  test_send_command_encodes_text_and_target();
+  test_send_media_packets_encode_payloads_and_targets();
+  test_send_poll_flags_encodes_explicit_artnet4_fields();
   test_sync_only_accepts_matching_last_dmx_source();
   test_sync_buffers_dmx_until_sync_flush();
   test_sync_flushes_same_ip_different_physical_merge();

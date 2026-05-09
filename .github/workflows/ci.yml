@@ -27,13 +27,13 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Configure (shared)
-        run: cmake -B build-shared -DBUILD_SHARED_LIBS=ON -DBUILD_EXAMPLES=ON -DBUILD_TESTS=OFF
+        run: cmake -B build-shared -DBUILD_SHARED_LIBS=ON -DBUILD_EXAMPLES=ON -DBUILD_EXAMPLES_MINIMAL=ON -DBUILD_EXAMPLES_FOCUSED=ON -DBUILD_EXAMPLES_FULL=ON -DBUILD_TESTS=OFF
 
       - name: Build (shared)
         run: cmake --build build-shared --config Release
 
       - name: Configure (static)
-        run: cmake -B build-static -DBUILD_SHARED_LIBS=OFF -DBUILD_EXAMPLES=ON
+        run: cmake -B build-static -DBUILD_SHARED_LIBS=OFF -DBUILD_EXAMPLES=ON -DBUILD_EXAMPLES_MINIMAL=ON -DBUILD_EXAMPLES_FOCUSED=ON -DBUILD_EXAMPLES_FULL=ON
 
       - name: Build (static)
         run: cmake --build build-static --config Release

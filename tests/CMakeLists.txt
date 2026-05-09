@@ -9,9 +9,17 @@ add_executable(protocol_regression
     ${PROJECT_SOURCE_DIR}/artnet/tod.c
 )
 
+set_target_properties(protocol_regression PROPERTIES
+    VS_GLOBAL_VcpkgApplocalDeps "false"
+)
+
 target_compile_definitions(protocol_regression PRIVATE HAVE_CONFIG_H)
 
 if(WIN32)
+    target_compile_definitions(protocol_regression PRIVATE
+        _CRT_SECURE_NO_WARNINGS
+        _WINSOCK_DEPRECATED_NO_WARNINGS
+    )
     target_link_libraries(protocol_regression PRIVATE ws2_32)
 endif()
 

@@ -567,6 +567,10 @@ void reset_firmware_upload(node n);
 // exported from transmit.c
 /** @brief Build and send an ArtPoll packet. */
 int artnet_tx_poll(node n, const char *ip,  artnet_ttm_value_t ttm);
+/** @brief Build and send an ArtPoll packet with explicit Flags fields. */
+int artnet_tx_poll_ex(node n, const char *ip, uint8_t flags, uint8_t diag_priority,
+                      uint16_t target_top, uint16_t target_bottom,
+                      uint16_t esta_man, uint16_t oem);
 /** @brief Build and send an ArtPollReply packet. */
 int artnet_tx_poll_reply(node n);
 /** @brief Build and send an ArtTodData packet. */
@@ -610,8 +614,21 @@ int artnet_tx_trigger(node n, uint8_t oem_hi, uint8_t oem_lo,
 int artnet_tx_data_reply(node n, const char *ip, uint16_t request_code,
                          const char *payload, int16_t length);
 int artnet_tx_data_request(node n, const char *ip, uint16_t request_code);
+/** @brief Build and send an ArtIpProg packet. */
+int artnet_tx_ipprog(node n, in_addr_t ip, uint8_t command,
+                     const char *prog_ip, const char *subnet_mask,
+                     const char *gateway);
 /** @brief Build and send an ArtIpProgReply packet. */
 int artnet_tx_ipprog_reply(node n);
+/** @brief Build and send an ArtCommand packet. */
+int artnet_tx_command(node n, uint16_t esta_man, const char *text, int16_t length,
+                      const char *ip);
+/** @brief Build and send an ArtMediaPatch packet. */
+int artnet_tx_media_patch(node n, in_addr_t ip, uint8_t physical,
+                          uint16_t universe, const uint8_t *data, int16_t length);
+/** @brief Build and send an ArtMediaControl or ArtMediaControlReply packet. */
+int artnet_tx_media_control(node n, in_addr_t ip, artnet_packet_type_t type,
+                            const uint8_t *data, int16_t length);
 /** @brief Build and send an ArtSync packet. */
 int artnet_tx_sync(node n);
 /** @brief Build and send an ArtDirectory packet. */

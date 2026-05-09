@@ -20,11 +20,24 @@
 
 static volatile int running = 1;
 
+/**
+ * Handle Ctrl+C / break signals and request shutdown.
+ *
+ * @param sig received signal number
+ */
 static void signal_handler(int sig) {
   (void)sig;
   running = 0;
 }
 
+/**
+ * Print received ArtTodData packets.
+ *
+ * @param n    the artnet_node
+ * @param pp   pointer to the received packet
+ * @param data unused callback data
+ * @return always 0
+ */
 static int tod_data_handler(artnet_node n, void *pp, void *data) {
   (void)n;
   (void)data;
@@ -50,6 +63,14 @@ static int tod_data_handler(artnet_node n, void *pp, void *data) {
   return 0;
 }
 
+/**
+ * Print received ArtRdm packets.
+ *
+ * @param n    the artnet_node
+ * @param pp   pointer to the received packet
+ * @param data unused callback data
+ * @return always 0
+ */
 static int rdm_handler(artnet_node n, void *pp, void *data) {
   (void)n;
   (void)data;
@@ -65,6 +86,9 @@ static int rdm_handler(artnet_node n, void *pp, void *data) {
   return 0;
 }
 
+/**
+ * Print the interactive menu.
+ */
 static void print_menu(void) {
   printf("\n--- RDM Controller ---\n");
   printf("  p) Poll network (ArtPoll)\n");
@@ -76,6 +100,13 @@ static void print_menu(void) {
   fflush(stdout);
 }
 
+/**
+ * Entry point for the RDM controller example.
+ *
+ * @param argc argument count
+ * @param argv argument vector
+ * @return 0 on success, non-zero on error
+ */
 int main(int argc, char *argv[]) {
   setvbuf(stdout, NULL, _IONBF, 0);
   const char *ip = NULL;

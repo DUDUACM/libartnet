@@ -27,7 +27,11 @@
 #include <ctype.h>
 #include <math.h>
 #include <time.h>
+#if !defined(_WIN32) && !defined(_MSC_VER)
 #include <sys/select.h>
+#else
+#include <winsock2.h>
+#endif
 #include <artnet/artnet.h>
 #include <artnet/packets.h>
 #include <artnet/common.h>
@@ -270,8 +274,73 @@ static int timesync_handler(artnet_node n, void *pp, void *data) {
   return 0;
 }
 
+static int ipprog_handler(artnet_node n, void *pp, void *data) {
+  (void)n; (void)data;
+  artnet_packet packet = (artnet_packet)pp;
+  artnet_ipprog_reply_t *r = &packet->data.aipr;
+  printf("\n[IpProgReply] ip=%d.%d.%d.%d mask=%d.%d.%d.%d gw=%d.%d.%d.%d status=0x%02X\n",
+         r->ProgIpHi, r->ProgIp2, r->ProgIp1, r->ProgIpLo,
+         r->ProgSmHi, r->ProgSm2, r->ProgSm1, r->ProgSmLo,
+         r->ProgDgHi, r->ProgDg2, r->ProgDg1, r->ProgDgLo,
+         r->Status);
+  printf("> ");
+  fflush(stdout);
+  return 0;
+}
+
+static int command_handler(artnet_node n, void *pp, void *data) {
+  (void)n; (void)data;
+  artnet_packet packet = (artnet_packet)pp;
+  artnet_command_t *cmd = &packet->data.cmd;
+  int len = ((int)cmd->lengthHi << 8) | cmd->lengthLo;
+  printf("\n[Command] esta=%02X%02X len=%d text=%.*s\n",
+         cmd->estaManHi, cmd->estaManLo, len,
+         len > 0 ? len - 1 : 0, (char *)cmd->data);
+  printf("> ");
+  fflush(stdout);
+  return 0;
+}
+
+static int media_handler(artnet_node n, void *pp, void *data) {
+  (void)n; (void)pp; (void)data;
+  printf("\n[Media] ArtMedia received\n> ");
+  fflush(stdout);
+  return 0;
+}
+
+static int media_patch_handler(artnet_node n, void *pp, void *data) {
+  (void)n; (void)data;
+  artnet_packet packet = (artnet_packet)pp;
+  artnet_media_patch_t *mp = &packet->data.mpatch;
+  int len = ((int)mp->lengthHi << 8) | mp->length;
+  printf("\n[MediaPatch] physical=%d universe=0x%04X len=%d\n",
+         mp->physical, mp->universe, len);
+  printf("> ");
+  fflush(stdout);
+  return 0;
+}
+
+static int media_control_handler(artnet_node n, void *pp, void *data) {
+  (void)n; (void)pp; (void)data;
+  printf("\n[MediaControl] ArtMediaControl received\n> ");
+  fflush(stdout);
+  return 0;
+}
+
+static int media_control_reply_handler(artnet_node n, void *pp, void *data) {
+  (void)n; (void)pp; (void)data;
+  printf("\n[MediaControlReply] ArtMediaControlReply received\n> ");
+  fflush(stdout);
+  return 0;
+}
+
 /* ---- Node list helpers ---- */
 
+/**
+ * Print discovered nodes from the node list.
+ *
+ * @param n the artnet_node
+ */
 static void print_discovered(artnet_node n) {
   artnet_node_list nl = artnet_get_nl(n);
   int count = artnet_nl_get_length(nl);
@@ -325,23 +394,65 @@ static artnet_node_entry select_node(artnet_node n) {
 
 /* ---- Command handlers ---- */
 
+/**
+ * Send an ArtPoll using the legacy TalkToMe helper.
+ *
+ * @param n the artnet_node
+ */
 static void cmd_poll(artnet_node n) {
-  printf("  Flags: 0=default, 1=reply on change, 2=+diag, 3=+diag unicast, 5=+target mode\n");
-  printf("  Flags (default 0): ");
+  printf("  TalkToMe: 0=default, 1=private(deprecated), 2=reply on change\n");
+  printf("  Mode (default 0): ");
   fflush(stdout);
   char buf[16];
-  int flags = 0;
+  int mode = 0;
   if (fgets(buf, sizeof(buf), stdin) && buf[0] != '\n')
-    flags = atoi(buf);
+    mode = atoi(buf);
 
   artnet_ttm_value_t ttm = ARTNET_TTM_DEFAULT;
-  if (flags == 0)
-    artnet_send_poll(n, NULL, ARTNET_TTM_DEFAULT);
-  else {
-    /* For advanced flags, use default TTM - the library handles flag parsing */
-    artnet_send_poll(n, NULL, ttm);
+  switch (mode) {
+    case 1:
+      ttm = ARTNET_TTM_PRIVATE;
+      break;
+    case 2:
+      ttm = ARTNET_TTM_AUTO;
+      break;
+    default:
+      ttm = ARTNET_TTM_DEFAULT;
+      break;
   }
-  printf("[Poll] sent (flags=0x%02X)\n", flags);
+  artnet_send_poll(n, NULL, ttm);
+  printf("[Poll] sent (TalkToMe=0x%02X)\n", (unsigned int)ttm);
+}
+
+/**
+ * Send an ArtPoll with explicit Art-Net 4 Flags fields.
+ *
+ * @param n the artnet_node
+ */
+static void cmd_poll_flags(artnet_node n) {
+  int reply_on_change = read_int("  Reply on change? (0/1, default 1): ", 1);
+  int diag_enable = read_int("  Request diagnostics? (0/1, default 0): ", 0);
+  int diag_unicast = read_int("  Diag unicast? (0/1, default 0): ", 0);
+  int target_mode = read_int("  Targeted mode? (0/1, default 0): ", 0);
+  int diag_priority = read_int("  Diag priority (hex, default 0x40): ", 0x40);
+  int target_top = 0;
+  int target_bottom = 0;
+  uint8_t flags = 0;
+
+  if (reply_on_change) flags |= ARTNET_POLL_FLAG_REPLY_ON_CHANGE;
+  if (diag_enable) flags |= ARTNET_POLL_FLAG_DIAG_ENABLE;
+  if (diag_unicast) flags |= ARTNET_POLL_FLAG_DIAG_UNICAST;
+  if (target_mode) {
+    flags |= ARTNET_POLL_FLAG_TARGET_MODE;
+    target_bottom = read_hex("  Target bottom Port-Address (hex, default 0000): ");
+    target_top = read_hex("  Target top Port-Address (hex, default 0000): ");
+  }
+
+  int ret = artnet_send_poll_flags(n, NULL, flags, (uint8_t)diag_priority,
+                                   (uint16_t)target_top, (uint16_t)target_bottom,
+                                   0x00FF, 0xFF00);
+  printf("[PollFlags] %s (flags=0x%02X)\n",
+         ret == ARTNET_EOK ? "OK" : artnet_strerror(), flags);
 }
 
 static void cmd_list(artnet_node n) {
@@ -734,6 +845,129 @@ static void cmd_data_request(artnet_node n) {
   printf("[DataRequest] %s\n", ret == ARTNET_EOK ? "OK" : artnet_strerror());
 }
 
+/**
+ * Send an ArtIpProg query or programming request to a selected node.
+ *
+ * @param n the artnet_node
+ */
+static void cmd_ipprog(artnet_node n) {
+  artnet_node_entry e = select_node(n);
+  if (!e) return;
+
+  printf("  New IP (blank=query only): ");
+  fflush(stdout);
+  char ip_buf[64];
+  if (!fgets(ip_buf, sizeof(ip_buf), stdin)) return;
+  strip_newline(ip_buf);
+
+  printf("  New subnet mask (blank=skip): ");
+  fflush(stdout);
+  char mask_buf[64];
+  if (!fgets(mask_buf, sizeof(mask_buf), stdin)) return;
+  strip_newline(mask_buf);
+
+  printf("  New gateway (blank=skip): ");
+  fflush(stdout);
+  char gw_buf[64];
+  if (!fgets(gw_buf, sizeof(gw_buf), stdin)) return;
+  strip_newline(gw_buf);
+
+  uint8_t command = 0x00;
+  if (ip_buf[0] || mask_buf[0] || gw_buf[0]) {
+    command = 0x80;
+    if (ip_buf[0]) command |= 0x04;
+    if (mask_buf[0]) command |= 0x02;
+    if (gw_buf[0]) command |= 0x10;
+  }
+
+  int ret = artnet_send_ipprog(n, e, command,
+                               ip_buf[0] ? ip_buf : NULL,
+                               mask_buf[0] ? mask_buf : NULL,
+                               gw_buf[0] ? gw_buf : NULL);
+  printf("[IpProg] %s\n", ret == ARTNET_EOK ? "OK" : artnet_strerror());
+}
+
+/**
+ * Send an ArtCommand packet.
+ *
+ * @param n the artnet_node
+ */
+static void cmd_command_send(artnet_node n) {
+  printf("  Target IP (blank=broadcast): ");
+  fflush(stdout);
+  char ip_buf[64];
+  if (!fgets(ip_buf, sizeof(ip_buf), stdin)) return;
+  strip_newline(ip_buf);
+
+  printf("  ESTA (hex, default FFFF): ");
+  int esta = read_hex("");
+  if (esta == 0) {
+    esta = 0xFFFF;
+  }
+
+  printf("  Command text: ");
+  fflush(stdout);
+  char text[ARTNET_DMX_LENGTH];
+  if (!fgets(text, sizeof(text), stdin)) return;
+  strip_newline(text);
+  size_t len = strlen(text);
+  text[len] = '\0';
+  len++;
+
+  int ret = artnet_send_command(n, (uint16_t)esta, text, (int16_t)len,
+                                ip_buf[0] ? ip_buf : NULL);
+  printf("[Command] %s\n", ret == ARTNET_EOK ? "OK" : artnet_strerror());
+}
+
+/**
+ * Send an ArtMediaPatch packet to a selected node.
+ *
+ * @param n the artnet_node
+ */
+static void cmd_media_patch(artnet_node n) {
+  artnet_node_entry e = select_node(n);
+  if (!e) return;
+
+  int physical = read_int("  Physical port (default 0): ", 0);
+  int universe = read_hex("  Universe address (hex, default 0000): ");
+  int length = read_int("  Payload length (1-16, default 4): ", 4);
+  if (length < 1) length = 1;
+  if (length > 16) length = 16;
+  uint8_t data[16];
+  for (int i = 0; i < length; i++) {
+    data[i] = (uint8_t)(i + 1);
+  }
+
+  int ret = artnet_send_media_patch(n, e, (uint8_t)physical, (uint16_t)universe, data, (int16_t)length);
+  printf("[MediaPatch] %s\n", ret == ARTNET_EOK ? "OK" : artnet_strerror());
+}
+
+/**
+ * Send an ArtMediaControl or ArtMediaControlReply packet to a selected node.
+ *
+ * @param n     the artnet_node
+ * @param reply non-zero to send ArtMediaControlReply, zero to send ArtMediaControl
+ */
+static void cmd_media_control(artnet_node n, int reply) {
+  artnet_node_entry e = select_node(n);
+  if (!e) return;
+
+  int length = read_int("  Payload length (0-16, default 4): ", 4);
+  if (length < 0) length = 0;
+  if (length > 16) length = 16;
+  uint8_t data[16];
+  for (int i = 0; i < length; i++) {
+    data[i] = (uint8_t)(0xA0 + i);
+  }
+
+  int ret = reply
+    ? artnet_send_media_control_reply(n, e, data, (int16_t)length)
+    : artnet_send_media_control(n, e, data, (int16_t)length);
+  printf("[%s] %s\n",
+         reply ? "MediaControlReply" : "MediaControl",
+         ret == ARTNET_EOK ? "OK" : artnet_strerror());
+}
+
 static void cmd_short_name(artnet_node n) {
   artnet_node_entry e = select_node(n);
   if (!e) return;
@@ -837,7 +1071,7 @@ static void cmd_subnet_addr(artnet_node n) {
 static void print_menu(void) {
   printf("\n=== Art-Net 4 Full Controller ===\n");
   printf("Discovery:\n");
-  printf("  p) Poll network        l) List nodes\n");
+  printf("  p) Poll network        P) Poll with explicit Flags   l) List nodes\n");
   printf("DMX Output:\n");
   printf("  d) DMX send (single)   D) DMX flood (continuous)\n");
   printf("  z) ArtNzs (non-0 SC)   s) ArtSync\n");
@@ -858,7 +1092,8 @@ static void print_menu(void) {
   printf("  w) Firmware upload     u) File upload (TnMaster)\n");
   printf("  v) File download (Fn)  x) ArtDirectory\n");
   printf("Diagnostics & Data:\n");
-  printf("  a) Send DiagData       b) DataReply\n");
+  printf("  a) Send DiagData       b) DataRequest      i) ArtIpProg\n");
+  printf("  m) ArtCommand          M) ArtMediaPatch    C) ArtMediaControl    V) ArtMediaCtrlReply\n");
   printf("  q) Quit\n");
   printf("> ");
   fflush(stdout);
@@ -914,6 +1149,12 @@ int main(int argc, char *argv[]) {
   artnet_set_handler(node, ARTNET_SYNC_HANDLER, sync_handler, NULL);
   artnet_set_handler(node, ARTNET_TIMECODE_HANDLER, timecode_handler, NULL);
   artnet_set_handler(node, ARTNET_TIMESYNC_HANDLER, timesync_handler, NULL);
+  artnet_set_handler(node, ARTNET_IPPROG_HANDLER, ipprog_handler, NULL);
+  artnet_set_handler(node, ARTNET_COMMAND_HANDLER, command_handler, NULL);
+  artnet_set_handler(node, ARTNET_MEDIA_HANDLER, media_handler, NULL);
+  artnet_set_handler(node, ARTNET_MEDIAPATCH_HANDLER, media_patch_handler, NULL);
+  artnet_set_handler(node, ARTNET_MEDIACONTROL_HANDLER, media_control_handler, NULL);
+  artnet_set_handler(node, ARTNET_MEDIACONTROL_REPLY_HANDLER, media_control_reply_handler, NULL);
 
   if (artnet_start(node) != ARTNET_EOK) {
     printf("Error: failed to start: %s\n", artnet_strerror());
@@ -971,6 +1212,7 @@ int main(int argc, char *argv[]) {
       switch (cmd[0]) {
         /* Discovery */
         case 'p': cmd_poll(node); break;
+        case 'P': cmd_poll_flags(node); break;
         case 'l': cmd_list(node); break;
         /* DMX */
         case 'd': cmd_dmx_send(node); break;
@@ -1009,6 +1251,11 @@ int main(int argc, char *argv[]) {
         /* Diagnostics & data */
         case 'a': cmd_diag_send(node); break;
         case 'b': cmd_data_request(node); break;
+        case 'i': cmd_ipprog(node); break;
+        case 'm': cmd_command_send(node); break;
+        case 'M': cmd_media_patch(node); break;
+        case 'C': cmd_media_control(node, 0); break;
+        case 'V': cmd_media_control(node, 1); break;
         /* Quit */
         case 'q': running = 0; break;
         case '\n': break;

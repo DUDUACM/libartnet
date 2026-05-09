@@ -19,11 +19,24 @@
 
 static volatile int running = 1;
 
+/**
+ * Handle Ctrl+C / break signals and request shutdown.
+ *
+ * @param sig received signal number
+ */
 static void signal_handler(int sig) {
   (void)sig;
   running = 0;
 }
 
+/**
+ * Print received ArtDirectoryReply packets.
+ *
+ * @param n    the artnet_node
+ * @param pp   pointer to the received packet
+ * @param data unused callback data
+ * @return always 0
+ */
 static int dir_reply_handler(artnet_node n, void *pp, void *data) {
   (void)n;
   (void)data;
@@ -53,6 +66,9 @@ static int dir_reply_handler(artnet_node n, void *pp, void *data) {
   return 0;
 }
 
+/**
+ * Print the interactive menu.
+ */
 static void print_menu(void) {
   printf("\n--- Directory Query ---\n");
   printf("  p) Poll network\n");
@@ -62,6 +78,13 @@ static void print_menu(void) {
   fflush(stdout);
 }
 
+/**
+ * Entry point for the directory query example.
+ *
+ * @param argc argument count
+ * @param argv argument vector
+ * @return 0 on success, non-zero on error
+ */
 int main(int argc, char *argv[]) {
   setvbuf(stdout, NULL, _IONBF, 0);
   const char *ip = NULL;

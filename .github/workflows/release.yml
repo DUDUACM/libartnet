@@ -329,6 +329,16 @@ jobs:
           body: |
             ## libartnet ${{ env.VERSION }}
 
+            Art-Net 4 focused release with broad controller and node workflow coverage.
+
+            ### Highlights
+            - Art-Net 4 support across discovery, 15-bit port addressing, DMX transport, ArtNzs, and ArtSync
+            - Remote programming coverage for ArtAddress, ArtInput, and ArtIpProg controller/node workflows
+            - RDM and TOD coverage for discovery, control, and message transport
+            - Diagnostics, timecode, timesync, trigger, directory, and file-transfer workflows
+            - Layered example set covering minimal protocol demos, focused workflow tools, and integration controller/node examples
+            - Cross-platform packaging for Windows, Linux, and macOS
+
             ### Downloads
             | Platform | File |
             |----------|------|

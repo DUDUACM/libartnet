@@ -21,17 +21,34 @@
 
 static volatile int running = 1;
 
+/**
+ * Handle Ctrl+C / break signals and request shutdown.
+ *
+ * @param sig received signal number
+ */
 static void signal_handler(int sig) {
   (void)sig;
   running = 0;
 }
 
+/**
+ * Print command-line usage.
+ *
+ * @param prog executable name
+ */
 static void print_usage(const char *prog) {
   printf("Usage: %s [-i <bind_ip>] [-r <rate_ms>]\n", prog);
   printf("  -i  IP address to bind to (default: auto)\n");
   printf("  -r  Send interval in ms (default: %d)\n", DEFAULT_INTERVAL_MS);
 }
 
+/**
+ * Entry point for the TimeSync transmitter example.
+ *
+ * @param argc argument count
+ * @param argv argument vector
+ * @return 0 on success, non-zero on error
+ */
 int main(int argc, char *argv[]) {
   setvbuf(stdout, NULL, _IONBF, 0);
   const char *ip = NULL;

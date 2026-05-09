@@ -36,6 +36,7 @@ set_target_properties(artnet PROPERTIES
     SOVERSION ${PROJECT_VERSION_MAJOR}
     OUTPUT_NAME artnet
     PUBLIC_HEADER "${ARTNET_PUBLIC_HEADERS}"
+    VS_GLOBAL_VcpkgApplocalDeps "false"
 )
 
 # Include directories

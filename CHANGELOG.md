@@ -2,6 +2,30 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.3.0] - 2026-05-09
+
+### Added
+
+- Expanded controller-side Art-Net 4 workflow coverage for:
+  - explicit ArtPoll Flags and targeted discovery
+  - ArtIpProg query/program flows
+  - ArtCommand transmission
+  - ArtMediaPatch / ArtMediaControl traffic
+- Added layered example selection in CMake for minimal, focused workflow, and integration example groups
+- Extended the integration examples (`full_controller` / `full_node`) to exercise the newly covered controller/node protocol paths
+
+### Fixed
+
+- Public API behavior now matches documentation for no-change address programming and ArtDataReply destination handling
+- Windows example builds no longer fail on POSIX-only includes in the integration examples
+- MSVC/vcpkg post-build noise and Windows test-target warning configuration were cleaned up across library, tests, and examples
+
+### Changed
+
+- Default example selection now builds minimal and integration examples, while focused workflow examples are opt-in (`BUILD_EXAMPLES_FOCUSED=OFF`)
+- Release, CI, and README documentation now describe the project in terms of Art-Net 4 capability coverage and layered example workflows rather than individual helper APIs
+- GitHub Actions example builds now explicitly enable all example layers so CI continues to cover the complete example set
+
 ## [1.2.0] - 2026-04-28
 
 ### Added

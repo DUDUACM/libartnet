@@ -21,11 +21,22 @@
 
 static volatile int running = 1;
 
+/**
+ * Handle Ctrl+C / break signals and request shutdown.
+ *
+ * @param sig received signal number
+ */
 static void signal_handler(int sig) {
   (void)sig;
   running = 0;
 }
 
+/**
+ * Map ArtTimeCode type values to display strings.
+ *
+ * @param type ArtTimeCode type value
+ * @return a static display string
+ */
 static const char *type_name(artnet_timecode_type_t type) {
   switch (type) {
     case ARTNET_TIMECODE_FILM:  return "Film (24fps)";
@@ -36,6 +47,12 @@ static const char *type_name(artnet_timecode_type_t type) {
   return "Unknown";
 }
 
+/**
+ * Return the nominal frame interval in milliseconds for a timecode type.
+ *
+ * @param type ArtTimeCode type value
+ * @return frame interval in milliseconds
+ */
 static int frame_interval_ms(artnet_timecode_type_t type) {
   switch (type) {
     case ARTNET_TIMECODE_FILM:  return 42;   /* 1000/24  ~= 41.67 */
@@ -46,6 +63,11 @@ static int frame_interval_ms(artnet_timecode_type_t type) {
   return 40;
 }
 
+/**
+ * Print command-line usage.
+ *
+ * @param prog executable name
+ */
 static void print_usage(const char *prog) {
   printf("Usage: %s [-i <bind_ip>] [-t <type>] [-s <stream_id>]\n", prog);
   printf("  -i  IP address to bind to (default: auto)\n");
@@ -54,6 +76,13 @@ static void print_usage(const char *prog) {
   printf("  -s  Stream ID 0-255 (default: 0 = master)\n");
 }
 
+/**
+ * Entry point for the TimeCode transmitter example.
+ *
+ * @param argc argument count
+ * @param argv argument vector
+ * @return 0 on success, non-zero on error
+ */
 int main(int argc, char *argv[]) {
   setvbuf(stdout, NULL, _IONBF, 0);
   const char *ip = NULL;

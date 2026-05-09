@@ -11,8 +11,8 @@ Art-Net 4 Protocol Specification: [art-net4.md](art-net4.md)
 - Art-Net 4 protocol implementation with 15-bit port addressing (32768 universes)
 - Node and Controller modes with up to 4 ports per node
 - Node joining for multi-node configurations (8+ universes)
-- Built-in protocol behaviors for DMX512 transport, merge, keepalive, fail-safe, ArtSync, discovery, remote programming, TOD/RDM exchange, firmware upload, directory reply, and IP programming
-- Generic packet send/receive support plus handler callbacks for ArtCommand, ArtTimeCode, ArtTimeSync, ArtTrigger, ArtDiagData, ArtDataRequest/Reply, file transfer packets, media packets, and other Art-Net 4 opcodes
+- Built-in protocol behaviors for DMX512 transport, merge, keepalive, fail-safe, ArtSync, discovery, remote programming, TOD/RDM exchange, firmware upload, directory reply, and ArtIpProg query/program handling
+- Generic packet transport support plus handler callbacks for ArtCommand, ArtTimeCode, ArtTimeSync, ArtTrigger, ArtDiagData, ArtDataRequest/Reply, file transfer packets, media packets, and other Art-Net 4 opcodes
 - Strict inbound packet validation for protocol version, minimum packet length, key field ranges, and variable-length payload consistency
 - Unified millisecond-precision monotonic clock (GetTickCount64 / clock_gettime)
 - IPv4 and IPv6 support
@@ -22,8 +22,8 @@ Art-Net 4 Protocol Specification: [art-net4.md](art-net4.md)
 
 The library exposes two classes of Art-Net functionality:
 
-- Built-in protocol behavior: libartnet maintains state machines and default protocol actions for `ArtPoll` / `ArtPollReply`, `ArtDmx` / `ArtNzs`, `ArtSync`, `ArtAddress`, `ArtInput`, `ArtIpProg`, `ArtTodRequest` / `ArtTodControl` / `ArtTodData`, `ArtRdm`, `ArtRdmSub`, firmware upload, directory reply, node list maintenance, merge, keepalive, and fail-safe handling.
-- Packet transport plus callbacks: libartnet also parses, validates, and dispatches many other opcodes to application handlers. For these packets, the library provides wire-format support and callback delivery, but application-specific behavior remains the responsibility of the embedding program. This includes `ArtCommand`, `ArtTimeCode`, `ArtTimeSync`, `ArtTrigger`, `ArtDiagData`, `ArtDataRequest`, `ArtDataReply`, `ArtFileFnMaster`, `ArtFileFnReply`, `ArtMedia`, `ArtMediaPatch`, and `ArtMediaControl` / `ArtMediaControlReply`.
+- Built-in protocol behavior: libartnet maintains state machines and default protocol actions for `ArtPoll` / `ArtPollReply`, `ArtDmx` / `ArtNzs`, `ArtSync`, `ArtAddress`, `ArtInput`, `ArtIpProg` query/program handling, `ArtTodRequest` / `ArtTodControl` / `ArtTodData`, `ArtRdm`, `ArtRdmSub`, firmware upload, directory reply, node list maintenance, merge, keepalive, and fail-safe handling.
+- Packet transport plus callbacks: libartnet also parses, validates, and dispatches many other opcodes to application handlers. For these packets, the library provides wire-format support and callback delivery, but application-specific behavior remains the responsibility of the embedding program. This includes `ArtCommand`, `ArtTimeCode`, `ArtTimeSync`, `ArtTrigger`, `ArtDiagData`, `ArtDataRequest`, `ArtDataReply`, `ArtFileFnMaster`, `ArtFileFnReply`, `ArtMedia`, `ArtMediaPatch`, and `ArtMediaControl` / `ArtMediaControlReply`. `ArtMedia` remains receive-only in the public API.
 
 ## Building
 
@@ -47,6 +47,9 @@ make
 | `BUILD_SHARED_LIBS` | `ON` | Build shared library (.so/.dylib/.dll); set `OFF` for static (.a/.lib) |
 | `ENABLE_IPV6` | `ON` | Enable IPv6 support |
 | `BUILD_EXAMPLES` | `ON` | Build example programs |
+| `BUILD_EXAMPLES_MINIMAL` | `ON` | Build minimal single-purpose examples (`dmx_*`, `timecode_*`, `timesync_tx`, `diag_monitor`, `target_node`) |
+| `BUILD_EXAMPLES_FOCUSED` | `OFF` | Build focused workflow examples (`node_manager`, `rdm_controller`, `file_transfer`, `directory_query`) |
+| `BUILD_EXAMPLES_FULL` | `ON` | Build integration examples (`full_node`, `full_controller`) |
 | `BUILD_TESTS` | `OFF` | Build protocol regression tests and enable `ctest` |
 | `BUILD_WERROR` | `OFF` | Treat compiler warnings as errors |
 
@@ -122,189 +125,113 @@ Output is generated in `docs/html/`. Open `docs/html/index.html` to browse.
 
 ## Examples
 
-Thirteen example programs are included:
+The example set is intentionally layered:
 
-### DMX Transmitter (`dmx_tx`)
+- Minimal examples: the smallest possible programs for one protocol topic.
+- Focused workflow examples: interactive tools centered on one operational task.
+- Integration examples: broader controller/node programs that exercise many protocol paths together.
 
-Sends a sine wave chase on 4 universes (single node, 40 FPS) with ArtSync. Supports standard DMX (ArtDmx), non-zero start code (ArtNzs), and raw 15-bit universe addressing.
+You can selectively build those layers with:
 
 ```bash
-# Standard DMX on universes 0-3
+cmake -B build \
+  -DBUILD_EXAMPLES=ON \
+  -DBUILD_EXAMPLES_MINIMAL=ON \
+  -DBUILD_EXAMPLES_FOCUSED=OFF \
+  -DBUILD_EXAMPLES_FULL=ON
+```
+
+The default configuration now builds the minimal and integration layers, while focused workflow examples are opt-in.
+
+Thirteen example programs are included.
+
+### Minimal Examples
+
+These are the smallest entry points for one protocol topic. Start here if you want the least context and the quickest manual verification loop.
+
+| Example | Purpose |
+|--------|---------|
+| `dmx_tx` | Send ArtDmx, ArtNzs, and ArtSync across up to 4 universes |
+| `dmx_rx` | Receive DMX and observe ArtSync frame boundaries |
+| `timecode_tx` | Send SMPTE/EBU ArtTimeCode |
+| `timecode_rx` | Receive and print ArtTimeCode |
+| `timesync_tx` | Send ArtTimeSync from the local system clock |
+| `diag_monitor` | Passively print ArtDiagData, ArtTimeSync, ArtTrigger, and ArtCommand traffic |
+| `target_node` | Small remotely manageable DMX node for controller-side examples |
+
+Quick start commands:
+
+```bash
 ./build/examples/dmx_tx/dmx_tx
-
-# ArtNzs with start code 0xCF
-./build/examples/dmx_tx/dmx_tx -z 0xCF
-
-# Raw 15-bit universe addressing (net=1, subnet=2, universe=3)
-./build/examples/dmx_tx/dmx_tx -n 1 -s 2 -u 3 -r
-```
-
-| Option | Description |
-|--------|-------------|
-| `-i <ip>` | IP address to bind (default: auto-detect) |
-| `-n <net>` | Net address 0-127 (default: 0) |
-| `-s <subnet>` | Subnet address 0-15 (default: 0) |
-| `-u <universe>` | Starting port address 0-15 (default: 0) |
-| `-c <channels>` | DMX channels per universe 1-512 (default: 512) |
-| `-z <code>` | Non-zero start code for ArtNzs (default: 0 = ArtDmx) |
-| `-r` | Use raw 15-bit universe addressing |
-
-### DMX Receiver (`dmx_rx`)
-
-Receives DMX on 4 universes and prints first/last channel values. Registers an ArtSync handler that prints `[Sync] frame complete` when a full frame is received.
-
-```bash
-# Start receiver (must match transmitter's net/subnet/universe)
 ./build/examples/dmx_rx/dmx_rx
-
-# Bind to specific IP, start at universe 1
-./build/examples/dmx_rx/dmx_rx -i 192.168.1.11 -n 0 -s 0 -u 1
+./build/examples/timecode_tx/timecode_tx
+./build/examples/timecode_rx/timecode_rx
+./build/examples/timesync_tx/timesync_tx
+./build/examples/diag_monitor/diag_monitor -i 192.168.1.11
+./build/examples/target_node/target_node -i 192.168.1.20
 ```
 
-| Option | Description |
-|--------|-------------|
-| `-i <ip>` | IP address to bind (default: auto-detect) |
-| `-n <net>` | Net address 0-127 (default: 0) |
-| `-s <subnet>` | Subnet address 0-15 (default: 0) |
-| `-u <universe>` | Starting port address 0-15 (default: 0) |
+Notes:
 
-### Target Node (`target_node`)
+- `dmx_tx` supports standard DMX, ArtNzs, and raw 15-bit universe addressing.
+- `dmx_rx` is the smallest way to observe ArtSync-coordinated receive behavior.
+- `target_node` is a convenient peer for `node_manager` and `full_controller`.
 
-A DMX receiver node that supports remote management via ArtAddress and ArtInput. When a controller remotely changes its configuration (name, address, port), it prints the updated configuration via the program handler callback.
+### Focused Workflow Examples
+
+These examples are narrower interactive tools for one operational task. They overlap with the integration examples, but expose a smaller command surface.
+
+| Example | Purpose |
+|--------|---------|
+| `node_manager` | Remote programming, port enable/disable, LED, failsafe, and ArtIpProg |
+| `rdm_controller` | TOD discovery, TOD control, and raw RDM commands |
+| `file_transfer` | ArtFileTnMaster upload and ArtFileFnMaster download |
+| `directory_query` | ArtDirectory / ArtDirectoryReply workflow |
+
+Quick start commands:
 
 ```bash
-# Start target node on a specific IP
-./build/examples/target_node/target_node -i 192.168.1.20
-
-# Start with custom address
-./build/examples/target_node/target_node -i 192.168.1.20 -n 1 -s 2 -u 3
+./build/examples/node_manager/node_manager -i 192.168.1.100
+./build/examples/rdm_controller/rdm_controller -i 192.168.1.100
+./build/examples/file_transfer/file_transfer -i 192.168.1.100
+./build/examples/directory_query/directory_query -i 192.168.1.100
 ```
 
-| Option | Description |
-|--------|-------------|
-| `-i <ip>` | IP address to bind (default: auto-detect) |
-| `-n <net>` | Net address 0-127 (default: 0) |
-| `-s <subnet>` | Subnet address 0-15 (default: 0) |
-| `-u <universe>` | Starting port address 0-15 (default: 0) |
+Typical `node_manager` flow:
 
-### Full Node (`full_node`)
+```text
+1. Start `target_node`.
+2. Start `node_manager`.
+3. Use `p` then `l` to discover nodes.
+4. Use `1`-`9`, `0`, `f`-`j`, `i` for remote management.
+```
 
-A test-oriented Art-Net 4 bidirectional node with 4 input + 4 output ports. Supports DMX receive/transmit, RDM device discovery (TOD), remote programming via ArtAddress/ArtInput, ArtSync, ArtTimeCode, ArtTimeSync, ArtTrigger, ArtNzs receive, firmware upload reception, diagnostics, `ArtDataRequest` replies, `ArtDirectory` replies, and in-memory file download responses for `ArtFileFnMaster`. Sends ArtPollReply on condition change.
+### Integration Examples
+
+These are the broadest examples in the repository. They intentionally overlap with the focused examples and are best suited for end-to-end protocol exercise, interoperability checks, and manual regression passes.
+
+#### Full Node (`full_node`)
+
+A test-oriented Art-Net 4 bidirectional node with 4 input + 4 output ports. It supports DMX receive/transmit, TOD/RDM, ArtAddress, ArtInput, ArtIpProg, ArtTimeCode, ArtTimeSync, ArtTrigger, ArtCommand, ArtNzs receive, firmware upload reception, diagnostics, ArtMediaPatch / ArtMediaControl monitoring, ArtDataRequest replies, ArtDirectory replies, and in-memory ArtFileFnMaster responses.
 
 ```bash
 ./build/examples/full_node/full_node -i 192.168.1.20
-
-# Custom address range
 ./build/examples/full_node/full_node -i 192.168.1.20 -n 1 -s 2 -u 3
 ```
 
-| Option | Description |
-|--------|-------------|
-| `-i <ip>` | IP address to bind (default: auto-detect) |
-| `-n <net>` | Net address 0-127 (default: 0) |
-| `-s <subnet>` | Subnet address 0-15 (default: 0) |
-| `-u <universe>` | Starting port address 0-15 (default: 0) |
-
-Test-node notes:
+Notes:
 
 - The example exposes an in-memory directory and file table for controller-side directory and file-download testing.
 - `ArtDataRequest` replies are minimal test payloads intended for protocol validation, not product metadata completeness.
 - File download replies are generated from memory, not a persistent filesystem.
 
-### Node Manager (`node_manager`)
+#### Full Controller (`full_controller`)
 
-Interactive controller for remote node management. Discovers nodes via ArtPoll and provides a command-line menu to change names, addresses, port states, LED indicators, and failsafe modes.
-
-```bash
-# Start manager
-./build/examples/node_manager/node_manager -i 192.168.1.100
-```
-
-| Option | Description |
-|--------|-------------|
-| `-i <ip>` | IP address to bind (default: auto-detect) |
-
-Interactive commands:
-
-| Key | Action |
-|-----|--------|
-| `p` | Send ArtPoll to discover nodes |
-| `l` | List discovered nodes (IP, name, address, ports) |
-| `1` | Change node short name (ArtAddress) |
-| `2` | Change node long name (ArtAddress) |
-| `3` | Change node net address 0-127 (ArtAddress) |
-| `4` | Change node subnet address 0-15 (ArtAddress) |
-| `5` | Change a specific port's universe 0-15 (ArtAddress) |
-| `6` | Enable a port (ArtInput) |
-| `7` | Disable a port (ArtInput) |
-| `8` | LED Locate — rapid flash for identification |
-| `9` | LED Mute — turn off LEDs |
-| `0` | LED Normal — restore normal LED behavior |
-| `f` | Failsafe: Hold last state on data loss |
-| `g` | Failsafe: Zero all outputs on data loss |
-| `h` | Failsafe: Full output on data loss |
-| `j` | Failsafe: Play recorded scene on data loss |
-| `q` | Quit |
-
-Example workflow:
-```
-# Terminal 1: start a target node
-./build/examples/target_node/target_node -i 192.168.1.20
-
-# Terminal 2: start manager, discover and reconfigure
-./build/examples/node_manager/node_manager -i 192.168.1.100
-> p                    # discover nodes
-> l                    # list found nodes
-> 1                    # change short name -> select node -> enter name
-> 3                    # change net -> select node -> enter new net value
-> 8                    # LED locate -> select node -> node flashes LEDs
-```
-
-### Full Controller (`full_controller`)
-
-Interactive controller demonstrating all Art-Net 4 controller features. Provides a comprehensive menu covering node discovery, DMX transmission (ArtDmx/ArtNzs/raw 15-bit), ArtSync, remote management (ArtAddress/ArtInput), RDM (ArtTodRequest/ArtTodControl/ArtRdm/ArtRdmSub), firmware upload, file transfer, TimeCode/TimeSync, triggers, diagnostics, directory queries, and ArtDataRequest queries. The event loop listens to both the Art-Net socket and stdin so interactive input remains responsive while network traffic is active.
+Interactive controller demonstrating most controller-side features exposed by the public API. It covers discovery, DMX transmission, ArtSync, remote management, TOD/RDM, firmware upload, file transfer, TimeCode/TimeSync, triggers, diagnostics, ArtDataRequest, ArtIpProg, ArtCommand, and ArtMedia* workflows.
 
 ```bash
 ./build/examples/full_controller/full_controller -i 192.168.1.100
 ```
-
-Interactive commands:
-
-| Key | Action |
-|-----|--------|
-| `p` | Send ArtPoll to discover nodes |
-| `l` | List discovered nodes |
-| `d` | Send DMX to a universe (ArtDmx) |
-| `D` | Flood DMX continuously at 40 FPS |
-| `z` | Send ArtNzs (non-zero start code) |
-| `s` | Send ArtSync |
-| `1` | Change short name (ArtAddress) |
-| `2` | Change long name (ArtAddress) |
-| `3` | Change net address (ArtAddress) |
-| `4` | Change subnet address (ArtAddress) |
-| `5` | Change merge mode (ArtAddress) |
-| `6` | Enable/disable ports (ArtInput) |
-| `7` | Send ArtAddress with command |
-| `8` | LED Locate |
-| `9` | LED Mute |
-| `0` | LED Normal |
-| `f` | Failsafe: Hold last state |
-| `g` | Failsafe: Zero all outputs |
-| `h` | Failsafe: Full output |
-| `j` | Failsafe: Play recorded scene |
-| `t` | Send ArtTodRequest (discover RDM devices) |
-| `T` | Send ArtTodControl (flush/end TOD) |
-| `r` | Send ArtRdm command |
-| `R` | Send ArtRdmSub (RDM sub-device) |
-| `c` | Send ArtTimeCode |
-| `y` | Send ArtTimeSync |
-| `k` | Send ArtTrigger |
-| `w` | Upload firmware (ArtFirmwareMaster) |
-| `u` | Upload file (ArtFileTnMaster) |
-| `v` | Download file (ArtFileFnMaster) |
-| `x` | Send ArtDirectory query |
-| `b` | Send ArtDataRequest |
-| `q` | Quit |
 
 Recommended controller-to-node workflow:
 
@@ -316,172 +243,20 @@ Recommended controller-to-node workflow:
 5. Use `1`-`9`, `0`, `f`-`j` to verify remote programming and failsafe commands.
 6. Use `t`, `T`, `r`, `R` to validate TOD/RDM paths.
 7. Use `x` to query the node's directory, then `v` to download one of the advertised files.
-8. Use `b` to query the node's ArtDataRequest responses (product URL, user guide URL, support URL).
-9. Use `w` / `u` to exercise firmware and file upload receive paths on the node.
+8. Use `b` to query the node's ArtDataRequest responses.
+9. Use `i`, `m`, `M`, `C`, `V` to validate ArtIpProg, ArtCommand, and ArtMedia* paths.
+10. Use `w` / `u` to exercise firmware and file upload receive paths on the node.
 ```
 
-Controller-to-node checklist:
+Command groups:
 
-| Step | Controller Action | Expected Node / Controller Result |
-|------|-------------------|-----------------------------------|
-| 1 | Start `full_node`, then `full_controller`, press `p` | Controller prints at least one `Reply` entry for `FullNode` |
-| 2 | Press `l` | Controller shows node IP, short name, Net/Sub, and port list |
-| 3 | Press `d` and send a small DMX frame | Node prints `[DMX] Port ...` with channel values |
-| 4 | Press `D` to start flood, then `s` if needed | Node shows regular DMX updates; controller remains interactive |
-| 5 | Press `1` or `2` to change names | Node prints `Remote Programming Applied` and updated config |
-| 6 | Press `3` / `4` / `5` / `6` / `7` / `8` / `9` / `0` | Node prints `Address` / `Input` updates and refreshed configuration |
-| 7 | Press `t` | Controller receives `TodData`; node prints `ArtTodRequest received` |
-| 8 | Press `r` or `R` | Node prints `RDM` activity for the requested address or UID |
-| 9 | Press `x` | Controller prints `DirectoryReply` and lists `full_node.log`, `scene_A.dmx`, `readme.txt` |
-| 10 | Press `v` and request one of the listed files | Controller prints one or more `FileFnReply` blocks and then the reconstructed file payload |
-| 11 | Press `b` and request codes `1`, `2`, `3` | Controller prints `DataReply` payloads for product URL, user guide URL, and support URL |
-| 12 | Press `w` or `u` | Node prints firmware/file upload activity and controller sees upload acknowledgements where applicable |
-
-Notes:
-
-- `full_node` is a protocol test node, not a production device. Directory contents, files, and `ArtDataRequest` replies are in-memory test fixtures.
-- `full_controller` now multiplexes stdin and the Art-Net socket, so it should remain responsive while replies are arriving.
-
-### TimeCode Transmitter (`timecode_tx`)
-
-Sends SMPTE/EBU timecode frames at the selected frame rate (Film 24fps, EBU 25fps, DF 29.97fps, SMPTE 30fps). Timecode auto-increments from 00:00:00:00.
-
-```bash
-# Send EBU 25fps timecode (default)
-./build/examples/timecode_tx/timecode_tx
-
-# Send SMPTE 30fps on a specific IP
-./build/examples/timecode_tx/timecode_tx -i 192.168.1.10 -t 3
-
-# Send Film 24fps with custom stream ID
-./build/examples/timecode_tx/timecode_tx -t 0 -s 1
-```
-
-| Option | Description |
-|--------|-------------|
-| `-i <ip>` | IP address to bind (default: auto-detect) |
-| `-t <type>` | TimeCode type: 0=Film(24fps), 1=EBU(25fps), 2=DF(29.97fps), 3=SMPTE(30fps) |
-| `-s <stream>` | Stream ID 0-255 (default: 0 = master) |
-
-### TimeCode Receiver (`timecode_rx`)
-
-Listens for ArtTimeCode packets and prints the received timecode (HH:MM:SS:FF), type, and stream ID.
-
-```bash
-# Start receiver
-./build/examples/timecode_rx/timecode_rx
-
-# Bind to specific IP
-./build/examples/timecode_rx/timecode_rx -i 192.168.1.11
-```
-
-| Option | Description |
-|--------|-------------|
-| `-i <ip>` | IP address to bind (default: auto-detect) |
-
-### RDM Controller (`rdm_controller`)
-
-Interactive RDM controller that discovers RDM devices via ArtTodRequest, displays the Table of Devices (TOD), flushes TOD, and sends raw RDM commands. Prints TOD data and RDM responses as they arrive.
-
-```bash
-./build/examples/rdm_controller/rdm_controller -i 192.168.1.100
-```
-
-| Option | Description |
-|--------|-------------|
-| `-i <ip>` | IP address to bind (default: auto-detect) |
-
-Interactive commands:
-
-| Key | Action |
-|-----|--------|
-| `p` | Send ArtPoll to discover nodes |
-| `t` | Send ArtTodRequest to discover RDM devices |
-| `f` | Flush TOD on all nodes (ArtTodControl) |
-| `r` | Send raw RDM command to a device |
-| `q` | Quit |
-
-### TimeSync Transmitter (`timesync_tx`)
-
-Sends ArtTimeSync packets with the current system date/time at a configurable interval. Useful for synchronizing clocks across Art-Net nodes.
-
-`ArtTimeSync` arguments follow `struct tm` semantics: `tm_mon` is `0-11` and `tm_year` is years since 1900.
-
-```bash
-# Send every 1 second (default)
-./build/examples/timesync_tx/timesync_tx
-
-# Send every 5 seconds
-./build/examples/timesync_tx/timesync_tx -i 192.168.1.10 -r 5000
-```
-
-| Option | Description |
-|--------|-------------|
-| `-i <ip>` | IP address to bind (default: auto-detect) |
-| `-r <ms>` | Send interval in milliseconds (default: 1000, range: 100-60000) |
-
-### Diagnostic Monitor (`diag_monitor`)
-
-Listens for and prints ArtDiagData, ArtTimeSync, ArtTrigger, and ArtCommand packets. A passive network monitor useful for debugging and observing Art-Net traffic.
-
-```bash
-./build/examples/diag_monitor/diag_monitor -i 192.168.1.11
-```
-
-| Option | Description |
-|--------|-------------|
-| `-i <ip>` | IP address to bind (default: auto-detect) |
-
-Output format:
-
-| Prefix | Packet Type | Information Displayed |
-|--------|-------------|-----------------------|
-| `[Diag]` | ArtDiagData | Priority, port, message text |
-| `[TimeSync]` | ArtTimeSync | Date and time (YYYY-MM-DD HH:MM:SS) |
-| `[Trigger]` | ArtTrigger | OEM code, key type, sub-key |
-| `[Command]` | ArtCommand | ESTA manufacturer code, text |
-
-### File Transfer (`file_transfer`)
-
-Interactive controller for uploading and downloading files to/from Art-Net nodes via ArtFileTnMaster and ArtFileFnMaster. Displays ArtFileFnReply data blocks as they arrive.
-
-```bash
-./build/examples/file_transfer/file_transfer -i 192.168.1.100
-```
-
-| Option | Description |
-|--------|-------------|
-| `-i <ip>` | IP address to bind (default: auto-detect) |
-
-Interactive commands:
-
-| Key | Action |
-|-----|--------|
-| `p` | Send ArtPoll to discover nodes |
-| `l` | List discovered nodes |
-| `u` | Upload file data block to a node (ArtFileTnMaster) |
-| `d` | Download file from a node (ArtFileFnMaster) |
-| `q` | Quit |
-
-### Directory Query (`directory_query`)
-
-Interactive controller that sends ArtDirectory to query node file lists and displays ArtDirectoryReply responses.
-
-```bash
-./build/examples/directory_query/directory_query -i 192.168.1.100
-```
-
-| Option | Description |
-|--------|-------------|
-| `-i <ip>` | IP address to bind (default: auto-detect) |
-
-Interactive commands:
-
-| Key | Action |
-|-----|--------|
-| `p` | Send ArtPoll to discover nodes |
-| `d` | Send ArtDirectory to query file lists |
-| `q` | Quit |
+- Discovery: `p`, `P`, `l`
+- DMX and sync: `d`, `D`, `z`, `s`
+- Remote management: `1`-`9`, `0`, `f`-`j`, `i`
+- RDM: `t`, `T`, `r`, `R`
+- Time and trigger: `c`, `y`, `k`
+- Firmware and file: `w`, `u`, `v`, `x`
+- Diagnostics and metadata: `a`, `b`, `m`, `M`, `C`, `V`
 
 ## Supported Packet Types
 
@@ -560,6 +335,11 @@ artnet_read_dmx(node, port_id, &length);                 // read latest DMX data
 
 ```c
 artnet_send_poll(node, NULL, ARTNET_TTM_AUTO);       // broadcast poll
+artnet_send_poll_flags(node, NULL,
+                       ARTNET_POLL_FLAG_REPLY_ON_CHANGE |
+                       ARTNET_POLL_FLAG_DIAG_ENABLE,
+                       ARTNET_DIAG_MEDIUM,
+                       0, 0, 0x1122, 0x3344);        // explicit Art-Net 4 flags
 artnet_node_list nl = artnet_get_nl(node);           // get node list
 artnet_nl_first(nl);                                  // iterate nodes
 artnet_nl_next(nl);
@@ -576,6 +356,10 @@ artnet_send_address(node, entry, "newName", NULL, inAddr, outAddr,
 
 // ArtInput: enable/disable ports
 artnet_send_input(node, entry, settings);
+
+// ArtIpProg: query or program node IP settings
+artnet_send_ipprog(node, entry, 0x00, NULL, NULL, NULL);  // query only
+artnet_send_ipprog(node, entry, 0x86, "192.168.1.50", "255.255.255.0", NULL);
 ```
 
 ### RDM / TOD
@@ -613,6 +397,8 @@ artnet_send_diagnostic(node, ARTNET_DIAG_LOW, port, "message");
 
 `artnet_send_timesync()` uses `struct tm`-style fields for month and year.
 
+`artnet_send_address()` accepts `NULL` for `shortName`, `longName`, `inAddr`, and `outAddr` to mean "no change".
+
 ### Directory & Data
 
 ```c
@@ -620,6 +406,9 @@ artnet_send_directory(node);                          // query file listings
 artnet_send_data_request(node, ip, request_code);    // query node metadata / URLs
 artnet_send_directory_reply(node, entries, count, total);
 artnet_send_data_reply(node, ip, request_code, payload, length);
+artnet_send_command(node, 0xFFFF, "SwoutText=Node\0", 15, NULL);
+artnet_send_media_patch(node, entry, physical, universe, patch_data, patch_len);
+artnet_send_media_control(node, entry, control_data, control_len);
 ```
 
 ### Configuration & Utilities
@@ -654,7 +443,7 @@ artnet_set_firmware_handler(node, my_fw_callback, NULL);
 artnet_set_program_handler(node, my_prog_callback, NULL);
 ```
 
-All 31 handler types are available via `artnet_set_handler()`: `ARTNET_RECV_HANDLER`, `ARTNET_POLL_HANDLER`, `ARTNET_REPLY_HANDLER`, `ARTNET_DMX_HANDLER`, `ARTNET_ADDRESS_HANDLER`, `ARTNET_INPUT_HANDLER`, `ARTNET_SYNC_HANDLER`, `ARTNET_NZS_HANDLER`, `ARTNET_TOD_REQUEST_HANDLER`, `ARTNET_TOD_DATA_HANDLER`, `ARTNET_TOD_CONTROL_HANDLER`, `ARTNET_RDM_HANDLER`, `ARTNET_IPPROG_HANDLER`, `ARTNET_FIRMWARE_HANDLER`, `ARTNET_FIRMWARE_REPLY_HANDLER`, `ARTNET_DIAGDATA_HANDLER`, `ARTNET_COMMAND_HANDLER`, `ARTNET_TIMECODE_HANDLER`, `ARTNET_TIMESYNC_HANDLER`, `ARTNET_TRIGGER_HANDLER`, `ARTNET_DIRECTORY_HANDLER`, `ARTNET_DIRECTORY_REPLY_HANDLER`, `ARTNET_FILE_TN_MASTER_HANDLER`, `ARTNET_FILE_FN_MASTER_HANDLER`, `ARTNET_FILE_FN_REPLY_HANDLER`, `ARTNET_MEDIAPATCH_HANDLER`, `ARTNET_MEDIA_HANDLER`, `ARTNET_MEDIACONTROL_HANDLER`, `ARTNET_MEDIACONTROL_REPLY_HANDLER`, `ARTNET_DATAREQUEST_HANDLER`, `ARTNET_DATAREPLY_HANDLER`. See `artnet.h` for the complete list.
+All 32 handler types are available via `artnet_set_handler()`: `ARTNET_RECV_HANDLER`, `ARTNET_SEND_HANDLER`, `ARTNET_POLL_HANDLER`, `ARTNET_REPLY_HANDLER`, `ARTNET_DMX_HANDLER`, `ARTNET_ADDRESS_HANDLER`, `ARTNET_INPUT_HANDLER`, `ARTNET_SYNC_HANDLER`, `ARTNET_NZS_HANDLER`, `ARTNET_TOD_REQUEST_HANDLER`, `ARTNET_TOD_DATA_HANDLER`, `ARTNET_TOD_CONTROL_HANDLER`, `ARTNET_RDM_HANDLER`, `ARTNET_IPPROG_HANDLER`, `ARTNET_FIRMWARE_HANDLER`, `ARTNET_FIRMWARE_REPLY_HANDLER`, `ARTNET_DIAGDATA_HANDLER`, `ARTNET_COMMAND_HANDLER`, `ARTNET_TIMECODE_HANDLER`, `ARTNET_TIMESYNC_HANDLER`, `ARTNET_TRIGGER_HANDLER`, `ARTNET_DIRECTORY_HANDLER`, `ARTNET_DIRECTORY_REPLY_HANDLER`, `ARTNET_FILE_TN_MASTER_HANDLER`, `ARTNET_FILE_FN_MASTER_HANDLER`, `ARTNET_FILE_FN_REPLY_HANDLER`, `ARTNET_MEDIAPATCH_HANDLER`, `ARTNET_MEDIA_HANDLER`, `ARTNET_MEDIACONTROL_HANDLER`, `ARTNET_MEDIACONTROL_REPLY_HANDLER`, `ARTNET_DATAREQUEST_HANDLER`, `ARTNET_DATAREPLY_HANDLER`. See `artnet.h` for the complete list.
 
 ## License
 

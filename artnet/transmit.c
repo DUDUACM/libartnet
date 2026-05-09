@@ -30,6 +30,33 @@
  * @return ARTNET_EOK on success, or a negative error code
  */
 int artnet_tx_poll(node n, const char *ip, artnet_ttm_value_t ttm) {
+  uint8_t flags = (artnet_poll_flags_t)~ttm;
+  return artnet_tx_poll_ex(n,
+                           ip,
+                           flags,
+                           ARTNET_DIAG_LOW,
+                           0,
+                           0,
+                           (uint16_t)(((uint16_t)n->state.esta_hi << 8) | (uint8_t)n->state.esta_lo),
+                           (uint16_t)(((uint16_t)n->state.oem_hi << 8) | n->state.oem_lo));
+}
+
+/**
+ * Send an ArtPoll packet with explicit Art-Net 4 Flags fields.
+ *
+ * @param n             the node
+ * @param ip            target IP address, or NULL to broadcast
+ * @param flags         ArtPoll Flags bitmask
+ * @param diag_priority diagnostic priority threshold
+ * @param target_top    top of the targeted Port-Address range
+ * @param target_bottom bottom of the targeted Port-Address range
+ * @param esta_man      ESTA manufacturer code to advertise
+ * @param oem           OEM code to advertise
+ * @return ARTNET_EOK on success, or a negative error code
+ */
+int artnet_tx_poll_ex(node n, const char *ip, uint8_t flags, uint8_t diag_priority,
+                      uint16_t target_top, uint16_t target_bottom,
+                      uint16_t esta_man, uint16_t oem) {
   artnet_packet_t p = {0};
   int ret = 0;
 
@@ -51,25 +78,24 @@ int artnet_tx_poll(node n, const char *ip, artnet_ttm_value_t ttm) {
     p.data.ap.opCode = htols(ARTNET_POLL);
     p.data.ap.verH = 0;
     p.data.ap.ver = ARTNET_VERSION;
-    // artnet_ttm_value_t uses inverted logic (~ttm) to map to artnet_poll_flags_t bits:
-    //   TTM_PRIVATE (0xFE) -> ~0xFE = 0x01 -> ARTNET_POLL_FLAG_UNICAST_DEPRECATED
-    //   TTM_AUTO    (0xFD) -> ~0xFD = 0x02 -> ARTNET_POLL_FLAG_REPLY_ON_CHANGE
-    p.data.ap.flags = (artnet_poll_flags_t)~ttm;
-    p.data.ap.diagPriority = ARTNET_DIAG_LOW;
-
-    // Art-Net 4: ESTA manufacturer and OEM code
-    p.data.ap.estaMan[0] = n->state.esta_hi;
-    p.data.ap.estaMan[1] = n->state.esta_lo;
-    p.data.ap.oem[0] = n->state.oem_hi;
-    p.data.ap.oem[1] = n->state.oem_lo;
+    p.data.ap.flags = flags;
+    p.data.ap.diagPriority = diag_priority;
+    p.data.ap.targetPortAddressTopHi = short_get_high_byte(target_top);
+    p.data.ap.targetPortAddressTopLo = short_get_low_byte(target_top);
+    p.data.ap.targetPortAddressBottomHi = short_get_high_byte(target_bottom);
+    p.data.ap.targetPortAddressBottomLo = short_get_low_byte(target_bottom);
+    p.data.ap.estaMan[0] = short_get_high_byte(esta_man);
+    p.data.ap.estaMan[1] = short_get_low_byte(esta_man);
+    p.data.ap.oem[0] = short_get_high_byte(oem);
+    p.data.ap.oem[1] = short_get_low_byte(oem);
 
     p.length = sizeof(artnet_poll_t);
     return artnet_net_send(n, &p);
 
   } else {
     artnet_error("Not sending poll, not a server or raw device");
-    return ARTNET_EACTION;
-  }
+  return ARTNET_EACTION;
+}
 }
 
 /**
@@ -90,10 +116,16 @@ int artnet_tx_poll_reply(node n) {
   }
 
   if (n->state.verbose) {
+    const char *to_ip = inet_ntoa(n->state.reply_addr);
+    const char *node_ip = inet_ntoa(n->state.ip_addr);
+    char to_ip_buf[16];
+    char node_ip_buf[16];
+    snprintf(to_ip_buf, sizeof(to_ip_buf), "%s", to_ip ? to_ip : "0.0.0.0");
+    snprintf(node_ip_buf, sizeof(node_ip_buf), "%s", node_ip ? node_ip : "0.0.0.0");
     printf("[ArtPollReply] to=%s, ip=%s, shortName=%s, status=0x%02X, status2=0x%02X, "
            "net=%d, sub=%d, mac=%02X:%02X:%02X:%02X:%02X:%02X",
-           inet_ntoa(n->state.reply_addr),
-           inet_ntoa(n->state.ip_addr),
+           to_ip_buf,
+           node_ip_buf,
            n->state.shortName,
            (n->state.led_state << 6) | 0x20 | 0x02,
            n->state.status2,
@@ -702,6 +734,74 @@ int artnet_tx_data_request(node n, const char *ip, uint16_t request_code) {
 }
 
 /**
+ * Send an ArtIpProg packet.
+ *
+ * @param n           the node
+ * @param ip          target IP address
+ * @param command     ArtIpProg command bitfield
+ * @param prog_ip     IP address to program, or NULL if unused
+ * @param subnet_mask subnet mask to program, or NULL if unused
+ * @param gateway     default gateway to program, or NULL if unused
+ * @return ARTNET_EOK on success, or a negative error code
+ */
+int artnet_tx_ipprog(node n, in_addr_t ip, uint8_t command,
+                     const char *prog_ip, const char *subnet_mask,
+                     const char *gateway) {
+  artnet_packet_t p = {0};
+  struct in_addr addr = {0};
+
+  if (n->state.mode != ARTNET_ON) {
+    return ARTNET_EACTION;
+  }
+
+  memset(&p, 0x00, sizeof(p));
+  p.to.s_addr = ip;
+  p.type = ARTNET_IPPROG;
+  p.length = sizeof(artnet_ipprog_t);
+
+  memcpy(&p.data.aip.id, ARTNET_STRING, ARTNET_STRING_SIZE);
+  p.data.aip.OpCode = htols(ARTNET_IPPROG);
+  p.data.aip.ProVerHi = 0;
+  p.data.aip.ProVerLo = ARTNET_VERSION;
+  p.data.aip.Command = command;
+
+  if ((command & 0x04) && prog_ip) {
+    if (artnet_net_inet_aton(prog_ip, &addr) != ARTNET_EOK) {
+      return ARTNET_EARG;
+    }
+    addr.s_addr = ntohl(addr.s_addr);
+    p.data.aip.ProgIpHi = (uint8_t)((addr.s_addr >> 24) & 0xFF);
+    p.data.aip.ProgIp2 = (uint8_t)((addr.s_addr >> 16) & 0xFF);
+    p.data.aip.ProgIp1 = (uint8_t)((addr.s_addr >> 8) & 0xFF);
+    p.data.aip.ProgIpLo = (uint8_t)(addr.s_addr & 0xFF);
+  }
+
+  if ((command & 0x02) && subnet_mask) {
+    if (artnet_net_inet_aton(subnet_mask, &addr) != ARTNET_EOK) {
+      return ARTNET_EARG;
+    }
+    addr.s_addr = ntohl(addr.s_addr);
+    p.data.aip.ProgSmHi = (uint8_t)((addr.s_addr >> 24) & 0xFF);
+    p.data.aip.ProgSm2 = (uint8_t)((addr.s_addr >> 16) & 0xFF);
+    p.data.aip.ProgSm1 = (uint8_t)((addr.s_addr >> 8) & 0xFF);
+    p.data.aip.ProgSmLo = (uint8_t)(addr.s_addr & 0xFF);
+  }
+
+  if ((command & 0x10) && gateway) {
+    if (artnet_net_inet_aton(gateway, &addr) != ARTNET_EOK) {
+      return ARTNET_EARG;
+    }
+    addr.s_addr = ntohl(addr.s_addr);
+    p.data.aip.ProgDgHi = (uint8_t)((addr.s_addr >> 24) & 0xFF);
+    p.data.aip.ProgDg2 = (uint8_t)((addr.s_addr >> 16) & 0xFF);
+    p.data.aip.ProgDg1 = (uint8_t)((addr.s_addr >> 8) & 0xFF);
+    p.data.aip.ProgDgLo = (uint8_t)(addr.s_addr & 0xFF);
+  }
+
+  return artnet_net_send(n, &p);
+}
+
+/**
  * Send an ArtDataReply packet (Art-Net 4)
  *
  * @param n            the node
@@ -724,7 +824,7 @@ int artnet_tx_data_reply(node n, const char *ip, uint16_t request_code,
   }
 
   memset(&p, 0x00, sizeof(p));
-  if (ip && artnet_net_inet_aton(ip, &p.to) == 0) {
+  if (!ip || artnet_net_inet_aton(ip, &p.to) != ARTNET_EOK) {
     return ARTNET_EARG;
   }
 
@@ -745,6 +845,53 @@ int artnet_tx_data_reply(node n, const char *ip, uint16_t request_code,
   p.data.datarep.payLenLo = short_get_low_byte(length);
   if (payload && length > 0) {
     memcpy(p.data.datarep.payLoad, payload, length);
+  }
+
+  return artnet_net_send(n, &p);
+}
+
+/**
+ * Send an ArtCommand packet.
+ *
+ * @param n        the node
+ * @param esta_man ESTA manufacturer code
+ * @param text     command text payload
+ * @param length   payload length in bytes
+ * @param ip       target IP address, or NULL to broadcast
+ * @return ARTNET_EOK on success, or a negative error code
+ */
+int artnet_tx_command(node n, uint16_t esta_man, const char *text, int16_t length,
+                      const char *ip) {
+  artnet_packet_t p = {0};
+
+  if (n->state.mode != ARTNET_ON) {
+    return ARTNET_EACTION;
+  }
+  if (length < 0 || length > ARTNET_DMX_LENGTH || (length > 0 && text == NULL)) {
+    return ARTNET_EARG;
+  }
+
+  memset(&p, 0x00, sizeof(p));
+  if (ip != NULL) {
+    if (artnet_net_inet_aton(ip, &p.to) != ARTNET_EOK) {
+      return ARTNET_EARG;
+    }
+  } else {
+    p.to.s_addr = n->state.bcast_addr.s_addr;
+  }
+
+  p.type = ARTNET_COMMAND;
+  p.length = (int)(sizeof(artnet_command_t) - ARTNET_DMX_LENGTH + length);
+  memcpy(&p.data.cmd.id, ARTNET_STRING, ARTNET_STRING_SIZE);
+  p.data.cmd.opCode = htols(ARTNET_COMMAND);
+  p.data.cmd.verH = 0;
+  p.data.cmd.ver = ARTNET_VERSION;
+  p.data.cmd.estaManHi = short_get_high_byte(esta_man);
+  p.data.cmd.estaManLo = short_get_low_byte(esta_man);
+  p.data.cmd.lengthHi = short_get_high_byte(length);
+  p.data.cmd.lengthLo = short_get_low_byte(length);
+  if (length > 0) {
+    memcpy(&p.data.cmd.data, text, length);
   }
 
   return artnet_net_send(n, &p);
@@ -902,6 +1049,86 @@ int artnet_tx_directory(node n) {
   p.data.dir.opCode = htols(ARTNET_DIRECTORY);
   p.data.dir.verH = 0;
   p.data.dir.ver = ARTNET_VERSION;
+
+  return artnet_net_send(n, &p);
+}
+
+/**
+ * Send an ArtMediaPatch packet.
+ *
+ * @param n        the node
+ * @param ip       target IP address
+ * @param physical physical port identifier
+ * @param universe target Port-Address
+ * @param data     payload bytes
+ * @param length   payload length in bytes
+ * @return ARTNET_EOK on success, or a negative error code
+ */
+int artnet_tx_media_patch(node n, in_addr_t ip, uint8_t physical,
+                          uint16_t universe, const uint8_t *data, int16_t length) {
+  artnet_packet_t p = {0};
+
+  if (n->state.mode != ARTNET_ON) {
+    return ARTNET_EACTION;
+  }
+  if (length < 1 || length > ARTNET_DMX_LENGTH || data == NULL) {
+    return ARTNET_EARG;
+  }
+
+  memset(&p, 0x00, sizeof(p));
+  p.to.s_addr = ip;
+  p.type = ARTNET_MEDIAPATCH;
+  p.length = (int)(sizeof(artnet_media_patch_t) - ARTNET_DMX_LENGTH + length);
+
+  memcpy(&p.data.mpatch.id, ARTNET_STRING, ARTNET_STRING_SIZE);
+  p.data.mpatch.opCode = htols(ARTNET_MEDIAPATCH);
+  p.data.mpatch.verH = 0;
+  p.data.mpatch.ver = ARTNET_VERSION;
+  p.data.mpatch.physical = physical;
+  p.data.mpatch.universe = htols(universe);
+  p.data.mpatch.lengthHi = short_get_high_byte(length);
+  p.data.mpatch.length = short_get_low_byte(length);
+  memcpy(&p.data.mpatch.data, data, length);
+
+  return artnet_net_send(n, &p);
+}
+
+/**
+ * Send an ArtMediaControl or ArtMediaControlReply packet.
+ *
+ * @param n      the node
+ * @param ip     target IP address
+ * @param type   packet type: ARTNET_MEDIACONTROL or ARTNET_MEDIACONTROLREPLY
+ * @param data   payload bytes
+ * @param length payload length in bytes
+ * @return ARTNET_EOK on success, or a negative error code
+ */
+int artnet_tx_media_control(node n, in_addr_t ip, artnet_packet_type_t type,
+                            const uint8_t *data, int16_t length) {
+  artnet_packet_t p = {0};
+
+  if (n->state.mode != ARTNET_ON) {
+    return ARTNET_EACTION;
+  }
+  if (type != ARTNET_MEDIACONTROL && type != ARTNET_MEDIACONTROLREPLY) {
+    return ARTNET_EARG;
+  }
+  if (length < 0 || length > ARTNET_DMX_LENGTH || (length > 0 && data == NULL)) {
+    return ARTNET_EARG;
+  }
+
+  memset(&p, 0x00, sizeof(p));
+  p.to.s_addr = ip;
+  p.type = type;
+  p.length = (int)(sizeof(artnet_media_control_t) - ARTNET_DMX_LENGTH + length);
+
+  memcpy(&p.data.mctrl.id, ARTNET_STRING, ARTNET_STRING_SIZE);
+  p.data.mctrl.opCode = htols(type);
+  p.data.mctrl.verH = 0;
+  p.data.mctrl.ver = ARTNET_VERSION;
+  if (length > 0) {
+    memcpy(&p.data.mctrl.data, data, length);
+  }
 
   return artnet_net_send(n, &p);
 }

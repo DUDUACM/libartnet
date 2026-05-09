@@ -713,6 +713,43 @@ int artnet_send_poll(artnet_node vn,
   return ARTNET_ESTATE;
 }
 
+/**
+ * Send an ArtPoll packet with explicit Art-Net 4 Flags fields.
+ *
+ * @param vn            the artnet_node
+ * @param ip            target IP address, or NULL to broadcast
+ * @param flags         ArtPoll Flags bitmask
+ * @param diag_priority diagnostic priority threshold
+ * @param target_top    top of the targeted Port-Address range
+ * @param target_bottom bottom of the targeted Port-Address range
+ * @param esta_man      ESTA manufacturer code to advertise
+ * @param oem           OEM code to advertise
+ * @return ARTNET_EOK on success, or a negative error code
+ */
+int artnet_send_poll_flags(artnet_node vn,
+                           const char *ip,
+                           uint8_t flags,
+                           uint8_t diag_priority,
+                           uint16_t target_top,
+                           uint16_t target_bottom,
+                           uint16_t esta_man,
+                           uint16_t oem) {
+  node n = (node) vn;
+  check_nullnode(vn);
+
+  if (n->state.mode != ARTNET_ON) {
+    return ARTNET_EACTION;
+  }
+
+  if (n->state.node_type == ARTNET_SRV || n->state.node_type == ARTNET_RAW) {
+    return artnet_tx_poll_ex(n, ip, flags, diag_priority, target_top, target_bottom,
+                             esta_man, oem);
+  }
+
+  artnet_error("%s : Not sending poll, not a server or raw device", __FUNCTION__);
+  return ARTNET_ESTATE;
+}
+
 
 /**
  * Sends an artpoll reply.
@@ -1032,6 +1069,8 @@ int artnet_send_address(artnet_node vn,
   }
 
   if (n->state.node_type == ARTNET_SRV || n->state.node_type == ARTNET_RAW) {
+    uint8_t nochange_ports[ARTNET_MAX_PORTS];
+
     p.to.s_addr = ent->ip.s_addr;
 
     p.length = sizeof(artnet_address_t);
@@ -1044,17 +1083,30 @@ int artnet_send_address(artnet_node vn,
     p.data.addr.ver = ARTNET_VERSION;
     p.data.addr.netSwitch = (netAddr != PROGRAM_NO_CHANGE) ? (netAddr | PROGRAM_CHANGE_MASK) : netAddr;
     p.data.addr.bindIndex = 1;
+    memset(nochange_ports, PROGRAM_NO_CHANGE, sizeof(nochange_ports));
 
     memset(p.data.addr.shortName, 0, ARTNET_SHORT_NAME_LENGTH);
-    size_t len = strnlen(shortName, ARTNET_SHORT_NAME_LENGTH);
-    memcpy(p.data.addr.shortName, shortName, len);
+    if (shortName != NULL) {
+      size_t len = strnlen(shortName, ARTNET_SHORT_NAME_LENGTH);
+      memcpy(p.data.addr.shortName, shortName, len);
+    } else {
+      memset(p.data.addr.shortName, PROGRAM_NO_CHANGE, ARTNET_SHORT_NAME_LENGTH);
+    }
 
     memset(p.data.addr.longName, 0, ARTNET_LONG_NAME_LENGTH);
-    len = strnlen(longName, ARTNET_LONG_NAME_LENGTH);
-    memcpy(p.data.addr.longName, longName, len);
+    if (longName != NULL) {
+      size_t len = strnlen(longName, ARTNET_LONG_NAME_LENGTH);
+      memcpy(p.data.addr.longName, longName, len);
+    } else {
+      memset(p.data.addr.longName, PROGRAM_NO_CHANGE, ARTNET_LONG_NAME_LENGTH);
+    }
 
-    memcpy(&p.data.addr.swIn, inAddr, ARTNET_MAX_PORTS);
-    memcpy(&p.data.addr.swOut, outAddr, ARTNET_MAX_PORTS);
+    memcpy(&p.data.addr.swIn,
+           inAddr != NULL ? inAddr : nochange_ports,
+           ARTNET_MAX_PORTS);
+    memcpy(&p.data.addr.swOut,
+           outAddr != NULL ? outAddr : nochange_ports,
+           ARTNET_MAX_PORTS);
 
     p.data.addr.subSwitch = (subAddr != PROGRAM_NO_CHANGE) ? ((subAddr & 0x0F) | PROGRAM_CHANGE_MASK) : subAddr;
     p.data.addr.acnPriority = acnPriority;
@@ -1389,6 +1441,135 @@ int artnet_send_data_reply(artnet_node vn, const char *ip,
   check_nullnode(vn);
 
   return artnet_tx_data_reply(n, ip, request_code, payload, length);
+}
+
+/**
+ * Send an ArtIpProg packet to query or program a remote node's IP settings.
+ *
+ * @param vn          the artnet_node
+ * @param e           the remote node entry (target)
+ * @param command     ArtIpProg command bitfield
+ * @param prog_ip     IP address to program, or NULL if unused
+ * @param subnet_mask subnet mask to program, or NULL if unused
+ * @param gateway     default gateway to program, or NULL if unused
+ * @return ARTNET_EOK on success, or a negative error code
+ */
+int artnet_send_ipprog(artnet_node vn,
+                       artnet_node_entry e,
+                       uint8_t command,
+                       const char *prog_ip,
+                       const char *subnet_mask,
+                       const char *gateway) {
+  node n = (node) vn;
+  node_entry_private_t *ent = find_private_entry(n, e);
+
+  check_nullnode(vn);
+
+  if (e == NULL || ent == NULL) {
+    return ARTNET_EARG;
+  }
+
+  return artnet_tx_ipprog(n, ent->ip.s_addr, command, prog_ip, subnet_mask, gateway);
+}
+
+/**
+ * Send an ArtCommand packet.
+ *
+ * @param vn       the artnet_node
+ * @param esta_man ESTA manufacturer code
+ * @param text     command text payload
+ * @param length   payload length in bytes
+ * @param ip       target IP address, or NULL to broadcast
+ * @return ARTNET_EOK on success, or a negative error code
+ */
+int artnet_send_command(artnet_node vn,
+                        uint16_t esta_man,
+                        const char *text,
+                        int16_t length,
+                        const char *ip) {
+  node n = (node) vn;
+  check_nullnode(vn);
+
+  return artnet_tx_command(n, esta_man, text, length, ip);
+}
+
+/**
+ * Send an ArtMediaPatch packet to a media server.
+ *
+ * @param vn       the artnet_node
+ * @param e        the remote node entry (target)
+ * @param physical physical port identifier
+ * @param universe target Port-Address
+ * @param data     payload bytes
+ * @param length   payload length in bytes
+ * @return ARTNET_EOK on success, or a negative error code
+ */
+int artnet_send_media_patch(artnet_node vn,
+                            artnet_node_entry e,
+                            uint8_t physical,
+                            uint16_t universe,
+                            const uint8_t *data,
+                            int16_t length) {
+  node n = (node) vn;
+  node_entry_private_t *ent = find_private_entry(n, e);
+
+  check_nullnode(vn);
+
+  if (e == NULL || ent == NULL) {
+    return ARTNET_EARG;
+  }
+
+  return artnet_tx_media_patch(n, ent->ip.s_addr, physical, universe, data, length);
+}
+
+/**
+ * Send an ArtMediaControl packet to a media server.
+ *
+ * @param vn     the artnet_node
+ * @param e      the remote node entry (target)
+ * @param data   payload bytes
+ * @param length payload length in bytes
+ * @return ARTNET_EOK on success, or a negative error code
+ */
+int artnet_send_media_control(artnet_node vn,
+                              artnet_node_entry e,
+                              const uint8_t *data,
+                              int16_t length) {
+  node n = (node) vn;
+  node_entry_private_t *ent = find_private_entry(n, e);
+
+  check_nullnode(vn);
+
+  if (e == NULL || ent == NULL) {
+    return ARTNET_EARG;
+  }
+
+  return artnet_tx_media_control(n, ent->ip.s_addr, ARTNET_MEDIACONTROL, data, length);
+}
+
+/**
+ * Send an ArtMediaControlReply packet to a controller.
+ *
+ * @param vn     the artnet_node
+ * @param e      the remote node entry (target)
+ * @param data   payload bytes
+ * @param length payload length in bytes
+ * @return ARTNET_EOK on success, or a negative error code
+ */
+int artnet_send_media_control_reply(artnet_node vn,
+                                    artnet_node_entry e,
+                                    const uint8_t *data,
+                                    int16_t length) {
+  node n = (node) vn;
+  node_entry_private_t *ent = find_private_entry(n, e);
+
+  check_nullnode(vn);
+
+  if (e == NULL || ent == NULL) {
+    return ARTNET_EARG;
+  }
+
+  return artnet_tx_media_control(n, ent->ip.s_addr, ARTNET_MEDIACONTROLREPLY, data, length);
 }
 
 
@@ -1931,14 +2112,15 @@ int artnet_set_default_resp_uid(artnet_node vn, const uint8_t uid[ARTNET_RDM_UID
  */
 int artnet_set_gateway(artnet_node vn, const char *ip) {
   node n = (node) vn;
+  struct in_addr addr = {0};
 
   check_nullnode(vn);
 
-  n->state.gateway.s_addr = inet_addr(ip);
-  if (n->state.gateway.s_addr == INADDR_NONE) {
+  if (!ip || artnet_net_inet_aton(ip, &addr) != ARTNET_EOK) {
     artnet_error("Invalid gateway address %s", ip);
     return ARTNET_EARG;
   }
+  n->state.gateway = addr;
 
   return ARTNET_EOK;
 }
@@ -1956,7 +2138,12 @@ int artnet_set_short_name(artnet_node vn, const char *name) {
   node n = (node) vn;
   check_nullnode(vn);
 
-  strncpy((char *) &n->state.shortName, name, ARTNET_SHORT_NAME_LENGTH);
+  if (name == NULL) {
+    return ARTNET_EARG;
+  }
+
+  memcpy(&n->state.shortName, name,
+         strnlen(name, ARTNET_SHORT_NAME_LENGTH - 1));
   n->state.shortName[ARTNET_SHORT_NAME_LENGTH-1] = 0x00;
   return artnet_tx_build_art_poll_reply(n);
 }
@@ -1974,7 +2161,12 @@ int artnet_set_long_name(artnet_node vn, const char *name) {
   node n = (node) vn;
   check_nullnode(vn);
 
-  strncpy((char *) &n->state.longName, name, ARTNET_LONG_NAME_LENGTH);
+  if (name == NULL) {
+    return ARTNET_EARG;
+  }
+
+  memcpy(&n->state.longName, name,
+         strnlen(name, ARTNET_LONG_NAME_LENGTH - 1));
   n->state.longName[ARTNET_LONG_NAME_LENGTH-1] = 0x00;
   return artnet_tx_build_art_poll_reply(n);
 }
@@ -2001,7 +2193,7 @@ int artnet_set_port_type(artnet_node vn,
     return ARTNET_EARG;
   }
 
-  n->ports.types[port_id] = (uint8_t)(settings | data);
+  n->ports.types[port_id] = (uint8_t)((uint8_t)settings | (uint8_t)data);
   return ARTNET_EOK;
 }
 
@@ -2126,8 +2318,8 @@ int artnet_get_config(artnet_node vn, artnet_node_config_t *config) {
   node n = (node) vn;
   check_nullnode(vn);
 
-  strncpy(config->shortName, n->state.shortName, ARTNET_SHORT_NAME_LENGTH);
-  strncpy(config->longName, n->state.longName, ARTNET_LONG_NAME_LENGTH);
+  memcpy(config->shortName, n->state.shortName, ARTNET_SHORT_NAME_LENGTH);
+  memcpy(config->longName, n->state.longName, ARTNET_LONG_NAME_LENGTH);
   config->netSwitch = n->state.netSwitch;
   config->subSwitch = n->state.subSwitch;
 
@@ -2406,6 +2598,17 @@ node_entry_private_t *find_entry_from_ip(node_list_t *nl, SI ip) {
   return tmp;
 }
 
+/**
+ * Find a node list entry matching both source IP and first output port value.
+ *
+ * This is used to distinguish joined/bound nodes that legitimately share the
+ * same IP address but advertise different first output universes.
+ *
+ * @param nl     the node list to search
+ * @param ip     the IP address to match
+ * @param swout0 the first SwOut value to match
+ * @return a pointer to the matching private entry, or NULL if not found
+ */
 node_entry_private_t *find_entry_from_ip_and_swout0(node_list_t *nl, SI ip, uint8_t swout0) {
   node_entry_private_t *tmp = NULL;
 

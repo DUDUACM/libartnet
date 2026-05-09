@@ -20,11 +20,22 @@
 
 static volatile int running = 1;
 
+/**
+ * Handle Ctrl+C / break signals and request shutdown.
+ *
+ * @param sig received signal number
+ */
 static void signal_handler(int sig) {
   (void)sig;
   running = 0;
 }
 
+/**
+ * Map ArtDiagData priority codes to short human-readable strings.
+ *
+ * @param pri ArtDiagData priority code
+ * @return a static display string
+ */
 static const char *diag_priority_name(uint8_t pri) {
   switch (pri) {
     case ARTNET_DIAG_LOW:      return "LOW";
@@ -36,6 +47,14 @@ static const char *diag_priority_name(uint8_t pri) {
   }
 }
 
+/**
+ * Print received ArtDiagData packets.
+ *
+ * @param n    the artnet_node
+ * @param pp   pointer to the received packet
+ * @param data unused callback data
+ * @return always 0
+ */
 static int diag_handler(artnet_node n, void *pp, void *data) {
   (void)n;
   (void)data;
@@ -51,6 +70,14 @@ static int diag_handler(artnet_node n, void *pp, void *data) {
   return 0;
 }
 
+/**
+ * Print received ArtTimeSync packets.
+ *
+ * @param n    the artnet_node
+ * @param pp   pointer to the received packet
+ * @param data unused callback data
+ * @return always 0
+ */
 static int timesync_handler(artnet_node n, void *pp, void *data) {
   (void)n;
   (void)data;
@@ -63,6 +90,14 @@ static int timesync_handler(artnet_node n, void *pp, void *data) {
   return 0;
 }
 
+/**
+ * Print received ArtTrigger packets.
+ *
+ * @param n    the artnet_node
+ * @param pp   pointer to the received packet
+ * @param data unused callback data
+ * @return always 0
+ */
 static int trigger_handler(artnet_node n, void *pp, void *data) {
   (void)n;
   (void)data;
@@ -83,6 +118,14 @@ static int trigger_handler(artnet_node n, void *pp, void *data) {
   return 0;
 }
 
+/**
+ * Print received ArtCommand packets.
+ *
+ * @param n    the artnet_node
+ * @param pp   pointer to the received packet
+ * @param data unused callback data
+ * @return always 0
+ */
 static int command_handler(artnet_node n, void *pp, void *data) {
   (void)n;
   (void)data;
@@ -97,6 +140,13 @@ static int command_handler(artnet_node n, void *pp, void *data) {
   return 0;
 }
 
+/**
+ * Entry point for the diagnostic monitor example.
+ *
+ * @param argc argument count
+ * @param argv argument vector
+ * @return 0 on success, non-zero on error
+ */
 int main(int argc, char *argv[]) {
   setvbuf(stdout, NULL, _IONBF, 0);
   const char *ip = NULL;

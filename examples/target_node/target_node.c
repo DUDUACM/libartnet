@@ -28,6 +28,14 @@
 
 static volatile int running = 1;
 
+/**
+ * Print received DMX data for a port.
+ *
+ * @param n    the artnet_node
+ * @param port port index that received data
+ * @param data unused callback data
+ * @return always 0
+ */
 static int dmx_handler(artnet_node n, int port, void *data) {
   (void)data;
   int length;
@@ -39,6 +47,13 @@ static int dmx_handler(artnet_node n, int port, void *data) {
   return 0;
 }
 
+/**
+ * Print node configuration after remote programming changes.
+ *
+ * @param n    the artnet_node
+ * @param data unused callback data
+ * @return always 0
+ */
 static int program_handler(artnet_node n, void *data) {
   (void)data;
   printf("\n=== Remote Programming Applied ===\n");
@@ -47,11 +62,21 @@ static int program_handler(artnet_node n, void *data) {
   return 0;
 }
 
+/**
+ * Handle Ctrl+C / break signals and request shutdown.
+ *
+ * @param sig received signal number
+ */
 static void signal_handler(int sig) {
   (void)sig;
   running = 0;
 }
 
+/**
+ * Print command-line usage.
+ *
+ * @param prog executable name
+ */
 static void print_usage(const char *prog) {
   printf("Usage: %s [-i <bind_ip>] [-n <net>] [-s <subnet>] [-u <universe>]\n", prog);
   printf("  -i  IP address to bind to (default: auto)\n");
@@ -60,6 +85,13 @@ static void print_usage(const char *prog) {
   printf("  -u  Starting port address 0-15 (default: %d)\n", DEFAULT_UNIVERSE);
 }
 
+/**
+ * Entry point for the target node example.
+ *
+ * @param argc argument count
+ * @param argv argument vector
+ * @return 0 on success, non-zero on error
+ */
 int main(int argc, char *argv[]) {
   setvbuf(stdout, NULL, _IONBF, 0);
   const char *ip = NULL;

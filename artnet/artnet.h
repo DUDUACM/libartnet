@@ -47,8 +47,6 @@ typedef unsigned long in_addr_t;
 extern "C" {
 #endif
 
-EXTERN int ARTNET_ADDRESS_NO_CHANGE;
-
 /**
  * Bitmasks for enabling input or output capability on a port.
  * These values are combined with the port type when calling artnet_set_port_type().
@@ -644,6 +642,11 @@ EXTERN int artnet_set_rdm_tod_handler(artnet_node vn,
 
 /**
  * @brief Send an ArtPoll to discover nodes on the network.
+ *
+ * This API exposes the legacy TalkToMe values. Advanced ArtPoll flags such as
+ * diagnostics and targeted mode are handled on receive; applications that need
+ * custom outbound ArtPoll flags can adjust the packet via `ARTNET_SEND_HANDLER`.
+ *
  * @param n           The artnet_node
  * @param ip          Target IP (NULL for broadcast)
  * @param talk_to_me  Legacy talk-to-me value (use ARTNET_TTM_DEFAULT for default)
@@ -652,6 +655,27 @@ EXTERN int artnet_set_rdm_tod_handler(artnet_node vn,
 EXTERN int artnet_send_poll(artnet_node n,
   const char *ip,
   artnet_ttm_value_t talk_to_me);
+
+/**
+ * @brief Send an ArtPoll with explicit Art-Net 4 Flags and targeting fields.
+ * @param n             The artnet_node
+ * @param ip            Target IP (NULL for directed broadcast)
+ * @param flags         ArtPoll Flags bitmask
+ * @param diag_priority Diagnostic priority threshold
+ * @param target_top    Top of targeted Port-Address range
+ * @param target_bottom Bottom of targeted Port-Address range
+ * @param esta_man      ESTA manufacturer code to advertise in the poll
+ * @param oem           OEM code to advertise in the poll
+ * @return ARTNET_EOK on success, or a negative error code
+ */
+EXTERN int artnet_send_poll_flags(artnet_node n,
+  const char *ip,
+  uint8_t flags,
+  uint8_t diag_priority,
+  uint16_t target_top,
+  uint16_t target_bottom,
+  uint16_t esta_man,
+  uint16_t oem);
 
 /**
  * @brief Send an ArtPollReply for this node.
@@ -710,8 +734,8 @@ EXTERN int artnet_send_nzs(artnet_node vn,
  * @brief Send an ArtAddress packet to remotely program a node.
  * @param n         The local artnet_node (sender)
  * @param e         The remote node entry (target)
- * @param shortName New short name (NULL or ARTNET_ADDRESS_NO_CHANGE to keep)
- * @param longName  New long name (NULL or ARTNET_ADDRESS_NO_CHANGE to keep)
+ * @param shortName New short name (NULL to keep)
+ * @param longName  New long name (NULL to keep)
  * @param inAddr    New input port addresses (NULL to keep)
  * @param outAddr   New output port addresses (NULL to keep)
  * @param netAddr   New net address (ARTNET_ADDRESS_NO_CHANGE to keep)
@@ -902,6 +926,81 @@ EXTERN int artnet_send_data_request(artnet_node vn, const char *ip,
  */
 EXTERN int artnet_send_data_reply(artnet_node vn, const char *ip,
   uint16_t request_code, const char *payload, int16_t length);
+
+/**
+ * @brief Send an ArtIpProg packet to a remote node.
+ * @param vn          The artnet_node
+ * @param e           The remote node entry (target)
+ * @param command     Command bitfield from the ArtIpProg specification
+ * @param prog_ip     IP address to program, or NULL if not used by command bits
+ * @param subnet_mask Subnet mask to program, or NULL if not used by command bits
+ * @param gateway     Default gateway to program, or NULL if not used by command bits
+ * @return ARTNET_EOK on success, or a negative error code
+ */
+EXTERN int artnet_send_ipprog(artnet_node vn,
+  artnet_node_entry e,
+  uint8_t command,
+  const char *prog_ip,
+  const char *subnet_mask,
+  const char *gateway);
+
+/**
+ * @brief Send an ArtCommand packet.
+ * @param vn       The artnet_node
+ * @param esta_man ESTA manufacturer code, or 0xFFFF for manufacturer-specific broadcast semantics
+ * @param text     Command text payload
+ * @param length   Payload length in bytes, including null terminator when present
+ * @param ip       Optional target IP address; NULL broadcasts
+ * @return ARTNET_EOK on success, or a negative error code
+ */
+EXTERN int artnet_send_command(artnet_node vn,
+  uint16_t esta_man,
+  const char *text,
+  int16_t length,
+  const char *ip);
+
+/**
+ * @brief Send an ArtMediaPatch packet to a media server.
+ * @param vn       The artnet_node
+ * @param e        The remote node entry (target)
+ * @param physical Physical port identifier
+ * @param universe Port-Address
+ * @param data     Payload bytes
+ * @param length   Payload length in bytes
+ * @return ARTNET_EOK on success, or a negative error code
+ */
+EXTERN int artnet_send_media_patch(artnet_node vn,
+  artnet_node_entry e,
+  uint8_t physical,
+  uint16_t universe,
+  const uint8_t *data,
+  int16_t length);
+
+/**
+ * @brief Send an ArtMediaControl packet to a media server.
+ * @param vn     The artnet_node
+ * @param e      The remote node entry (target)
+ * @param data   Payload bytes
+ * @param length Payload length in bytes
+ * @return ARTNET_EOK on success, or a negative error code
+ */
+EXTERN int artnet_send_media_control(artnet_node vn,
+  artnet_node_entry e,
+  const uint8_t *data,
+  int16_t length);
+
+/**
+ * @brief Send an ArtMediaControlReply packet to a controller.
+ * @param vn     The artnet_node
+ * @param e      The remote node entry (target)
+ * @param data   Payload bytes
+ * @param length Payload length in bytes
+ * @return ARTNET_EOK on success, or a negative error code
+ */
+EXTERN int artnet_send_media_control_reply(artnet_node vn,
+  artnet_node_entry e,
+  const uint8_t *data,
+  int16_t length);
 
 /**
  * @brief Broadcast an ArtDirectory request.

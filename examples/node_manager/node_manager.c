@@ -318,34 +318,60 @@ static void cmd_trigger(artnet_node n) {
          ret == ARTNET_EOK ? "OK" : artnet_strerror());
 }
 
+/**
+ * Send an ArtIpProg query or programming request to a selected node.
+ *
+ * @param n the artnet_node
+ */
 static void cmd_ipprog(artnet_node n) {
   artnet_node_entry e = select_node(n);
   if (!e) return;
 
   printf("  Current IP: %d.%d.%d.%d\n", e->ip[0], e->ip[1], e->ip[2], e->ip[3]);
-  printf("  New IP (e.g. 192.168.1.50): ");
+
+  printf("  New IP (blank to skip): ");
   fflush(stdout);
-  char buf[64];
-  if (!fgets(buf, sizeof(buf), stdin)) return;
-  strip_newline(buf);
-  if (buf[0] == '\0') {
-    printf("Cancelled.\n");
-    return;
+  char ip_buf[64];
+  if (!fgets(ip_buf, sizeof(ip_buf), stdin)) return;
+  strip_newline(ip_buf);
+
+  printf("  New subnet mask (blank to skip, e.g. 255.255.255.0): ");
+  fflush(stdout);
+  char mask_buf[64];
+  if (!fgets(mask_buf, sizeof(mask_buf), stdin)) return;
+  strip_newline(mask_buf);
+
+  printf("  New gateway (blank to skip): ");
+  fflush(stdout);
+  char gw_buf[64];
+  if (!fgets(gw_buf, sizeof(gw_buf), stdin)) return;
+  strip_newline(gw_buf);
+
+  int set_ip = ip_buf[0] != '\0';
+  int set_mask = mask_buf[0] != '\0';
+  int set_gw = gw_buf[0] != '\0';
+  uint8_t command = 0x80;
+
+  if (!set_ip && !set_mask && !set_gw) {
+    command = 0x00;  /* query only */
+  } else {
+    if (set_ip) command |= 0x04;
+    if (set_mask) command |= 0x02;
+    if (set_gw) command |= 0x10;
   }
 
-  unsigned int a, b, c, d;
-  if (sscanf(buf, "%u.%u.%u.%u", &a, &b, &c, &d) != 4 || a > 255 || b > 255 || c > 255 || d > 255) {
-    printf("Invalid IP address.\n");
-    return;
-  }
-
-  /* ArtIpProg is sent via artnet_send_address with a raw packet approach.
-     Use the library's internal send by constructing the IP prog command.
-     For now, we send an ArtAddress with the IP change via a workaround. */
-  printf("  Note: ArtIpProg requires direct packet construction.\n");
-  printf("  Target IP would be: %u.%u.%u.%u\n", a, b, c, d);
+  int ret = artnet_send_ipprog(n,
+                               e,
+                               command,
+                               set_ip ? ip_buf : NULL,
+                               set_mask ? mask_buf : NULL,
+                               set_gw ? gw_buf : NULL);
+  printf("  ArtIpProg: %s\n", ret == ARTNET_EOK ? "OK" : artnet_strerror());
 }
 
+/**
+ * Print the interactive menu.
+ */
 static void print_menu(void) {
   printf("\n--- Node Manager ---\n");
   printf("  p) Poll network\n");
@@ -365,7 +391,7 @@ static void print_menu(void) {
   printf("  h) Failsafe: Full\n");
   printf("  j) Failsafe: Scene\n");
   printf("  t) Send ArtTrigger\n");
-  printf("  i) Send ArtIpProg (change IP)\n");
+  printf("  i) Send ArtIpProg\n");
   printf("  q) Quit\n");
   printf("  ?> ");
   fflush(stdout);

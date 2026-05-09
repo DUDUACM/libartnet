@@ -20,11 +20,24 @@
 
 static volatile int running = 1;
 
+/**
+ * Handle Ctrl+C / break signals and request shutdown.
+ *
+ * @param sig received signal number
+ */
 static void signal_handler(int sig) {
   (void)sig;
   running = 0;
 }
 
+/**
+ * Print received ArtFileFnReply packets.
+ *
+ * @param n    the artnet_node
+ * @param pp   pointer to the received packet
+ * @param data unused callback data
+ * @return always 0
+ */
 static int file_fn_reply_handler(artnet_node n, void *pp, void *data) {
   (void)n;
   (void)data;
@@ -43,6 +56,11 @@ static int file_fn_reply_handler(artnet_node n, void *pp, void *data) {
   return 0;
 }
 
+/**
+ * Print discovered nodes from the node list.
+ *
+ * @param n the artnet_node
+ */
 static void print_discovered(artnet_node n) {
   artnet_node_list nl = artnet_get_nl(n);
   int count = artnet_nl_get_length(nl);
@@ -61,6 +79,12 @@ static void print_discovered(artnet_node n) {
   }
 }
 
+/**
+ * Prompt the user to select a discovered node.
+ *
+ * @param n the artnet_node
+ * @return the selected node entry, or NULL on cancel/error
+ */
 static artnet_node_entry select_node(artnet_node n) {
   artnet_node_list nl = artnet_get_nl(n);
   int count = artnet_nl_get_length(nl);
@@ -86,6 +110,9 @@ static artnet_node_entry select_node(artnet_node n) {
   return entry;
 }
 
+/**
+ * Print the interactive menu.
+ */
 static void print_menu(void) {
   printf("\n--- File Transfer ---\n");
   printf("  p) Poll network\n");
@@ -97,6 +124,13 @@ static void print_menu(void) {
   fflush(stdout);
 }
 
+/**
+ * Entry point for the file transfer example.
+ *
+ * @param argc argument count
+ * @param argv argument vector
+ * @return 0 on success, non-zero on error
+ */
 int main(int argc, char *argv[]) {
   setvbuf(stdout, NULL, _IONBF, 0);
   const char *ip = NULL;

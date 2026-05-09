@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.10)
-project(libartnet VERSION 1.2.0 LANGUAGES C)
+project(libartnet VERSION 1.3.0 LANGUAGES C)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
@@ -15,6 +15,9 @@ include(GNUInstallDirs)
 option(BUILD_SHARED_LIBS "Build shared libraries" ON)
 option(ENABLE_IPV6 "Enable IPv6 support" ON)
 option(BUILD_EXAMPLES "Build example programs" ON)
+option(BUILD_EXAMPLES_MINIMAL "Build minimal protocol examples" ON)
+option(BUILD_EXAMPLES_FOCUSED "Build focused workflow examples" OFF)
+option(BUILD_EXAMPLES_FULL "Build full integration examples" ON)
 option(BUILD_TESTS "Build protocol regression tests" OFF)
 option(BUILD_WERROR "Treat compiler warnings as errors" OFF)
 
