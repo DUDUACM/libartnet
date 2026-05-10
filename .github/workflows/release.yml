@@ -329,14 +329,15 @@ jobs:
           body: |
             ## libartnet ${{ env.VERSION }}
 
-            Art-Net 4 focused release with broad controller and node workflow coverage.
+            Art-Net 4 protocol compliance and robustness release.
 
             ### Highlights
-            - Art-Net 4 support across discovery, 15-bit port addressing, DMX transport, ArtNzs, and ArtSync
-            - Remote programming coverage for ArtAddress, ArtInput, and ArtIpProg controller/node workflows
-            - RDM and TOD coverage for discovery, control, and message transport
-            - Diagnostics, timecode, timesync, trigger, directory, and file-transfer workflows
-            - Layered example set covering minimal protocol demos, focused workflow tools, and integration controller/node examples
+            - New `artnet_send_vlc()` for Artistic Licence VLC payload transport and `artnet_set_bind_index()` for multi-bound devices
+            - Dedicated `ARTNET_RDMSUB_HANDLER` callback for ArtRdmSub packet dispatch
+            - Unicast routing for DMX, NZS, Directory, and TOD — no longer relying on broadcast
+            - Per-port ArtSync source validation, BindIndex filtering for ArtAddress/ArtInput
+            - Sequence numbering, NULL safety, and bounds validation hardened across all transmit paths
+            - ArtPoll now accepts legacy 14-byte packets for better third-party interoperability
             - Cross-platform packaging for Windows, Linux, and macOS
 
             ### Downloads

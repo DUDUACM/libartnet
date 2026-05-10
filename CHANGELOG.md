@@ -2,6 +2,38 @@
 
 All notable changes to this project are documented in this file.
 
+## [1.4.0] - 2026-05-10
+
+### Added
+
+- `artnet_send_vlc()` public API for Art-Net 4 VLC payload transport (ArtNzs with start code 0x91 and ALÉ magic)
+- `artnet_set_bind_index()` to configure the Art-Net 4 BindIndex for multi-bound root devices
+- `ARTNET_RDMSUB_HANDLER` callback type, so ArtRdmSub packets dispatch through their own handler instead of the generic RDM handler
+- Per-port DMX source IP tracking (`last_dmx_source`) for correct per-source ArtSync validation
+- TOD requester tracking: ArtTodRequest / ArtTodControl senders are remembered and TodData is unicast to all known requesters
+
+### Fixed
+
+- `artnet_send_dmx()` and `artnet_raw_send_dmx()` now reject odd-length DMX payloads per Art-Net specification
+- `artnet_send_nzs()` for RAW nodes now unicasts to matching subscribers instead of broadcasting
+- `artnet_raw_send_dmx()` now unicasts to universe subscribers instead of broadcasting
+- ArtSync source-IP validation now checks per-port instead of a single global source, allowing merged input from multiple controllers
+- ArtAddress and ArtInput commands now validate BindIndex and silently ignore mismatched packets
+- ArtRdmSub packets now invoke the correct `rdmsub` callback instead of the generic `rdm` callback
+- Sequence numbers start at 1 (not 0) and wrap correctly, avoiding the zero-sequence edge case
+- `artnet_nl_first()` / `artnet_nl_next()` no longer dereference NULL on empty or exhausted node lists
+- Packet size gate changed from `>` to `>=` so minimum-size packets are no longer silently dropped
+- ArtPoll accepts legacy 14-byte packets as required by the specification
+- Relaxed strict filler-byte checks on ArtSync and ArtIpProg to improve interoperability with third-party implementations
+- Various NULL-pointer and bounds-validation guards added to transmit functions (`artnet_tx_rdm`, `artnet_tx_rdmsub`, `artnet_tx_diagdata`, `artnet_tx_timecode`, `artnet_tx_timesync`, `artnet_tx_trigger`, `artnet_tx_data_reply`, `artnet_tx_file_tn_master`, `artnet_tx_file_fn_reply`)
+
+### Changed
+
+- `artnet_send_directory()` now unicasts to discovered nodes instead of broadcasting
+- `find_nodes_from_uni()` now matches against both output and input port universes and respects port enable flags
+- `artnet_tx_tod_data()` returns early if no requester address has been set
+- ArtAddress command handling consolidated: per-port commands use `cmd & 0x03` instead of explicit case fallthrough
+
 ## [1.3.0] - 2026-05-09
 
 ### Added
